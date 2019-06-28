@@ -7,7 +7,7 @@ snippets:
     git:
       repo: https://github.com/sergmain/metaheuristic-assets.git
       branch: master
-      commit: 489d8e585be44a2e2f43e0b543e91b6e0b299db9
+      commit: 5d809f50e3ccb45688deefd9e1e70f6202d8d18a
   - code: simple-metrics.predict:1.1
     type: predict
     file: snippets/simple-metrics/simple-metrics-predict.py
@@ -17,5 +17,5 @@ snippets:
     git:
       repo: https://github.com/sergmain/metaheuristic-assets.git
       branch: master
-      commit: 489d8e585be44a2e2f43e0b543e91b6e0b299db9
+      commit: 5d809f50e3ccb45688deefd9e1e70f6202d8d18a
 
