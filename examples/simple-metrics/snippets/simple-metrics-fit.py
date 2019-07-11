@@ -31,10 +31,10 @@ cwd = os.getcwd()
 artifact_path = os.path.join(cwd, 'artifacts')
 sys.stdout = Logger(artifact_path)
 
-yaml_file = os.path.join(artifact_path, 'params.yaml')
+yaml_file = os.path.join(artifact_path, 'params-v2.yaml')
 
 with open(yaml_file, 'r') as stream:
-    params = (yaml.load(stream))
+    params = (yaml.load(stream))['taskYaml']
 
 
 output_file_path = params['outputResourceAbsolutePath']
