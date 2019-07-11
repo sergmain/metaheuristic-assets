@@ -1,0 +1,9 @@
+planYaml:
+  planCode: experiment-simple-metric
+  processes:
+    - code: experiment-simple-metrics
+      name: experiment
+      outputParams:
+        sourcing: launchpad
+      type: EXPERIMENT
+version: 5
