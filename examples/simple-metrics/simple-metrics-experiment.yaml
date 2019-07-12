@@ -1,0 +1,15 @@
+experimentYaml:
+  code: experiment-simple-metrics-1.1
+  name: Test experiment.
+  description: Experiment for simple metrics
+  fitSnippet: simple-metrics.fit:1.2
+  predictSnippet: simple-metrics.predict:1.2
+  hyperParams:
+    - key: RNN
+      values: '[LSTM, GRU, SimpleRNN]'
+    - key: batches
+      values: '[20, 40]'
+    - key: time_steps
+      values: '[7, 13]'
+  seed: 42
+version: 1
