@@ -6,4 +6,7 @@ planYaml:
       outputParams:
         sourcing: launchpad
       type: EXPERIMENT
+      metas:
+        - key: feature
+          value: simple-metrics-resource
 version: 5
