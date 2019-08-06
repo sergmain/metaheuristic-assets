@@ -129,6 +129,8 @@ snippets:
       metrics['values'] = metricValues
 
       metricValues['sum'] = randint(100, 200)
+      metricValues['sum1'] = metricValues['sum'] - randint(10, 20)
+      metricValues['sum2'] = metricValues['sum1'] - randint(1, 5)
       metrics_yaml_file = os.path.join(artifact_path, 'metrics.yaml')
 
       with open(metrics_yaml_file, 'w') as outfile:
