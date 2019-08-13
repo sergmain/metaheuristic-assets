@@ -1,7 +1,7 @@
 experimentYaml:
-  code: experiment-simple-metrics-1.1
-  name: Test experiment.
-  description: Experiment for simple metrics
+  code: experiment-simple-metrics-1.2
+  name: Experiment with simple metrics
+  description: Experiment with simple metrics
   fitSnippet: simple-metrics.fit:1.2
   predictSnippet: simple-metrics.predict:1.2
   hyperParams:
