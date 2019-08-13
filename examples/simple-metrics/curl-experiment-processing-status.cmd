@@ -1,0 +1,1 @@
+curl -u q:123 http://localhost:8080/rest/v1/launchpad/experiment/processing-status/experiment-simple-metrics-1.2

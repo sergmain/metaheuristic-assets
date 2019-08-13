@@ -13,6 +13,9 @@
 *.xml           text
 *.cmd           text
 *.py            text
+*.yaml          text
+*.yml           text
+*.csv           text
 
 # These files are binary and should be left untouched
 *.class         binary
