@@ -1,11 +1,9 @@
-import gc
 import os
 import sys
 from random import randint
 
 import yaml
 from datetime import datetime
-from keras import backend as K
 
 
 class Logger(object):
@@ -59,5 +57,3 @@ with open(metrics_yaml_file, 'w') as outfile:
     yaml.dump(metrics, outfile, default_flow_style=False)
 
 
-K.clear_session()
-gc.collect()

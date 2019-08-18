@@ -1,12 +1,8 @@
-import gc
 import os
 import sys
 
 import yaml
 from datetime import datetime
-
-from keras import backend as K
-
 
 class Logger(object):
     def __init__(self, artifact_path):
@@ -46,6 +42,3 @@ with open(output_file_path, 'w') as output_file:
 print(params['hyperParams'])
 print('Done.')
 print(str(datetime.now()))
-
-K.clear_session()
-gc.collect()
