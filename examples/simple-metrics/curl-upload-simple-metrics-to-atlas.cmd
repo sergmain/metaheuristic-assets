@@ -1,0 +1,1 @@
+curl -u q:123 -F "file=@simple-metrics-export.zip"  http://localhost:8080/rest/v1/launchpad/atlas/atlas-experiment-upload-from-file
