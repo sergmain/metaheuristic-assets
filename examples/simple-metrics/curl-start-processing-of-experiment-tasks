@@ -1,0 +1,2 @@
+#!/bin/sh
+curl -u q:123 -F "experimentCode=experiment-simple-metrics-1.2" http://localhost:8080/rest/v1/launchpad/experiment/start-processing-of-tasks
