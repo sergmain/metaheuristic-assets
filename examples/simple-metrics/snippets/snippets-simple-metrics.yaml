@@ -1,7 +1,7 @@
 snippets:
   - code: simple-metrics.fit:1.2
     type: fit
-    file: snippets/simple-metrics/simple-metrics-fit.py
+    file: examples/simple-metrics/snippets/simple-metrics-fit.py
     env: python-3
     sourcing: git
     git:
@@ -70,7 +70,7 @@ snippets:
 
   - code: simple-metrics.predict:1.2
     type: predict
-    file: snippets/simple-metrics/simple-metrics-predict.py
+    file: examples/simple-metrics/snippets/simple-metrics-predict.py
     env: python-3
     sourcing: git
     metrics: true
