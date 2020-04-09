@@ -1,2 +1,5 @@
 #!/bin/sh
+
+# !!!! this url doesn't exist any more
+
 curl -u q:123 -F "experimentCode=experiment-simple-metrics-1.2" -F "resourcePoolCode=simple-metrics-resource"  http://localhost:8080/rest/v1/launchpad/experiment/bind-experiment-to-plan-with-resource

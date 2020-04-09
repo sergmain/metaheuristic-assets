@@ -10,4 +10,6 @@ planYaml:
       metas:
         - key: feature
           value: simple-metrics-resource
+  ac:
+    group: quick-start
 version: 5
