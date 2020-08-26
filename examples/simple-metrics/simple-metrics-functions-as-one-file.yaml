@@ -1,4 +1,4 @@
-snippets:
+functions:
   - code: simple-metrics.fit:1.2
     type: fit
     env: python-3
