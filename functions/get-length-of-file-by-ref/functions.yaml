@@ -1,6 +1,6 @@
 functions:
-  - code: get-list-of-files:1.4
-    type: list-of-files
+  - code: get-length-of-file-by-ref:1.1
+    type: get-length-of-file-by-ref
     env: python-3
     sourcing: processor
     metas:
@@ -71,16 +71,32 @@ functions:
           envs = (yaml.load(stream_envs, Loader=yaml.FullLoader))
 
 
-      var_list_of_files = get_variable_by_id(params['outputs'], 'var-list-of-files')
-      list_of_files_filename = os.path.join(artifact_path, str(var_list_of_files['id']))
-      if os.path.exists(list_of_files_filename):
-          os.remove(list_of_files_filename)
+      var_input = get_variable_by_id(params['inputs'], 'var-batch-item')
+      array_input_filename = os.path.join(var_input['dataType'], str(var_input['id']))
+      array_input_file = open(array_input_filename, "r", encoding="utf-8")
+
+      with open(array_input_filename, 'r', encoding="utf-8") as stream:
+          arrays = (yaml.load(stream, Loader=yaml.FullLoader))['array']
+
+      input_filename = os.path.join(var_input['dataType'], str(arrays[0]['id']))
+      input_file = open(input_filename, "r", encoding="utf-8")
+
+      lines = input_file.readlines()
+
+      total = 0
+      for line in lines:
+          temp_filename = os.path.join(line.rstrip())
+          if os.path.exists(temp_filename):
+              total += os.path.getsize(temp_filename)
+
+      var_result = get_variable_by_id(params['outputs'], 'var-result')
+      result_filename = os.path.join(artifact_path, str(var_result['id']))
+      if os.path.exists(result_filename):
+          os.remove(result_filename)
 
 
-      var_logger_list_of_files = get_variable_by_id(params['outputs'], 'var-logger-list-of-files')
-      logger_filename = os.path.join(artifact_path, str(var_logger_list_of_files['id']))
-      if os.path.exists(logger_filename):
-          os.remove(logger_filename)
+      var_logger = get_variable_by_id(params['outputs'], 'var-logger')
+      logger_filename = os.path.join(artifact_path, str(var_logger['id']))
 
       sys.stdout = Logger(logger_filename)
 
@@ -92,15 +108,9 @@ functions:
       dir_code = params['inline']['list-files']['dir-code']
       thisdir = get_disk_from_envs(envs, dir_code)
 
-      text_file = open(list_of_files_filename, "w", encoding="utf-8")
-
-      # r=root, d=directories, f = files
-      for r, d, f in os.walk(thisdir):
-          for file in f:
-              p = os.path.join(r, file)
-              text_file.write(p)
-              text_file.write('\n')
-
+      text_file = open(result_filename, "w", encoding="utf-8")
+      text_file.write(str(total))
+      text_file.write('\n')
       text_file.close()
 
       gc.collect()
