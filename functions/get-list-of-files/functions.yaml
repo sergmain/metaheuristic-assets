@@ -1,5 +1,5 @@
 functions:
-  - code: get-list-of-files:1.2
+  - code: get-list-of-files:1.4
     type: list-of-files
     env: python-3
     sourcing: processor
@@ -57,9 +57,6 @@ functions:
           raise Exception('A Disk mapping with code ' + disk_code + " wasn't found" )
 
 
-      print('Start time: ', str(datetime.now()))
-      print('Args: ', sys.argv)
-
       cwd = os.getcwd()
 
       artifact_path = os.path.join(cwd, 'artifacts')
@@ -74,22 +71,28 @@ functions:
           envs = (yaml.load(stream_envs, Loader=yaml.FullLoader))
 
 
-      var_result = get_variable_by_id(params['outputs'], 'var-result')
-      result_filename = os.path.join(artifact_path, str(var_result['id']))
-      if os.path.exists(result_filename):
-          os.remove(result_filename)
+      var_list_of_files = get_variable_by_id(params['outputs'], 'var-list-of-files')
+      list_of_files_filename = os.path.join(artifact_path, str(var_list_of_files['id']))
+      if os.path.exists(list_of_files_filename):
+          os.remove(list_of_files_filename)
 
 
-      var_logger = get_variable_by_id(params['outputs'], 'var-logger')
-      logger_filename = os.path.join(artifact_path, str(var_logger['id']))
+      var_logger_list_of_files = get_variable_by_id(params['outputs'], 'var-logger-list-of-files')
+      logger_filename = os.path.join(artifact_path, str(var_logger_list_of_files['id']))
+      if os.path.exists(logger_filename):
+          os.remove(logger_filename)
 
       sys.stdout = Logger(logger_filename)
+
+      print('Start time: ', str(datetime.now()))
+      print('Args: ', sys.argv)
+
 
       # Getting the current work directory (cwd)
       dir_code = params['inline']['list-files']['dir-code']
       thisdir = get_disk_from_envs(envs, dir_code)
 
-      text_file = open(result_filename, "w", encoding="utf-8")
+      text_file = open(list_of_files_filename, "w", encoding="utf-8")
 
       # r=root, d=directories, f = files
       for r, d, f in os.walk(thisdir):
