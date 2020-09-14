@@ -1,0 +1,20 @@
+functions:
+  - code: simple-metrics.fit:1.2
+    type: fit
+    file: examples/simple-metrics/functions/simple-metrics-fit.py
+    env: python-3
+    sourcing: git
+    git:
+      repo: https://github.com/sergmain/metaheuristic-assets.git
+      branch: master
+      commit: 5d809f50e3ccb45688deefd9e1e70f6202d8d18a
+  - code: simple-metrics.predict:1.2
+    type: predict
+    file: examples/simple-metrics/snippets/simple-metrics-predict.py
+    env: python-3
+    sourcing: git
+    metrics: true
+    git:
+      repo: https://github.com/sergmain/metaheuristic-assets.git
+      branch: master
+      commit: 5d809f50e3ccb45688deefd9e1e70f6202d8d18a
