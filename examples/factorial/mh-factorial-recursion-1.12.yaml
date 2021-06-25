@@ -1,7 +1,7 @@
 version: 3
 source:
   strictNaming: true
-  uid: mh-factorial-recursion-1.11
+  uid: mh-factorial-recursion-1.12
   variables:
     inputs:
       - name: currIndex
@@ -9,12 +9,20 @@ source:
     outputs:
       - name: factorialResult
   processes:
+    - code: mh.evaluation0
+      name: mh.evaluation0
+      function:
+        code: mh.evaluation
+        context: internal
+      metas:
+        - expression: factorialResult = inputValue
+      condition: currIndex > 2
     - code: mh.nop
       name: mh.nop
       function:
         code: mh.nop
         context: internal
-      condition: currIndex < 5
+      condition: currIndex < 3
       subProcesses:
         logic: sequential
         processes:
@@ -47,7 +55,7 @@ source:
             outputs:
               - name: subResult
             metas:
-              - source-code-uid: mh-factorial-recursion-1.11
+              - source-code-uid: mh-factorial-recursion-1.12
           - code: mh.evaluation2
             name: mh.evaluation2
             function:
