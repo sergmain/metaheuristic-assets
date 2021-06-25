@@ -1,0 +1,21 @@
+version: 3
+source:
+  strictNaming: true
+  uid: mh-factorial-main-1.1
+  variables:
+    globals:
+      - mh_int_0
+      - mh_int_1
+  processes:
+    - code: mh.exec-source-code
+      name: mh.exec-source-code
+      function:
+        code: mh.exec-source-code
+        context: internal
+      inputs:
+        - name: mh_int_0
+        - name: mh_int_1
+      outputs:
+        - name: resultOutput
+      metas:
+        - source-code-uid: mh-factorial-recursion-1.7
