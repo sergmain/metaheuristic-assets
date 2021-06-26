@@ -53,6 +53,7 @@ source:
             inputs:
               - name: index
               - name: result
+              - name: factorialOf
             outputs:
               - name: subResult
             metas:
