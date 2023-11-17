@@ -1,0 +1,4 @@
+bundleConfig:
+  - path: fn-get-length-of-file-by-ref
+    type: function
+version: 1

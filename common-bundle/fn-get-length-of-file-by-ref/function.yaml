@@ -1,0 +1,9 @@
+version: 2
+function:
+    code: get-length-of-file-by-ref:1.0
+    type: get-length-of-file-by-ref
+    env: python-3
+    sourcing: dispatcher
+    file: get-length-of-file-by-ref.py
+    metas:
+      - mh.task-params-version: 1
