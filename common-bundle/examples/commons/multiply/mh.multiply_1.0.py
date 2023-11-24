@@ -69,10 +69,10 @@ yaml_file = sys.argv[len(sys.argv)-1]
 with open(yaml_file, 'r', encoding="utf-8") as stream:
     params = (yaml.load(stream, Loader=yaml.FullLoader))['task']
 
-cur_factorial = get_var_as_int('inputValue')
-index = get_var_as_int('index')
+left_var = get_var_as_int('inputValue')
+right_var = get_var_as_int('index')
 
-f = cur_factorial * index
+result = left_var * right_var
 
 var_result = get_variable_by_id(params['outputs'], 'result')
 result_filename = os.path.join(artifact_path, str(var_result['id']))
@@ -80,7 +80,7 @@ if os.path.exists(result_filename):
     os.remove(result_filename)
 
 text_file = open(result_filename, "w", encoding="utf-8")
-text_file.write(str(f))
+text_file.write(str(result))
 text_file.close()
 
 print('End time: ', str(datetime.now()))

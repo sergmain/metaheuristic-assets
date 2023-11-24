@@ -1,0 +1,9 @@
+version: 2
+functions:
+    code: mh.multiply:1.2
+    type: multiply
+    env: python-3
+    file: mh.multiply_1.0.py
+    sourcing: dispatcher
+    metas:
+      - mh.task-params-version: 1

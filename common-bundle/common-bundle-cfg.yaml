@@ -1,4 +1,6 @@
 bundleConfig:
-  - path: fn-get-length-of-file-by-ref
+  - path: examples
     type: function
+  - path: source-codes
+    type: sourceCode
 version: 1

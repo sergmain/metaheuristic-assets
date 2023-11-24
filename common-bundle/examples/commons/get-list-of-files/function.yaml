@@ -1,0 +1,9 @@
+version: 2
+function:
+    code: get-list-of-files:1.4
+    type: list-of-files
+    env: python-3
+    sourcing: dispatcher
+    file: get-list-of-files.py
+    metas:
+      - mh.task-params-version: 1

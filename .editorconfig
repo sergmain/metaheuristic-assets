@@ -1,0 +1,16 @@
+# Editor configuration, see https://editorconfig.org
+root = true
+
+[*.yaml]
+indent_size = 2
+indent_style = space
+
+[*.sh]
+end_of_line = lf
+
+[*.cmd]
+end_of_line = crlf
+
+[*.py]
+indent_size = 4
+indent_style = space
