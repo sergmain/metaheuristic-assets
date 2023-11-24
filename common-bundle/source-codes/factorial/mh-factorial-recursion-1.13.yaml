@@ -1,7 +1,7 @@
 version: 3
 source:
   strictNaming: true
-  uid: mh-factorial-recursion-1.13
+  uid: mh-factorial-recursion-1.14
   variables:
     inputs:
       - name: currIndex
@@ -36,10 +36,10 @@ source:
               - name: index
             metas:
               - expression: index = currIndex + 1
-          - code: mh.factirial:1.2
-            name: mh.factirial:1.2
+          - code: mh.multiply:1.0
+            name: mh.multiply:1.0
             function:
-              code: mh.factorial:1.2
+              code: mh.multiply:1.0
             inputs:
               - name: inputValue
               - name: index

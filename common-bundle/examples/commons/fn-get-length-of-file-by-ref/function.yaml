@@ -1,6 +1,6 @@
 version: 2
 function:
-    code: get-length-of-file-by-ref:1.0
+    code: get-length-of-file-by-ref:1.1
     type: get-length-of-file-by-ref
     env: python-3
     sourcing: dispatcher
