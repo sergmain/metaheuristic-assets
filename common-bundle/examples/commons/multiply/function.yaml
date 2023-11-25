@@ -1,5 +1,5 @@
 version: 2
-functions:
+function:
     code: mh.multiply:1.2
     type: multiply
     env: python-3
