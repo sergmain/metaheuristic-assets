@@ -1,0 +1,4 @@
+bundleConfig:
+  - path: examples
+    type: function
+version: 1
