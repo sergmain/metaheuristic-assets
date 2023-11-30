@@ -1,7 +1,7 @@
 version: 3
 source:
   strictNaming: true
-  uid: mh-factorial-main-1.6
+  uid: mh-factorial-main-1.7
   variables:
     globals:
       - mh_int_0
@@ -20,4 +20,4 @@ source:
       outputs:
         - name: resultOutput
       metas:
-        - source-code-uid: mh-factorial-recursion-1.15
+        - source-code-uid: mh-factorial-recursion-1.16

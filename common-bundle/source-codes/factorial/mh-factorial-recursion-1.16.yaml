@@ -1,7 +1,7 @@
 version: 3
 source:
   strictNaming: true
-  uid: mh-factorial-recursion-1.15
+  uid: mh-factorial-recursion-1.16
   variables:
     inputs:
       - name: currIndex
@@ -57,7 +57,7 @@ source:
             outputs:
               - name: subResult
             metas:
-              - source-code-uid: mh-factorial-recursion-1.13
+              - source-code-uid: mh-factorial-recursion-1.16
           - code: mh.evaluation2
             name: mh.evaluation2
             function:
