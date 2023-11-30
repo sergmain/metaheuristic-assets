@@ -1,7 +1,7 @@
 version: 3
 source:
   strictNaming: true
-  uid: mh-factorial-recursion-1.16
+  uid: mh-factorial-recursion-1.17
   variables:
     inputs:
       - name: currIndex
@@ -34,6 +34,7 @@ source:
               context: internal
             outputs:
               - name: index
+                ext: .txt
             metas:
               - expression: index = currIndex + 1
           - code: mh.multiply:1.2
@@ -45,6 +46,7 @@ source:
               - name: index
             outputs:
               - name: result
+                ext: .txt
           - code: mh.exec-source-code
             name: mh.exec-source-code
             function:
@@ -56,8 +58,9 @@ source:
               - name: factorialOf
             outputs:
               - name: subResult
+                ext: .txt
             metas:
-              - source-code-uid: mh-factorial-recursion-1.16
+              - source-code-uid: mh-factorial-recursion-1.17
           - code: mh.evaluation2
             name: mh.evaluation2
             function:

@@ -1,0 +1,9 @@
+version: 2
+function:
+    code: simple-metrics.predict:1.2
+    type: fit
+    file: simple-metrics-predict.py
+    env: python-3
+    sourcing: dispatcher
+    metas:
+      - mh.task-params-version: 1
