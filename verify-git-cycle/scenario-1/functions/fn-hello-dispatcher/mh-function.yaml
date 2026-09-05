@@ -1,0 +1,12 @@
+version: 3
+function:
+  code: mh-verify.hello-dispatcher_1.0
+  type: mh-verify.hello
+  env: python
+  targets:
+    mh-default:
+      src: src
+      file: mh_verify_hello.py
+  sourcing: dispatcher
+  metas:
+    - mh.task-params-version: 1
