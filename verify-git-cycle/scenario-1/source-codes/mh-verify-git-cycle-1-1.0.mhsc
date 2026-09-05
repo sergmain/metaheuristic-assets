@@ -1,0 +1,6 @@
+source "mh-verify-git-cycle-1-1.0" {
+    hello := mh-verify.hello-dispatcher_1.0 {
+        -> greeting: ext=".txt"
+        timeout 60
+    }
+}

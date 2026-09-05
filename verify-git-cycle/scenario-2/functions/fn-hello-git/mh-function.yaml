@@ -1,0 +1,23 @@
+version: 3
+function:
+  code: mh-verify.hello-git_1.0
+  type: mh-verify.hello
+  env: python
+  sourcing: git
+  # The payload lives OUTSIDE the directory that holds mh-bundle.yaml, and is not packaged
+  # into the bundle. This block is the only authoritative declaration of where it lives:
+  # the Processor materializes commit <sha> of this repo and takes the script from
+  #     commits/<sha>/<git.path>/<targets.src>/<targets.file>
+  # 'HEAD' is resolved to a concrete sha by the Dispatcher when the ExecContext is created,
+  # so every Task of that ExecContext runs the same revision.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: verify-git-cycle/payload/fn-hello-git
+  targets:
+    mh-default:
+      src: src
+      file: mh_verify_hello_git.py
+  metas:
+    - mh.task-params-version: 1
