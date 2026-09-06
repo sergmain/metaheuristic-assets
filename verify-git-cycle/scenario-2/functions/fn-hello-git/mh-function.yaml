@@ -1,8 +1,8 @@
 version: 3
 function:
-  code: mh-verify.hello-git_1.0
+  code: mh-verify.hello-git_1.1
   type: mh-verify.hello
-  env: python
+  env: python-3
   sourcing: git
   # The payload lives OUTSIDE the directory that holds mh-bundle.yaml, and is not packaged
   # into the bundle. This block is the only authoritative declaration of where it lives:

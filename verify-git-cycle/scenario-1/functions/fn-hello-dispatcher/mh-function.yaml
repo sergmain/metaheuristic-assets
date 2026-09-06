@@ -1,8 +1,8 @@
 version: 3
 function:
-  code: mh-verify.hello-dispatcher_1.0
+  code: mh-verify.hello-dispatcher_1.1
   type: mh-verify.hello
-  env: python
+  env: python-3
   targets:
     mh-default:
       src: src
