@@ -24,7 +24,7 @@ def find_variable_by_name(variables, name):
 cwd = os.getcwd()
 artifact_path = os.path.join(cwd, 'artifacts')
 
-print('mh-verify.hello-dispatcher_1.1')
+print('mh-verify.hello-dispatcher_1.2')
 print('Start time: ', str(datetime.now()))
 print('Args: ', sys.argv)
 print('Cwd: ', cwd)
