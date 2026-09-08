@@ -1,6 +1,6 @@
 version: 3
 function:
-  code: mh-verify.hello-git_1.3
+  code: mh-verify.hello-git_1.2
   type: mh-verify.hello
   env: python-3
   sourcing: git

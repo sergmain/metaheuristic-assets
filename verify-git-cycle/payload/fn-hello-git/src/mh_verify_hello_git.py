@@ -15,7 +15,7 @@ import yaml
 
 cwd = os.getcwd()
 
-print('mh-verify.hello-git_1.3')
+print('mh-verify.hello-git_1.2')
 print('Cwd: ', cwd)
 print('Script: ', os.path.abspath(__file__))
 

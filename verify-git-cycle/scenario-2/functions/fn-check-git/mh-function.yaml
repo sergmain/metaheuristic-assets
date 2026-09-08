@@ -1,6 +1,6 @@
 version: 3
 function:
-  code: mh-verify.check-git_1.3
+  code: mh-verify.check-git_1.0
   type: mh-verify.check
   env: python-3
   sourcing: git
