@@ -1,6 +1,36 @@
 source "mh-verify-git-cycle-2-1.2" {
-    hello := mh-verify.hello-git_1.2 {
-        -> greeting: ext=".txt"
+
+    hello := mh-verify.hello-git_1.3 {
+        name "External Function #1 — produce the response"
+        -> response: ext=".json",
+           recKeys: ext=".txt"
+        timeout 60
+    }
+
+    store := internal mh.meta-storage {
+        name "Store the response of Function #1"
+        meta action = "upsert",
+             type = "mh-verify.git-cycle",
+             content = "response"
+        <- response
+        timeout 60
+    }
+
+    fetch := internal mh.meta-storage {
+        name "Select the stored record back as output#2"
+        meta action = "select",
+             type = "mh-verify.git-cycle",
+             keys = "recKeys",
+             output = "output2"
+        <- recKeys
+        -> output2: ext=".json"
+        timeout 60
+    }
+
+    check := mh-verify.check-git_1.3 {
+        name "External Function #2 — consume output#2"
+        <- output2
+        -> verdict: ext=".txt"
         timeout 60
     }
 }

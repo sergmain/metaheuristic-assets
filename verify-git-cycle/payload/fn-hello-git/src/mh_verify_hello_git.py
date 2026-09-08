@@ -7,26 +7,15 @@
 #
 # No inputs. One output variable, written as artifacts/<output variable id>.
 
+import json
 import os
 import sys
-from datetime import datetime
 
 import yaml
 
-
-def find_variable_by_name(variables, name):
-    for v in variables:
-        if v['name'] == name:
-            return v
-    raise Exception("Variable '" + name + "' wasn't found, available: " + str([v['name'] for v in variables]))
-
-
 cwd = os.getcwd()
-artifact_path = os.path.join(cwd, 'artifacts')
 
-print('mh-verify.hello-git_1.2')
-print('Start time: ', str(datetime.now()))
-print('Args: ', sys.argv)
+print('mh-verify.hello-git_1.3')
 print('Cwd: ', cwd)
 print('Script: ', os.path.abspath(__file__))
 
@@ -41,14 +30,21 @@ print('Asset dir exists: ', os.path.isdir(asset_path))
 if os.path.isdir(asset_path):
     print('Asset dir content: ', sorted(os.listdir(asset_path)))
 
-var_result = find_variable_by_name(params['outputs'], 'greeting')
-result_filename = os.path.join(artifact_path, str(var_result['id']))
-if os.path.exists(result_filename):
-    os.remove(result_filename)
 
-with open(result_filename, 'w', encoding='utf-8') as text_file:
-    text_file.write('hello from a git-sourced Function, execContextId=' + str(params['execContextId']))
+def artifact(name):
+    var = next(v for v in params['outputs'] if v['name'] == name)
+    return os.path.join(cwd, 'artifacts', str(var['id']))
 
-print('Result was written to ', result_filename)
-print('End time: ', str(datetime.now()))
+
+execContextId = str(params['execContextId'])
+recKey = 'scenario-2-' + execContextId
+body = 'hello, execContextId=' + execContextId
+
+with open(artifact('response'), 'w', encoding='utf-8') as f:
+    json.dump([{'type': 'mh-verify.git-cycle', 'recKey': recKey, 'body': body}], f)
+
+with open(artifact('recKeys'), 'w', encoding='utf-8') as f:
+    f.write(recKey + '\n')
+
+print('recKey=' + recKey)
 sys.exit(0)

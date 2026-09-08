@@ -1,0 +1,12 @@
+version: 3
+function:
+  code: mh-verify.check-dispatcher_1.3
+  type: mh-verify.check
+  env: python-3
+  targets:
+    mh-default:
+      src: src
+      file: mh_verify_check.py
+  sourcing: dispatcher
+  metas:
+    - mh.task-params-version: 1

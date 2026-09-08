@@ -1,0 +1,20 @@
+version: 3
+function:
+  code: mh-verify.check-git_1.3
+  type: mh-verify.check
+  env: python-3
+  sourcing: git
+  # Same rule as the producer beside it: the payload is NOT packaged into the bundle and is
+  # reached only through this block. Both Functions pin HEAD of the same repo, so both must
+  # resolve to the SAME sha within one ExecContext - that is what section 5.2 checks.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: verify-git-cycle/payload/fn-check-git
+  targets:
+    mh-default:
+      src: src
+      file: mh_verify_check_git.py
+  metas:
+    - mh.task-params-version: 1
