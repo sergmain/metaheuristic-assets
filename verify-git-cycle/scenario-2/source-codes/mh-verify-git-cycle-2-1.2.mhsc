@@ -3,7 +3,8 @@ source "mh-verify-git-cycle-2-1.2" {
     hello := mh-verify.hello-git_1.2 {
         name "External Function #1 — produce the response"
         -> response: ext=".json",
-           recKeys: ext=".txt"
+           recKeys: ext=".txt",
+           payloadRev: ext=".txt"
         timeout 60
     }
 

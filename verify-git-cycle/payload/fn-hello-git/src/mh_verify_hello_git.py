@@ -13,6 +13,19 @@ import sys
 
 import yaml
 
+# ❗ THE REVISION MARKER — bump this literal before every scenario #2 run.
+#
+# It is opaque payload content. This script knows NOTHING about how it was delivered, which
+# commit it came from, or that git is involved at all — a Task on the Processor is never told
+# its own sourcing, and that is correct behaviour, not a limitation to work around. The marker
+# is simply a value that changes when this file changes.
+#
+# That is precisely what makes it proof. Nothing else in the repo has to move for a new run to
+# emit a new value: no Function code bump, no mh-function.yaml edit, no re-import, no new
+# SourceCode uid. Push this file, create a new ExecContext, and if the new value comes out then
+# the new commit ran.
+PAYLOAD_MARKER = 'rev-1'
+
 cwd = os.getcwd()
 
 print('mh-verify.hello-git_1.2')
@@ -46,5 +59,9 @@ with open(artifact('response'), 'w', encoding='utf-8') as f:
 with open(artifact('recKeys'), 'w', encoding='utf-8') as f:
     f.write(recKey + '\n')
 
+with open(artifact('payloadRev'), 'w', encoding='utf-8') as f:
+    f.write(PAYLOAD_MARKER)
+
+print('payloadRev=' + PAYLOAD_MARKER)
 print('recKey=' + recKey)
 sys.exit(0)
