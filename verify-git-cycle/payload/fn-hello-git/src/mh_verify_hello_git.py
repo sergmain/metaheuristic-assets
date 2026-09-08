@@ -24,7 +24,7 @@ import yaml
 # emit a new value: no Function code bump, no mh-function.yaml edit, no re-import, no new
 # SourceCode uid. Push this file, create a new ExecContext, and if the new value comes out then
 # the new commit ran.
-PAYLOAD_MARKER = 'rev-1'
+PAYLOAD_MARKER = 'rev-2'
 
 cwd = os.getcwd()
 
