@@ -1,6 +1,6 @@
 version: 2
 function:
-    code: get-list-of-files:1.4
+    code: get-list-of-files:1.5
     type: list-of-files
     env: python-3
     sourcing: dispatcher
