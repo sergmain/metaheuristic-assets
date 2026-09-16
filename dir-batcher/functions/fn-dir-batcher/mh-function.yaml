@@ -1,7 +1,7 @@
 version: 3
 function:
-  code: mh.dir-batcher_1.0
-  type: mh.dir-batcher
+  code: mh.asset.dir-batcher_1.0
+  type: mh.asset.dir-batcher
   env: python-3
   sourcing: git
   # The payload is NOT packaged into this bundle - it is reached only through this block, and it

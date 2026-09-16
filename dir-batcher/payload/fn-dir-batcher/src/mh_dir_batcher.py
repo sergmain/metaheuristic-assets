@@ -1,4 +1,4 @@
-# mh.dir-batcher_1.0 - turn any directory into batches of files, ready for MH_META_STORAGE.
+# mh.asset.dir-batcher_1.0 - turn any directory into batches of files, ready for MH_META_STORAGE.
 #
 # This file is NOT part of any bundle. It is reached only through the git block of
 # dir-batcher/functions/fn-dir-batcher/mh-function.yaml.
@@ -103,7 +103,7 @@ def main(argv):
     import yaml
 
     cwd = os.getcwd()
-    print('mh.dir-batcher_1.0')
+    print('mh.asset.dir-batcher_1.0')
     print('Cwd: ', cwd)
     print('Script: ', os.path.abspath(__file__))
 
