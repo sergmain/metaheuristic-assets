@@ -1,25 +1,19 @@
-# mh.asset.dir-batcher_1.0 - turn any directory into batches of files, ready for MH_META_STORAGE.
+# mh.asset.dir-batcher_1.0 - turn any directory into batches of source files, ready for MH_META_STORAGE.
 #
 # This file is NOT part of any bundle. It is reached only through the git block of
 # dir-batcher/functions/fn-dir-batcher/mh-function.yaml.
 #
-# REUSABLE BY CONSTRUCTION. Nothing about a particular run is written into this Function or into
-# the .mhsc that calls it:
+# REUSABLE BY CONSTRUCTION. Nothing about a particular run is written into this Function or into the
+# .mhsc that calls it:
 #
-#   targetDir        an INPUT VARIABLE, delivered to variable/<input variable id>. The subject of
-#                    the run arrives at run time, so one registered SourceCode batches any
-#                    directory and pointing it somewhere else costs nothing.
-#   metaStorageType  an OUTPUT. The type is minted here from the execContextId, so two runs never
-#                    share a table, and the run reports where it put the data instead of a human
-#                    reading it off the source.
-#   batchRecords     an OUTPUT. JSON array of {type, recKey, body} - the wire format
-#                    mh.meta-storage upserts.
+#   targetDir        an INPUT VARIABLE, delivered to variable/<input variable id>
+#   metaStorageType  an OUTPUT - minted here from the execContextId, so two runs never share a table
+#   batchRecords     an OUTPUT - JSON array of {type, recKey, body}, what mh.meta-storage upserts
 #
-# Both outputs are written as artifacts/<output variable id>.
-#
-# The core below - scan / chunk / rec_key / type_name / to_records - is pure, and it is what
-# dir-batcher/tests exercises. main() is the boundary and is not unit-tested.
+# The core below - scan / is_selected / chunk / rec_key / type_name / to_records - is pure, and it is
+# what dir-batcher/tests exercises. main() is the boundary and is not unit-tested.
 
+import fnmatch
 import json
 import os
 import sys
@@ -29,23 +23,84 @@ import sys
 BATCH_SIZE = 100
 
 # Prefix of the minted type. The run's own identity is appended to it, never authored into it.
-TYPE_PREFIX = 'mh.asset.dir-batch'
+TYPE_PREFIX = 'mh.asset.dir-batch-for-requirements'
+
+# ---------------------------------------------------------------------------------------------------
+# NEGATIVE FILTER - directories that are never walked.
+#
+# Applied FIRST, before any mask is considered, and pruned in place so os.walk never descends into
+# them at all. Order matters for more than speed: a .java under node_modules or target is generated or
+# vendored, and it would pass the positive filter on its name alone. Excluding the tree is the only
+# place that distinction can be made.
+#
+# Any directory whose name starts with a dot is pruned as well (skip_dot_dirs), which already covers
+# .git and .angular; they are named here too so the list reads as the whole intent rather than half
+# of it.
+EXCLUDED_DIRS = frozenset({
+    # version control
+    '.git', '.hg', '.svn',
+    # IDE and tooling state
+    '.idea', '.vscode', '.settings', '.metadata', '.gradle', '.mvn', '.angular',
+    # language and test caches
+    '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.eggs',
+    # virtualenvs and dependency trees
+    '.venv', 'venv', 'node_modules', 'bower_components', 'vendor', 'site-packages',
+    # build output and staging
+    'target', 'build', 'out', 'dist', 'bin', 'obj', 'coverage', '.next', '.nuxt', '.cache',
+})
+
+# ---------------------------------------------------------------------------------------------------
+# POSITIVE FILTER - file masks, as one general group plus one group per language or framework.
+#
+# To support a new language: add a group below and list it in ALL_FILE_MASKS. Nothing else changes.
+# Grouping is not decoration - it is what makes the next addition a two-line edit that a reviewer can
+# see the intent of, instead of an append to an undifferentiated list.
+MASKS_GENERAL = ('*.md', '*.properties', 'LICENSE.*')
+
+MASKS_JAVA = ('*.java',)
+MASKS_SQL = ('*.sql',)
+MASKS_PYTHON = ('*.py',)
+MASKS_TYPESCRIPT = ('*.ts',)
+MASKS_JAVASCRIPT = ('*.js',)
+MASKS_GOLANG = ('*.go',)
+
+MASKS_MAVEN = ('pom.xml',)
+MASKS_ANT = ('build.xml',)
+MASKS_ANGULAR = ('angular.json', 'package.json', '*.html', '*.css', '*.scss', '*.sass')
+MASKS_SPRING_BOOT = ('application*.yaml', 'application*.yml')
+
+ALL_FILE_MASKS = tuple(sorted(set(
+    MASKS_GENERAL
+    + MASKS_JAVA + MASKS_SQL + MASKS_PYTHON + MASKS_TYPESCRIPT + MASKS_JAVASCRIPT + MASKS_GOLANG
+    + MASKS_MAVEN + MASKS_ANT + MASKS_ANGULAR + MASKS_SPRING_BOOT
+)))
 
 
-def scan(root, skip_dot_dirs=True):
-    """Every regular file under root, as absolute paths, sorted.
+def is_selected(name, file_masks=ALL_FILE_MASKS):
+    """True when a file NAME matches at least one mask.
 
-    Sorted because a re-run must produce the same batches: os.walk makes no promise about order,
-    and a queue that renumbers itself between runs cannot be resumed.
+    fnmatchcase, not fnmatch: the latter folds case on Windows and not on Linux, so the same tree
+    would batch differently depending on which Processor picked up the Task. A queue whose contents
+    depend on the machine that built it cannot be resumed on another one.
+    """
+    return any(fnmatch.fnmatchcase(name, mask) for mask in file_masks)
 
-    Dot directories are pruned by default - .git alone would swamp a source tree with thousands
-    of object files nobody asked to have batched.
+
+def scan(root, excluded_dirs=EXCLUDED_DIRS, file_masks=ALL_FILE_MASKS, skip_dot_dirs=True):
+    """Every selected file under root, as absolute paths, sorted.
+
+    Negative filter first, positive filter second. Sorted because a re-run must produce the same
+    batches: os.walk makes no promise about order, and a queue that renumbers itself between runs
+    cannot be resumed.
     """
     paths = []
     for current, dirs, files in os.walk(root):
-        if skip_dot_dirs:
-            dirs[:] = [d for d in dirs if not d.startswith('.')]
+        # in place, so os.walk does not descend - this is the negative filter, and it runs first
+        dirs[:] = [d for d in dirs
+                   if d not in excluded_dirs and not (skip_dot_dirs and d.startswith('.'))]
         for name in files:
+            if not is_selected(name, file_masks):
+                continue
             full = os.path.join(current, name)
             if os.path.isfile(full):
                 paths.append(os.path.abspath(full))
@@ -63,9 +118,9 @@ def chunk(paths, batch_size):
 def rec_key(index, batch_count):
     """batch-0001, 1-based.
 
-    The padding width is the wider of 4 and the batch count's own width, so the keys of one run
-    always sort numerically - a 12,000-batch run pads to 5 rather than letting batch-10000 sort
-    before batch-9999.
+    The padding width is the wider of 4 and the batch count's own width, so the keys of one run always
+    sort numerically - a 12,000-batch run pads to 5 rather than letting batch-10000 sort before
+    batch-9999.
     """
     width = max(4, len(str(max(batch_count, 1))))
     return 'batch-' + str(index).zfill(width)
@@ -98,8 +153,8 @@ def write_output(cwd, params, name, content):
 
 
 def main(argv):
-    # imported here rather than at module scope: the core above must stay importable by a test
-    # that has no PyYAML installed, because nothing in the core needs it
+    # imported here rather than at module scope: the core above must stay importable by a test that
+    # has no PyYAML installed, because nothing in the core needs it
     import yaml
 
     cwd = os.getcwd()
@@ -124,8 +179,8 @@ def main(argv):
     paths = scan(target_dir)
     records = to_records(rec_type, paths, BATCH_SIZE)
 
-    # the records first and the type second: a consumer reading the type variable must never find
-    # the address of a queue that has not been filled yet
+    # the records first and the type second: a consumer reading the type variable must never find the
+    # address of a queue that has not been filled yet
     write_output(cwd, params, 'batchRecords', json.dumps(records, ensure_ascii=False))
     write_output(cwd, params, 'metaStorageType', rec_type)
 
