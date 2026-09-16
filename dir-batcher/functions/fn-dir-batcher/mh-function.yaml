@@ -1,0 +1,20 @@
+version: 3
+function:
+  code: mh.dir-batcher_1.0
+  type: mh.dir-batcher
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block, and it
+  # lives beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the
+  # tip at every ExecContext creation and pins the sha into every Task of that run.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: dir-batcher/payload/fn-dir-batcher
+  targets:
+    mh-default:
+      src: src
+      file: mh_dir_batcher.py
+  metas:
+    - mh.task-params-version: 1
