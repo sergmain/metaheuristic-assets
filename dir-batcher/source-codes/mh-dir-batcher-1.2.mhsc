@@ -1,0 +1,34 @@
+// Turn ANY directory into a work queue of batches in meta storage.
+//
+// Reusable by construction - nothing about a particular run appears below:
+//   targetDir   comes IN as a source-level input variable, set per run
+//   production  comes IN as well, REQUIRED: 'true' means the production meta store, and every other
+//               value - 'mh.null-value' included - means development, which is the synthetic store
+//   metaStorageType, syntheticFlag  come OUT of the Function and address the write
+
+source "mh-dir-batcher-1.2" {
+
+    variables {
+        <- targetDir
+        <- production
+    }
+
+    batch := mh.asset.dir-batcher_1.0 {
+        name "Split targetDir into batches of files"
+        <- targetDir, production
+        -> batchRecords: ext=".json",
+           metaStorageType: ext=".txt",
+           syntheticFlag: ext=".txt"
+        timeout 600
+    }
+
+    store := internal mh.meta-storage {
+        name "Upsert the batches under the type this run minted, into the table this run selected"
+        meta action = "upsert",
+             type = "metaStorageType",
+             synthetic = "syntheticFlag",
+             content = "batchRecords"
+        <- metaStorageType, syntheticFlag, batchRecords
+        timeout 300
+    }
+}

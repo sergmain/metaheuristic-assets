@@ -6,7 +6,7 @@
 #
 # Run:  pytest dir-batcher/tests
 
-from mh_dir_batcher import (scan, is_selected, chunk, rec_key, type_name, to_records,
+from mh_dir_batcher import (scan, is_selected, chunk, rec_key, type_name, to_records, is_synthetic,
                             MASKS_JAVA, MASKS_ANGULAR, ALL_FILE_MASKS)
 
 
@@ -165,3 +165,17 @@ def test_to_records_body_is_one_path_per_line():
 
 def test_to_records_empty_dir_produces_no_records():
     assert to_records('mh.asset.dir-batch-for-requirements.42', [], 100) == []
+
+# ----------------------------------------------------------------- the production switch
+
+def test_production_mode_is_the_literal_true_and_nothing_else():
+    assert is_synthetic('true') is False
+
+
+def test_everything_other_than_true_means_development():
+    for value in ['mh.null-value', '', '  ', 'false', 'True', 'TRUE', 'yes', '1', 'production', None]:
+        assert is_synthetic(value) is True, repr(value) + ' must not select the production store'
+
+
+def test_production_value_is_stripped_before_it_is_judged():
+    assert is_synthetic('  true  ') is False
