@@ -1,0 +1,36 @@
+// Turn ANY directory into a work queue of batches in meta storage.
+//
+// Reusable by construction - nothing about a particular run appears below:
+//   targetDir        comes IN as a source-level input variable, set per run
+//   metaStorageType  comes OUT of the Function, minted from the execContextId
+//
+// So this SourceCode is registered once and serves every directory, and the table each run wrote
+// to is read back out of metaStorageType rather than being known in advance.
+//
+// mh.dir-batcher_1.0 (external, python-3, git-sourced) scans and emits the meta-storage wire
+// format; mh.meta-storage (internal) writes it, taking its type from the variable the Function
+// just produced.
+
+source "mh-dir-batcher-1.0" {
+
+    variables {
+        <- targetDir
+    }
+
+    batch := mh.dir-batcher_1.0 {
+        name "Split targetDir into batches of files"
+        <- targetDir
+        -> batchRecords: ext=".json",
+           metaStorageType: ext=".txt"
+        timeout 600
+    }
+
+    store := internal mh.meta-storage {
+        name "Upsert the batches under the type this run minted"
+        meta action = "upsert",
+             type = "metaStorageType",
+             content = "batchRecords"
+        <- metaStorageType, batchRecords
+        timeout 300
+    }
+}
