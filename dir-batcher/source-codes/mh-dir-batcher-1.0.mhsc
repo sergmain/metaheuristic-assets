@@ -7,7 +7,7 @@
 // So this SourceCode is registered once and serves every directory, and the table each run wrote
 // to is read back out of metaStorageType rather than being known in advance.
 //
-// mh.dir-batcher_1.0 (external, python-3, git-sourced) scans and emits the meta-storage wire
+// mh.asset.dir-batcher_1.0 (external, python-3, git-sourced) scans and emits the meta-storage wire
 // format; mh.meta-storage (internal) writes it, taking its type from the variable the Function
 // just produced.
 
@@ -17,7 +17,7 @@ source "mh-dir-batcher-1.0" {
         <- targetDir
     }
 
-    batch := mh.dir-batcher_1.0 {
+    batch := mh.asset.dir-batcher_1.0 {
         name "Split targetDir into batches of files"
         <- targetDir
         -> batchRecords: ext=".json",
