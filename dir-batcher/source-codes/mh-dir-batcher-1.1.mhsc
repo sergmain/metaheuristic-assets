@@ -11,7 +11,7 @@
 // format; mh.meta-storage (internal) writes it, taking its type from the variable the Function
 // just produced.
 
-source "mh-dir-batcher-1.0" {
+source "mh-dir-batcher-1.1" {
 
     variables {
         <- targetDir
