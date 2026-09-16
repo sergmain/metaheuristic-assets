@@ -1,29 +1,120 @@
-# Synthetic unit tests for mh.asset.dir-batcher_1.0, per MH-GIT-DELIVERY-FUNCTION-DESCRIPTION.md section 5.
+# Synthetic unit tests for mh.asset.dir-batcher_1.0, per MH-GIT-DELIVERY-FUNCTION-DESCRIPTION.md
+# section 5.
 #
-# Every fixture is built by the test. Nothing here reads a real tree, a real repo, a dispatcher or
-# a params file - which is why every expected value below could be written down in advance.
+# Every fixture is built by the test. Nothing here reads a real tree, a real repo, a dispatcher or a
+# params file - which is why every expected value below could be written down in advance.
 #
 # Run:  pytest dir-batcher/tests
 
-from mh_dir_batcher import scan, chunk, rec_key, type_name, to_records
+from mh_dir_batcher import (scan, is_selected, chunk, rec_key, type_name, to_records,
+                            MASKS_JAVA, MASKS_ANGULAR, ALL_FILE_MASKS)
 
 
 def paths(count):
     return ['/f/%03d' % i for i in range(count)]
 
 
-def test_chunk_cuts_at_the_batch_size():
-    chunks = chunk(paths(250), 100)
+def write(root, *parts):
+    target = root.joinpath(*parts)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('x')
+    return str(target)
 
-    assert [len(c) for c in chunks] == [100, 100, 50]
+
+# ----------------------------------------------------------------- the positive filter
+
+def test_masks_select_source_files():
+    for name in ['Foo.java', 'notes.md', 'schema.sql', 'app.ts', 'app.js', 'main.go', 'setup.py',
+                 'page.html', 'a.css', 'b.scss', 'c.sass', 'app.properties']:
+        assert is_selected(name), name + ' must be selected'
+
+
+def test_masks_select_build_and_project_files_by_exact_name():
+    for name in ['pom.xml', 'build.xml', 'angular.json', 'package.json']:
+        assert is_selected(name), name + ' must be selected'
+
+
+def test_masks_select_license_with_any_extension():
+    assert is_selected('LICENSE.txt')
+    assert is_selected('LICENSE.md')
+
+
+def test_masks_reject_everything_else():
+    for name in ['photo.png', 'archive.zip', 'Foo.class', 'notes.txt', 'data.csv', 'other.xml']:
+        assert not is_selected(name), name + ' must not be selected'
+
+
+def test_masks_are_case_sensitive_on_every_platform():
+    # fnmatchcase, so a Linux Processor and a Windows Processor batch the same tree identically
+    assert is_selected('Foo.java')
+    assert not is_selected('Foo.JAVA')
+
+
+def test_mask_groups_compose_into_the_full_set():
+    for mask in MASKS_JAVA + MASKS_ANGULAR:
+        assert mask in ALL_FILE_MASKS, mask + ' must reach the full set'
+
+
+# ----------------------------------------------------------------- the negative filter, applied first
+
+def test_scan_prunes_well_known_build_and_dependency_dirs(tmp_path):
+    keep = write(tmp_path, 'src', 'Kept.java')
+    for excluded in ['target', 'build', 'out', 'dist', 'node_modules', 'bin', 'vendor', 'coverage']:
+        write(tmp_path, excluded, 'Generated.java')
+
+    assert scan(str(tmp_path)) == [keep]
+
+
+def test_scan_prunes_dot_dirs_including_git_and_angular(tmp_path):
+    keep = write(tmp_path, 'Kept.java')
+    write(tmp_path, '.git', 'HEAD.md')
+    write(tmp_path, '.angular', 'cache.json')
+    write(tmp_path, '.idea', 'workspace.md')
+
+    assert scan(str(tmp_path)) == [keep]
+
+
+def test_negative_filter_wins_over_a_matching_mask(tmp_path):
+    # THE precedence assertion: a .java under node_modules matches the mask on its name alone, and
+    # must still be excluded, because the tree it sits in is what makes it generated or vendored
+    keep = write(tmp_path, 'src', 'Kept.java')
+    write(tmp_path, 'node_modules', 'some-lib', 'Vendored.java')
+    write(tmp_path, 'target', 'generated-sources', 'Generated.java')
+
+    assert scan(str(tmp_path)) == [keep]
+
+
+def test_scan_finds_selected_files_sorted_and_drops_the_rest(tmp_path):
+    b = write(tmp_path, 'b.java')
+    a = write(tmp_path, 'a.java')
+    c = write(tmp_path, 'sub', 'c.md')
+    write(tmp_path, 'ignored.txt')
+    write(tmp_path, 'sub', 'ignored.png')
+
+    assert scan(str(tmp_path)) == sorted([a, b, c])
+
+
+def test_scan_walks_the_root_even_when_the_root_is_a_dot_dir(tmp_path):
+    root = tmp_path / '.hidden-root'
+    root.mkdir()
+    kept = write(root, 'a.java')
+
+    assert scan(str(root)) == [kept]
+
+
+def test_scan_empty_dir_is_empty_list(tmp_path):
+    assert scan(str(tmp_path)) == []
+
+
+# ----------------------------------------------------------------- batching
+
+def test_chunk_cuts_at_the_batch_size():
+    assert [len(c) for c in chunk(paths(250), 100)] == [100, 100, 50]
 
 
 def test_chunk_loses_nothing_and_keeps_order():
     original = paths(250)
-
-    flattened = [p for c in chunk(original, 100) for p in c]
-
-    assert flattened == original
+    assert [p for c in chunk(original, 100) for p in c] == original
 
 
 def test_chunk_empty_input_is_no_batches():
@@ -53,7 +144,7 @@ def test_rec_key_widens_past_four_digits_so_keys_stay_sorted():
 
 
 def test_type_name_is_minted_per_run():
-    assert type_name(42) == 'mh.asset.dir-batch.42'
+    assert type_name(42) == 'mh.asset.dir-batch-for-requirements.42'
     assert type_name(43) != type_name(42), 'two runs must not share a table'
 
 
@@ -62,10 +153,10 @@ def test_type_name_accepts_an_alternative_prefix():
 
 
 def test_to_records_body_is_one_path_per_line():
-    records = to_records('mh.asset.dir-batch.42', paths(250), 100)
+    records = to_records('mh.asset.dir-batch-for-requirements.42', paths(250), 100)
 
     assert len(records) == 3
-    assert records[0]['type'] == 'mh.asset.dir-batch.42'
+    assert records[0]['type'] == 'mh.asset.dir-batch-for-requirements.42'
     assert records[0]['recKey'] == 'batch-0001'
     assert len(records[0]['body'].split('\n')) == 100
     assert len(records[2]['body'].split('\n')) == 50
@@ -73,44 +164,4 @@ def test_to_records_body_is_one_path_per_line():
 
 
 def test_to_records_empty_dir_produces_no_records():
-    assert to_records('mh.asset.dir-batch.42', [], 100) == []
-
-
-def test_scan_finds_every_regular_file_sorted(tmp_path):
-    (tmp_path / 'b.txt').write_text('b')
-    (tmp_path / 'a.txt').write_text('a')
-    sub = tmp_path / 'sub'
-    sub.mkdir()
-    (sub / 'c.txt').write_text('c')
-
-    assert scan(str(tmp_path)) == [str(tmp_path / 'a.txt'), str(tmp_path / 'b.txt'), str(sub / 'c.txt')]
-
-
-def test_scan_skips_dot_dirs_by_default(tmp_path):
-    (tmp_path / 'a.txt').write_text('a')
-    git = tmp_path / '.git'
-    git.mkdir()
-    (git / 'HEAD').write_text('ref: refs/heads/master')
-
-    assert scan(str(tmp_path)) == [str(tmp_path / 'a.txt')]
-
-
-def test_scan_includes_dot_dirs_when_asked(tmp_path):
-    (tmp_path / 'a.txt').write_text('a')
-    git = tmp_path / '.git'
-    git.mkdir()
-    (git / 'HEAD').write_text('ref: refs/heads/master')
-
-    assert scan(str(tmp_path), skip_dot_dirs=False) == [str(git / 'HEAD'), str(tmp_path / 'a.txt')]
-
-
-def test_scan_walks_the_root_even_when_the_root_is_a_dot_dir(tmp_path):
-    root = tmp_path / '.hidden-root'
-    root.mkdir()
-    (root / 'a.txt').write_text('a')
-
-    assert scan(str(root)) == [str(root / 'a.txt')]
-
-
-def test_scan_empty_dir_is_empty_list(tmp_path):
-    assert scan(str(tmp_path)) == []
+    assert to_records('mh.asset.dir-batch-for-requirements.42', [], 100) == []
