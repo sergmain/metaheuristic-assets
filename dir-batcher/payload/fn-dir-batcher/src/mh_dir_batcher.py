@@ -126,6 +126,17 @@ def rec_key(index, batch_count):
     return 'batch-' + str(index).zfill(width)
 
 
+def is_synthetic(production):
+    """Whether this run writes to the synthetic meta storage table.
+
+    Production mode is the literal 'true' and nothing else. Every other value means development:
+    'mh.null-value', an empty string, 'True', a typo. That asymmetry is deliberate - a row written to
+    the production store cannot be un-written by re-running, while a run that lands in the synthetic
+    store costs one re-run. So the expensive mistake is the one requiring a deliberate act.
+    """
+    return production is None or production.strip() != 'true'
+
+
 def type_name(exec_context_id, prefix=TYPE_PREFIX):
     """The table this run writes to. Per run by construction: nothing else can collide with it."""
     return prefix + '.' + str(exec_context_id)
@@ -175,6 +186,12 @@ def main(argv):
         print('FAILED: not a dir: ' + target_dir)
         return 1
 
+    # REQUIRED, never optional: a caller with no value still has to pass something, so an optional
+    # declaration would only hide the question of which string means absent. 'mh.null-value' is that
+    # string by convention, and like every non-'true' value it selects development.
+    production = read_input(cwd, params, 'production')
+    synthetic = is_synthetic(production)
+
     rec_type = type_name(params['execContextId'])
     paths = scan(target_dir)
     records = to_records(rec_type, paths, BATCH_SIZE)
@@ -183,9 +200,11 @@ def main(argv):
     # address of a queue that has not been filled yet
     write_output(cwd, params, 'batchRecords', json.dumps(records, ensure_ascii=False))
     write_output(cwd, params, 'metaStorageType', rec_type)
+    write_output(cwd, params, 'syntheticFlag', 'true' if synthetic else 'false')
 
     print('dir=' + target_dir + ', files=' + str(len(paths)) + ', batchSize=' + str(BATCH_SIZE)
-          + ', batches=' + str(len(records)) + ', type=' + rec_type)
+          + ', batches=' + str(len(records)) + ', type=' + rec_type
+          + ', production=' + repr(production) + ', synthetic=' + str(synthetic))
     return 0
 
 
