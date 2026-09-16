@@ -29,7 +29,7 @@ import sys
 BATCH_SIZE = 100
 
 # Prefix of the minted type. The run's own identity is appended to it, never authored into it.
-TYPE_PREFIX = 'mh.dir-batch'
+TYPE_PREFIX = 'mh.asset.dir-batch'
 
 
 def scan(root, skip_dot_dirs=True):
