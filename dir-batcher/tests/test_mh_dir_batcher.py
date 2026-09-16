@@ -1,4 +1,4 @@
-# Synthetic unit tests for mh.dir-batcher_1.0, per MH-GIT-DELIVERY-FUNCTION-DESCRIPTION.md section 5.
+# Synthetic unit tests for mh.asset.dir-batcher_1.0, per MH-GIT-DELIVERY-FUNCTION-DESCRIPTION.md section 5.
 #
 # Every fixture is built by the test. Nothing here reads a real tree, a real repo, a dispatcher or
 # a params file - which is why every expected value below could be written down in advance.
@@ -53,7 +53,7 @@ def test_rec_key_widens_past_four_digits_so_keys_stay_sorted():
 
 
 def test_type_name_is_minted_per_run():
-    assert type_name(42) == 'mh.dir-batch.42'
+    assert type_name(42) == 'mh.asset.dir-batch.42'
     assert type_name(43) != type_name(42), 'two runs must not share a table'
 
 
@@ -62,10 +62,10 @@ def test_type_name_accepts_an_alternative_prefix():
 
 
 def test_to_records_body_is_one_path_per_line():
-    records = to_records('mh.dir-batch.42', paths(250), 100)
+    records = to_records('mh.asset.dir-batch.42', paths(250), 100)
 
     assert len(records) == 3
-    assert records[0]['type'] == 'mh.dir-batch.42'
+    assert records[0]['type'] == 'mh.asset.dir-batch.42'
     assert records[0]['recKey'] == 'batch-0001'
     assert len(records[0]['body'].split('\n')) == 100
     assert len(records[2]['body'].split('\n')) == 50
@@ -73,7 +73,7 @@ def test_to_records_body_is_one_path_per_line():
 
 
 def test_to_records_empty_dir_produces_no_records():
-    assert to_records('mh.dir-batch.42', [], 100) == []
+    assert to_records('mh.asset.dir-batch.42', [], 100) == []
 
 
 def test_scan_finds_every_regular_file_sorted(tmp_path):
