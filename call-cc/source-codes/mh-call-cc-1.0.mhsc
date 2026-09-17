@@ -1,0 +1,36 @@
+// Ask Claude Code one question and keep the answer. Nothing about the question appears below.
+//
+// The reusable form: the prompt arrives as a source-level input, so this one graph serves every
+// caller that has something to ask. mh-call-cc-today-1.0.mhsc is the same graph with the question
+// hardcoded, and the only difference between them is where ccPrompt comes from.
+//
+//   ccPrompt   comes IN, the complete prompt text, used verbatim
+//   ccResult   goes OUT at ExecContext level, whatever CC returned through the Function's MCP tool
+//
+// The metas are what bind those two names to the Function's two roles. Rename either variable and
+// only the meta changes - the Function is untouched. That indirection is also what lets the same
+// Function be called from a sub-process at a nesting level where every name carries a suffix.
+//
+// A caller that needs a particular answer SHAPE asks for it in the prompt and parses it in a later
+// process. Neither this graph nor the Function it calls knows what an answer means.
+
+source "mh-call-cc-1.0" {
+
+    variables {
+        <- ccPrompt
+        -> ccResult
+    }
+
+    call := mh.asset.call-cc {
+        name "Run Claude Code against ccPrompt and store what it returns"
+        // timeout-sec is what the Function allows the CC process; the process timeout below is what
+        // MH allows the Function. The outer one must be the LARGER of the two, or the Task is killed
+        // mid-run and the Function never gets to say what went wrong.
+        meta variable-for-prompt = "ccPrompt",
+             variable-for-output = "ccResult",
+             timeout-sec = "600"
+        <- ccPrompt
+        -> ccResult: ext=".txt"
+        timeout 900
+    }
+}

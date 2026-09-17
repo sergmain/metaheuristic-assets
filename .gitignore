@@ -1,4 +1,4 @@
-### IntelliJ IDEA ###
+﻿### IntelliJ IDEA ###
 .idea
 *.iws
 *.iml
@@ -7,3 +7,4 @@ build
 bundles
 temp
 git-repo
+__pycache__/
