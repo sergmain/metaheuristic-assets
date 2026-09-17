@@ -6,7 +6,7 @@
 #
 # Run:  pytest dir-batcher/tests
 
-from mh_dir_batcher import (scan, is_selected, chunk, rec_key, type_name, to_records, is_synthetic, describe,
+from mh_dir_batcher import (scan, is_selected, chunk, rec_key, type_name, to_records, is_synthetic, describe, is_localized,
                             MASKS_JAVA, MASKS_ANGULAR, ALL_FILE_MASKS)
 
 
@@ -192,3 +192,31 @@ def test_describe_names_the_tree_that_was_scanned():
 
 def test_describe_survives_an_empty_tree():
     assert '0 files' in describe('/tmp/empty', 0, 100)
+
+# ----------------------------------------------------------------- F1 and F2, the 2026-09-16 correction
+
+def test_f1_classes_is_excluded_like_any_other_build_output(tmp_path):
+    keep = write(tmp_path, 'java', 'Kept.java')
+    write(tmp_path, 'classes', 'engine', 'org', 'apache', 'derby', 'loc', 'm0_en.properties')
+    write(tmp_path, 'classes', 'Generated.java')
+
+    assert scan(str(tmp_path)) == [keep], 'a corpus names its output dir what it likes; only the tree tells'
+
+
+def test_f2_localized_bundles_are_not_selected():
+    for name in ['clientmessages_ru.properties', 'messages_zh_TW.properties',
+                 'servlet_ja_JP.properties', 'clientmessages_qq_PP_testOnly.properties']:
+        assert is_localized(name), name + ' restates a contract in another language'
+        assert not is_selected(name), name + ' must not reach the queue'
+
+
+def test_f2_english_and_plain_properties_survive():
+    for name in ['messages.properties', 'application.properties', 'metadata.properties',
+                 'info.properties', 'clientmessages_en.properties']:
+        assert not is_localized(name), name + ' is not a restatement'
+        assert is_selected(name), name + ' is the contract, not a translation of it'
+
+
+def test_f2_applies_only_to_properties():
+    assert not is_localized('Messages_ru.java')
+    assert is_selected('Messages_ru.java'), 'the rule is about message bundles, not about every file'
