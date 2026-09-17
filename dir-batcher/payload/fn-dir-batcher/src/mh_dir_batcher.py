@@ -126,6 +126,21 @@ def rec_key(index, batch_count):
     return 'batch-' + str(index).zfill(width)
 
 
+# What the registry is told about the table this run creates. The Function is the only thing that
+# knows these: the recKey shape and the body encoding are properties of how IT writes, and the
+# description needs the directory that was actually scanned. Asking the .mhsc to carry them would be
+# asking a second place to stay in step with this one.
+REC_KEY_FORMAT = 'batch-NNNN, 1-based, zero-padded to the width of the batch count'
+BODY_FORMAT = 'one absolute file path per line'
+CONSUMER = 'list the keys, take one, read its paths, do the work, delete that record'
+
+
+def describe(target_dir, file_count, batch_size=BATCH_SIZE):
+    """One sentence for a reader who was not here, naming the tree that was actually scanned."""
+    return ('Source-file paths found under ' + str(target_dir) + ' - ' + str(file_count)
+            + ' files, ' + str(batch_size) + ' paths per record')
+
+
 def is_synthetic(production):
     """Whether this run writes to the synthetic meta storage table.
 
@@ -201,6 +216,12 @@ def main(argv):
     write_output(cwd, params, 'batchRecords', json.dumps(records, ensure_ascii=False))
     write_output(cwd, params, 'metaStorageType', rec_type)
     write_output(cwd, params, 'syntheticFlag', 'true' if synthetic else 'false')
+
+    # for mh.meta-storage-registry, which runs BEFORE mh.meta-storage writes a single record
+    write_output(cwd, params, 'tableDesc', describe(target_dir, len(paths)))
+    write_output(cwd, params, 'tableRecKeyFormat', REC_KEY_FORMAT)
+    write_output(cwd, params, 'tableBodyFormat', BODY_FORMAT)
+    write_output(cwd, params, 'tableConsumer', CONSUMER)
 
     print('dir=' + target_dir + ', files=' + str(len(paths)) + ', batchSize=' + str(BATCH_SIZE)
           + ', batches=' + str(len(records)) + ', type=' + rec_type
