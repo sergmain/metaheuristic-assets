@@ -6,7 +6,7 @@
 #
 # Run:  pytest dir-batcher/tests
 
-from mh_dir_batcher import (scan, is_selected, chunk, rec_key, type_name, to_records, is_synthetic,
+from mh_dir_batcher import (scan, is_selected, chunk, rec_key, type_name, to_records, is_synthetic, describe,
                             MASKS_JAVA, MASKS_ANGULAR, ALL_FILE_MASKS)
 
 
@@ -179,3 +179,16 @@ def test_everything_other_than_true_means_development():
 
 def test_production_value_is_stripped_before_it_is_judged():
     assert is_synthetic('  true  ') is False
+
+# ----------------------------------------------------------------- the registry descriptor
+
+def test_describe_names_the_tree_that_was_scanned():
+    d = describe('C:/sandbox/github/derby', 4990, 100)
+
+    assert 'C:/sandbox/github/derby' in d, 'a descriptor that omits the directory describes nothing'
+    assert '4990' in d
+    assert '100' in d
+
+
+def test_describe_survives_an_empty_tree():
+    assert '0 files' in describe('/tmp/empty', 0, 100)
