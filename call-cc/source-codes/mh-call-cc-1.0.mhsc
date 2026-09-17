@@ -1,8 +1,9 @@
 // Ask Claude Code one question and keep the answer. Nothing about the question appears below.
 //
-// The reusable form: the prompt arrives as a source-level input, so this one graph serves every
-// caller that has something to ask. mh-call-cc-today-1.0.mhsc is the same graph with the question
-// hardcoded, and the only difference between them is where ccPrompt comes from.
+// The prompt arrives as a source-level input, so this one registered graph serves every caller that
+// has something to ask. Launch it with mh_create_exec_context_with_variables, which initializes
+// source-level inputs before producing Tasks; mh_create_exec_context refuses a SourceCode that
+// declares any (562.120). That is a routing rule and never a reason to write a run's prompt in here.
 //
 //   ccPrompt   comes IN, the complete prompt text, used verbatim
 //   ccResult   goes OUT at ExecContext level, whatever CC returned through the Function's MCP tool
