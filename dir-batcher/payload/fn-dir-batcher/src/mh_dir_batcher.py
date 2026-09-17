@@ -15,6 +15,7 @@
 
 import fnmatch
 import json
+import re
 import os
 import sys
 
@@ -45,8 +46,9 @@ EXCLUDED_DIRS = frozenset({
     '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.eggs',
     # virtualenvs and dependency trees
     '.venv', 'venv', 'node_modules', 'bower_components', 'vendor', 'site-packages',
-    # build output and staging
-    'target', 'build', 'out', 'dist', 'bin', 'obj', 'coverage', '.next', '.nuxt', '.cache',
+    # build output and staging. 'classes' is Derby's: a corpus names its output directory
+    # whatever it likes, and only the tree reveals that what is in it was generated (F1).
+    'target', 'build', 'out', 'dist', 'bin', 'obj', 'classes', 'coverage', '.next', '.nuxt', '.cache',
 })
 
 # ---------------------------------------------------------------------------------------------------
@@ -76,6 +78,23 @@ ALL_FILE_MASKS = tuple(sorted(set(
 )))
 
 
+# A message bundle whose name ends in a locale suffix restates another file's contract in another
+# language. English is not a restatement - it is the contract - so `_en` stays (F2).
+LOCALIZED_SUFFIX = re.compile(r'_([a-z]{2})(_[A-Z]{2})?(_[A-Za-z0-9]+)?\.properties$')
+
+
+def is_localized(name):
+    """True for messages_ru.properties, servlet_ja_JP.properties, clientmessages_qq_PP_testOnly.properties.
+
+    False for messages.properties, application.properties, metadata.properties and anything _en.
+    A requirements pass derives the same contract from the English catalogue; the translations add
+    volume and no information, and they cluster, so whole batches become worthless rather than
+    uniformly diluted.
+    """
+    m = LOCALIZED_SUFFIX.search(name)
+    return m is not None and m.group(1) != 'en'
+
+
 def is_selected(name, file_masks=ALL_FILE_MASKS):
     """True when a file NAME matches at least one mask.
 
@@ -83,6 +102,8 @@ def is_selected(name, file_masks=ALL_FILE_MASKS):
     would batch differently depending on which Processor picked up the Task. A queue whose contents
     depend on the machine that built it cannot be resumed on another one.
     """
+    if is_localized(name):
+        return False
     return any(fnmatch.fnmatchcase(name, mask) for mask in file_masks)
 
 
