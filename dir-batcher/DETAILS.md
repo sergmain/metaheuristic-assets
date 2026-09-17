@@ -1,4 +1,4 @@
-# dir-batcher — DETAILS
+﻿# dir-batcher — DETAILS
 
 Per `DAHF-EXECUTION-ARCHITECTURE.md` — everything true of THIS capability and of nothing else.
 
@@ -77,7 +77,7 @@ code, **P** needs judgment.
 
 ❗ F4 and F5 exist because F1—F3 can all pass while the queue is still useless: they assert that the
 rules were applied, not that the rules were the right rules. That gap is the whole reason
-`DAHF-CONTINUOUS-SELF-IMPROVEMENT.md` exists, and F5 in particular is the check that would have caught
+`DAHF-IMPLEMENTATION-AND-CONTINUOUS-IMPROVEMENT.md` exists, and F5 in particular is the check that would have caught
 the correction below from a number alone.
 
 ---
