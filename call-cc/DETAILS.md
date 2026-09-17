@@ -18,21 +18,31 @@ Put a prompt or a parser inside it and it stops being reusable, which is the one
 to have. A caller that needs a particular answer shape asks for it in the prompt and parses it in a
 LATER process.
 
+❗ **Where this sits.** A workflow that takes a file and stores it in a meta table is deterministic.
+A workflow that takes a file, ANALYSES it, and stores the result is semi-deterministic — and this
+Function is the analysing step inside one: the single slot where a deterministic pipeline hands a
+judgement to a model and gets an answer back. ⚠️ It is NOT the layer that decides which workflow to
+run, or whether a job needs a model at all. That decision is made above it and arrives here already
+made, as a prompt in a Variable.
+
 ---
 
 ## 2. The graph
 
-`mh-call-cc-1.0.mhsc` is the reusable form — the prompt arrives as a source-level input.
-`mh-call-cc-today-1.0.mhsc` is the same graph with the question hardcoded, and is the smallest
-complete cycle.
+`mh-call-cc-1.0.mhsc` — the prompt arrives as a source-level input, so one registered graph serves
+every caller that has something to ask.
 
 | # | process | what it contributes |
 |---|---|---|
-| 1 | `question` — `internal mh.string-as-variable` | hardcoded form only: lifts the inline literal into `ccPrompt` |
-| 2 | `call` — `mh.asset.call-cc` | writes `.mcp.json`, runs CC with the prompt on stdin, copies the stored answer into `ccResult` |
+| 1 | `call` — `mh.asset.call-cc` | writes `.mcp.json`, runs CC with the prompt on stdin, copies the stored answer into `ccResult` |
 
 ❗ `ccResult` is declared with `->` in the source-level `variables` block. That is what makes it an
 ExecContext-level output global rather than a variable visible only inside the graph.
+
+❗ **Launch it with `mh_create_exec_context_with_variables`.** It initializes source-level inputs and
+then produces Tasks. `mh_create_exec_context` refuses a SourceCode that declares any (562.120),
+because it has no way to supply the values — that is a routing rule, never a reason to write the
+run's prompt into the `.mhsc`.
 
 ---
 
