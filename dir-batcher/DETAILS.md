@@ -73,6 +73,7 @@ code, **P** needs judgment.
 | F3 | No selected path lies under a dot directory | hard | D |
 | F4 | A sample of the produced queue, drawn away from the first batch, contains files a requirements pass can derive from | hard | P |
 | F5 | The file-type mix is plausible for the corpus — a language's own sources dominate, and no single auxiliary extension approaches them in count | soft | P |
+| F6 | No file OUTSIDE an excluded directory is dropped — exclusion removes build output, never source | hard | D |
 
 ❗ F4 and F5 exist because F1—F3 can all pass while the queue is still useless: they assert that the
 rules were applied, not that the rules were the right rules. That gap is the whole reason
@@ -104,6 +105,23 @@ than a remark.
 
 ---
 
+### 2026-09-16 - the exclusion set was checked for over-reach, and F6 added
+
+**Found:** while reconciling why `.sql` fell from 560 to 285 between two runs.
+
+**Evidence:** an independent walk of the corpus - deliberately not using the Function's own code, since
+verifying a filter with the filter is circular - found 835 `.sql` in total: 275 under `classes`, 275
+under `target`, 285 selected. The two excluded trees hold the same number of files, which is why a
+single-cause explanation looked self-confirming and was half wrong: the `.sql` and `.html` reductions
+came from `target`, which the filter already excluded, and not from the `classes` correction.
+
+**What it changed:** nothing about the filter, which behaved correctly. It exposed a missing criterion.
+F1-F3 all assert that exclusion WORKS; none asserted that over-exclusion does NOT happen, so a filter
+silently dropping real source would have passed every check in this file.
+
+**Criteria added:** F6.
+
+---
 ## 7. Known limits
 
 - ⚠️ Batch size is a constant in the Function, not a per-run input. Changing it changes what a batch
