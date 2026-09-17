@@ -1,0 +1,26 @@
+version: 3
+function:
+  code: mh.asset.call-cc
+  type: mh.asset.call-cc
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block, and it
+  # lives beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the
+  # tip at every ExecContext creation and pins the sha into every Task of that run.
+  #
+  # The whole payload directory is copied into {task.home}/asset at launch, so the MCP server
+  # travels with the Function and is always the sibling of the script that launches it.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: call-cc/payload/fn-call-cc
+  targets:
+    mh-default:
+      src: src
+      file: mh_call_cc.py
+  metas:
+    # 2, not 1. Every input this Function reads is named by a process meta, and task.metas does not
+    # exist before params version 2 - a version-1 params file upgrades with an EMPTY metas list, so
+    # the Function would fail on its first required meta with nothing to point at.
+    - mh.task-params-version: 2

@@ -1,0 +1,48 @@
+// Ask Claude Code one hardcoded question and keep the answer at ExecContext level.
+//
+// This is the smallest complete cycle for mh.asset.call-cc, and it is deliberately the SHAPE of a
+// real use rather than a toy: the Function is prompt-agnostic, so the question has to come from
+// somewhere, and 'somewhere' here is an inline literal lifted into a variable. A real capability
+// swaps the lifter for whichever process computes its prompt, and changes nothing else.
+//
+// Two things are worth reading twice:
+//
+//   ccPrompt   is built HERE and named to the Function by a meta. The Function never learns what was
+//              asked - it reads a variable whose name it was told.
+//   ccResult   is declared with '->' in the source-level variables block, which is what makes it an
+//              ExecContext-level output global: readable off the finished ExecContext rather than
+//              only from inside the graph.
+
+source "mh-call-cc-today-1.0" {
+
+    variables {
+        // One line, no exceptions: an .mhsc STRING is lexed as (~["\\\r\n] | '\\' .)* and cannot
+        // carry a raw newline. The instruction to return through the tool is part of the PROMPT and
+        // not part of the Function, which is the whole point - the Function has no opinion about how
+        // an answer is shaped, so the prompt has to state it.
+        inline cc {
+            prompt = "What is today's date? Answer with the date only, in ISO 8601 format YYYY-MM-DD. Return your answer by calling the mh_cc_store_result MCP tool exactly once, passing the date as its result argument. Do not print the answer to the console: anything not passed to that tool is discarded."
+        }
+        -> ccResult
+    }
+
+    question := internal mh.string-as-variable {
+        name "lift the hardcoded question out of inline and into a variable"
+        meta mapping = "mapping: [{key: cc, name: prompt, output: ccPrompt}]"
+        -> ccPrompt: ext=".txt"
+        timeout 60
+    }
+
+    call := mh.asset.call-cc {
+        name "Run Claude Code against ccPrompt and store what it returns"
+        // timeout-sec is what the Function allows the CC process; the process timeout below is what
+        // MH allows the Function. The outer one must be the LARGER of the two, or the Task is killed
+        // mid-run and the Function never gets to say what went wrong.
+        meta variable-for-prompt = "ccPrompt",
+             variable-for-output = "ccResult",
+             timeout-sec = "600"
+        <- ccPrompt
+        -> ccResult: ext=".txt"
+        timeout 900
+    }
+}

@@ -1,0 +1,379 @@
+# Synthetic unit tests for mh.asset.call-cc, per MH-GIT-DELIVERY-FUNCTION-DESCRIPTION.md section 5.
+#
+# Every fixture is built by the test. Nothing here reads a params file, a task dir, an mh-env.yaml
+# off a Processor, a dispatcher or a real CC install - which is why every expected value below could
+# be written down in advance. No CC process is started and no MCP session is opened: the boundary is
+# integration territory (section 5.6) and the core is what these own.
+#
+# Run:  pytest call-cc/tests
+
+import json
+
+from mh_call_cc import (meta_value, meta_keys, require_meta, variable_name, find_variable,
+                        input_path, output_path, resolve_env, timeout_sec, mcp_config, cc_command,
+                        tail_lines, DEFAULT_TIMEOUT_SEC)
+from mh_cc_mcp_server import store_once, log
+
+
+# ----------------------------------------------------------------- metas, and why the list is scanned
+
+def test_meta_value_scans_the_whole_list():
+    metas = [{'model': 'opus'}, {'variable-for-prompt': 'ccPrompt'}]
+
+    assert meta_value(metas, 'variable-for-prompt') == 'ccPrompt'
+
+
+def test_meta_value_reads_a_key_out_of_a_multi_key_entry():
+    # MH permits several keys in one entry, so a lookup that only ever reads entry[0] would miss them
+    metas = [{'model': 'opus', 'timeout-sec': '600'}]
+
+    assert meta_value(metas, 'timeout-sec') == '600'
+
+
+def test_meta_value_takes_the_first_hit_when_a_key_is_declared_twice():
+    metas = [{'model': 'first'}, {'model': 'second'}]
+
+    assert meta_value(metas, 'model') == 'first'
+
+
+def test_meta_value_is_none_when_the_key_is_not_declared():
+    assert meta_value([{'model': 'opus'}], 'variable-for-output') is None
+
+
+def test_meta_value_survives_an_absent_or_empty_metas_list():
+    assert meta_value(None, 'model') is None
+    assert meta_value([], 'model') is None
+
+
+def test_meta_value_stringifies_what_yaml_produced():
+    # 'timeout-sec: 600' unquoted parses as an int, and every caller here expects text
+    assert meta_value([{'timeout-sec': 600}], 'timeout-sec') == '600'
+
+
+def test_meta_keys_lists_every_declared_key_sorted():
+    assert meta_keys([{'b': '1', 'a': '2'}, {'c': '3'}]) == ['a', 'b', 'c']
+
+
+def test_require_meta_strips_the_value():
+    assert require_meta([{'model': '  opus  '}], 'model') == 'opus'
+
+
+def test_require_meta_rejects_an_absent_meta_and_names_what_was_declared():
+    try:
+        require_meta([{'model': 'opus'}], 'variable-for-prompt')
+        assert False, 'an absent required meta must not be tolerated'
+    except ValueError as e:
+        assert 'variable-for-prompt' in str(e)
+        assert 'model' in str(e), 'the message must show what WAS declared, or a typo hides'
+
+
+def test_require_meta_rejects_a_blank_meta():
+    try:
+        require_meta([{'variable-for-prompt': '   '}], 'variable-for-prompt')
+        assert False, 'a blank required meta names no variable and must not be tolerated'
+    except ValueError:
+        pass
+
+
+def test_variable_name_reads_the_variable_for_key():
+    metas = [{'variable-for-prompt': 'ccPrompt-1'}]
+
+    assert variable_name(metas, 'prompt') == 'ccPrompt-1'
+
+
+def test_variable_name_has_no_fallback_to_the_logical_name():
+    # falling back would run against whatever variable happened to be called 'prompt', which is a
+    # wrong answer rather than an error
+    try:
+        variable_name([{'model': 'opus'}], 'prompt')
+        assert False, 'an undeclared variable binding must fail, not guess'
+    except ValueError:
+        pass
+
+
+# ----------------------------------------------------------------- variables and where they live
+
+def test_find_variable_returns_the_matching_declaration():
+    variables = [{'name': 'a', 'id': '1'}, {'name': 'b', 'id': '2'}]
+
+    assert find_variable(variables, 'b')['id'] == '2'
+
+
+def test_find_variable_names_what_was_declared():
+    try:
+        find_variable([{'name': 'a', 'id': '1'}], 'missing')
+        assert False, 'an undeclared variable must be reported'
+    except ValueError as e:
+        assert 'missing' in str(e)
+        assert 'a' in str(e)
+
+
+def test_find_variable_on_nothing_at_all_is_still_an_error():
+    for variables in [None, []]:
+        try:
+            find_variable(variables, 'a')
+            assert False, 'no declarations cannot satisfy a lookup'
+        except ValueError:
+            pass
+
+
+def test_input_path_uses_the_declared_data_type():
+    path = input_path('/work', {'id': '100001', 'dataType': 'variable'})
+
+    assert path.replace('\\', '/') == '/work/variable/100001'
+
+
+def test_input_path_falls_back_to_variable_when_no_data_type_was_declared():
+    path = input_path('/work', {'id': '100001'})
+
+    assert path.replace('\\', '/') == '/work/variable/100001'
+
+
+def test_output_path_is_artifacts_whatever_the_data_type_says():
+    path = output_path('/work', {'id': '200001', 'dataType': 'variable'})
+
+    assert path.replace('\\', '/') == '/work/artifacts/200001'
+
+
+# ----------------------------------------------------------------- mh-env.yaml, in both shapes
+
+def test_resolve_env_reads_the_mapping_shape_the_processor_writes():
+    envs = {'python-3': 'C:\\anaconda3\\python.exe', 'claude-code': 'claude'}
+
+    assert resolve_env(envs, 'claude-code') == 'claude'
+
+
+def test_resolve_env_reads_the_list_shape():
+    envs = [{'code': 'python-3', 'exec': '/usr/bin/python3'}, {'code': 'claude-code', 'exec': '/usr/bin/claude'}]
+
+    assert resolve_env(envs, 'claude-code') == '/usr/bin/claude'
+
+
+def test_resolve_env_missing_code_lists_what_is_available():
+    try:
+        resolve_env({'python-3': 'python'}, 'claude-code')
+        assert False, 'a missing env must be reported, not returned as None'
+    except ValueError as e:
+        assert 'claude-code' in str(e)
+        assert 'python-3' in str(e)
+
+
+def test_resolve_env_rejects_a_blank_exec():
+    try:
+        resolve_env({'claude-code': '   '}, 'claude-code')
+        assert False, 'a blank exec is not an executable'
+    except ValueError:
+        pass
+
+
+def test_resolve_env_rejects_a_shape_it_does_not_understand():
+    try:
+        resolve_env('claude-code: claude', 'claude-code')
+        assert False, 'a string is neither of the two shapes and must not be searched'
+    except ValueError:
+        pass
+
+
+# ----------------------------------------------------------------- the CC timeout
+
+def test_timeout_is_the_default_when_no_meta_declares_one():
+    assert timeout_sec([{'model': 'opus'}]) == DEFAULT_TIMEOUT_SEC
+
+
+def test_timeout_is_the_default_when_the_meta_is_blank():
+    assert timeout_sec([{'timeout-sec': '  '}]) == DEFAULT_TIMEOUT_SEC
+
+
+def test_timeout_comes_from_the_meta_when_declared():
+    assert timeout_sec([{'timeout-sec': '600'}]) == 600
+
+
+def test_timeout_rejects_zero_and_negative():
+    for value in ['0', '-1']:
+        try:
+            timeout_sec([{'timeout-sec': value}])
+            assert False, value + ' is not a length of time to wait'
+        except ValueError:
+            pass
+
+
+# ----------------------------------------------------------------- .mcp.json
+
+def test_mcp_config_round_trips_as_json():
+    parsed = json.loads(mcp_config('/usr/bin/python3', '/asset/src/mh_cc_mcp_server.py', '/work/cc-data/cc-result.out'))
+
+    assert list(parsed['mcpServers']) == ['mhcc']
+    assert parsed['mcpServers']['mhcc']['type'] == 'stdio'
+    assert parsed['mcpServers']['mhcc']['command'] == '/usr/bin/python3'
+
+
+def test_mcp_config_passes_the_script_then_the_result_file():
+    parsed = json.loads(mcp_config('python', '/asset/src/mh_cc_mcp_server.py', '/work/cc-data/cc-result.out'))
+
+    assert parsed['mcpServers']['mhcc']['args'] == ['/asset/src/mh_cc_mcp_server.py', '/work/cc-data/cc-result.out']
+
+
+def test_mcp_config_keeps_a_windows_path_intact_through_json():
+    # the assertion this file exists for: a hand-built JSON string loses backslashes, and the failure
+    # shows up minutes later as 'no result' rather than as a broken config
+    command = 'C:\\anaconda3\\envs\\python_3-13\\python.exe'
+    result = 'C:\\task\\work\\cc-data\\cc-result.out'
+
+    parsed = json.loads(mcp_config(command, 'C:\\asset\\src\\mh_cc_mcp_server.py', result))
+
+    assert parsed['mcpServers']['mhcc']['command'] == command
+    assert parsed['mcpServers']['mhcc']['args'][1] == result
+
+
+def test_mcp_config_registers_under_the_name_it_was_given():
+    parsed = json.loads(mcp_config('python', '/s.py', '/r.out', 'other'))
+
+    assert list(parsed['mcpServers']) == ['other']
+
+
+# ----------------------------------------------------------------- the CC command line
+
+def test_cc_command_allow_list_is_derived_from_the_server_name():
+    # the two cannot drift: rename the server and the allow-list follows it
+    command = cc_command('claude', '.mcp.json', 'other')
+
+    assert 'mcp__other__*' in command
+
+
+def test_cc_command_passes_the_config_by_bare_name():
+    command = cc_command('claude', '.mcp.json')
+
+    assert command[command.index('--mcp-config') + 1] == '.mcp.json'
+
+
+def test_cc_command_starts_with_the_executable():
+    assert cc_command('/usr/bin/claude', '.mcp.json')[0] == '/usr/bin/claude'
+
+
+def test_cc_command_omits_the_model_when_none_was_asked_for():
+    for model in [None, '', '   ']:
+        assert '--model' not in cc_command('claude', '.mcp.json', 'mhcc', model), repr(model)
+
+
+def test_cc_command_appends_the_model_when_one_was_asked_for():
+    command = cc_command('claude', '.mcp.json', 'mhcc', '  opus  ')
+
+    assert command[command.index('--model') + 1] == 'opus'
+
+
+def test_cc_command_never_carries_the_prompt():
+    # a prompt is tens of lines; it goes in on stdin, and an argv element would fail differently on
+    # every platform
+    command = cc_command('claude', '.mcp.json')
+
+    for part in command:
+        assert '\n' not in part, 'no element of a command line may contain a newline'
+
+
+# ----------------------------------------------------------------- console truncation
+
+def test_tail_lines_leaves_a_short_console_alone():
+    assert tail_lines('a\nb\nc', 10) == 'a\nb\nc'
+
+
+def test_tail_lines_keeps_the_end_because_that_is_where_the_failure_is():
+    text = '\n'.join(str(i) for i in range(100))
+
+    assert tail_lines(text, 3) == '97\n98\n99'
+
+
+def test_tail_lines_rejects_a_limit_below_one():
+    try:
+        tail_lines('a\nb', 0)
+        assert False, 'keeping zero lines is not a truncation, it is a deletion'
+    except ValueError:
+        pass
+
+
+# ----------------------------------------------------------------- store once, and only once
+
+def test_store_once_writes_the_payload_verbatim(tmp_path):
+    target = str(tmp_path / 'cc-data' / 'cc-result.out')
+
+    answer = store_once(target, '{"finding": "x"}\n{"finding": "y"}')
+
+    assert answer['stored'] is True
+    assert (tmp_path / 'cc-data' / 'cc-result.out').read_text(encoding='utf-8') == '{"finding": "x"}\n{"finding": "y"}'
+
+
+def test_store_once_creates_the_directory_it_needs(tmp_path):
+    target = str(tmp_path / 'not' / 'there' / 'yet' / 'cc-result.out')
+
+    assert store_once(target, 'answer')['stored'] is True
+
+
+def test_store_once_reports_the_utf8_byte_count_not_the_character_count(tmp_path):
+    target = str(tmp_path / 'cc-result.out')
+
+    # two characters, four bytes - the number is about what was written, not about what was typed
+    assert store_once(target, 'да')['bytes'] == 4
+
+
+def test_store_once_refuses_the_second_call(tmp_path):
+    target = str(tmp_path / 'cc-result.out')
+    store_once(target, 'first')
+
+    answer = store_once(target, 'second')
+
+    assert answer['stored'] is False
+    assert 'already stored' in answer['message']
+
+
+def test_store_once_leaves_the_first_result_untouched_by_a_second_call(tmp_path):
+    target = str(tmp_path / 'cc-result.out')
+    store_once(target, 'first')
+
+    store_once(target, 'second')
+
+    assert (tmp_path / 'cc-result.out').read_text(encoding='utf-8') == 'first', \
+        'a refused call that still overwrote would be worse than one that accepted'
+
+
+def test_store_once_refuses_an_empty_payload_without_spending_the_single_store(tmp_path):
+    target = str(tmp_path / 'cc-result.out')
+
+    answer = store_once(target, '')
+
+    assert answer['stored'] is False
+    assert not (tmp_path / 'cc-result.out').exists(), 'an empty store must leave nothing behind'
+    assert store_once(target, 'the real answer')['stored'] is True, 'the store must still be available'
+
+
+def test_store_once_treats_whitespace_as_empty(tmp_path):
+    target = str(tmp_path / 'cc-result.out')
+
+    assert store_once(target, '  \n\t ')['stored'] is False
+    assert not (tmp_path / 'cc-result.out').exists()
+
+
+# ----------------------------------------------------------------- the log, in the window it is for
+
+def test_log_writes_before_anything_else_has_made_the_directory(tmp_path):
+    # the log's whole job is explaining a run that produced no result, and the loudest version of
+    # that is a server that died before it ever stored anything - i.e. before any other code had a
+    # reason to create the directory. A log that needs someone else to go first is silent exactly
+    # when it is needed.
+    log_file = str(tmp_path / 'cc-data' / 'mcp-server.log')
+
+    log('starting', log_file)
+
+    assert (tmp_path / 'cc-data' / 'mcp-server.log').read_text(encoding='utf-8').endswith('starting\n')
+
+
+def test_log_appends_rather_than_replacing(tmp_path):
+    log_file = str(tmp_path / 'mcp-server.log')
+
+    log('first', log_file)
+    log('second', log_file)
+
+    written = (tmp_path / 'mcp-server.log').read_text(encoding='utf-8')
+    assert 'first' in written and 'second' in written
+
+
+def test_log_without_a_file_is_stderr_only_and_does_not_fail():
+    log('no file given')
