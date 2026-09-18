@@ -31,6 +31,8 @@
 # only, so this Function base64-encodes it into the Authorization header. It is never printed, and the
 # buffer it arrived in is zeroed on the way out.
 #
+# 1.1: the vault entry is RG_API_AUTH, not RG_API_KEY - it holds a login:password, not an API key.
+#
 # The core below is what rg-temp-project/tests exercises: pure functions, plus post_form, which runs
 # against a loopback HTTP server the tests start themselves. main() is the boundary and is not
 # unit-tested, per MH-GIT-DELIVERY-FUNCTION-DESCRIPTION.md 5.5-5.6.
@@ -46,7 +48,7 @@ import urllib.request
 
 from mh_secret_client import exchange, extract_secret_fields, zero
 
-FUNCTION_CODE = 'mh.asset.rg-temp-project_1.0'
+FUNCTION_CODE = 'mh.asset.rg-temp-project_1.1'
 
 # The draw: a fixed prefix, then CODE_RANDOM_LENGTH characters of CODE_ALPHABET. 11 characters in all,
 # against RG's limit of 20 (LegalInfoBankService), and 36^8 = 2.8e12 codes under the prefix.
@@ -57,11 +59,11 @@ CODE_RANDOM_LENGTH = 8
 # mkdtemp tries up to TMP_MAX (10000) names, because a local mkdir costs nothing. Every attempt here is
 # an HTTP round trip, and with 2.8e12 codes a second draw is already improbable: the loop is there for
 # correctness, not for throughput.
-MAX_ATTEMPTS = 10
+MAX_ATTEMPTS = 3
 
 # Per request. MAX_ATTEMPTS x HTTP_TIMEOUT_SEC plus the handshake is the Function's worst case, which the
 # process timeout in the .mhsc must exceed.
-HTTP_TIMEOUT_SEC = 30
+HTTP_TIMEOUT_SEC = 5
 
 CREATE_PATH = '/rest/v1/rg/projects/add'
 
@@ -184,7 +186,7 @@ def basic_authorization(credential):
     raw = bytes(credential).strip(b'\r\n')
     login, colon, _ = raw.partition(b':')
     if not colon or not login:
-        raise ValueError('RG_API_KEY must hold the plain login:password of an RG account - RG authenticates '
+        raise ValueError('RG_API_AUTH must hold the plain login:password of an RG account - RG authenticates '
                          'with HTTP Basic only - but the value handed over has '
                          + ('no colon' if not colon else 'an empty login') + ' (the value is not printed)')
     return 'Basic ' + base64.b64encode(raw).decode('ascii')
@@ -227,10 +229,10 @@ def classify(status, text):
     words, so the run's console says what RG said.
     """
     if status == 401:
-        raise RuntimeError('RG rejected the credential (HTTP 401) - RG_API_KEY must be the plain '
+        raise RuntimeError('RG rejected the credential (HTTP 401) - RG_API_AUTH must be the plain '
                            'login:password of an RG account')
     if status == 403:
-        raise RuntimeError('RG refused the request (HTTP 403) - the account in RG_API_KEY needs the role '
+        raise RuntimeError('RG refused the request (HTTP 403) - the account in RG_API_AUTH needs the role '
                            'ADMIN or LEGAL_ADMIN')
     if status != 200:
         raise RuntimeError('RG answered HTTP ' + str(status) + ': ' + excerpt(text))
@@ -328,7 +330,7 @@ def run(task, credential):
     if not locale:
         raise ValueError('input locale is empty - RG requires a language for every project')
     if credential is None:
-        raise ValueError('no credential was handed over: mh-function.yaml declares api keyCode RG_API_KEY, '
+        raise ValueError('no credential was handed over: mh-function.yaml declares api keyCode RG_API_AUTH, '
                          'but the params file carries no secretPort / checkCode')
     authorization = basic_authorization(credential)
 

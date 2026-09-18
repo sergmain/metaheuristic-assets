@@ -1,6 +1,6 @@
 # rg-temp-project
 
-SourceCode `mh-rg-temp-project-1.0` · Function `mh.asset.rg-temp-project_1.0` · payload
+SourceCode `mh-rg-temp-project-1.1` · Function `mh.asset.rg-temp-project_1.1` · payload
 `rg-temp-project/payload/fn-rg-temp-project`
 
 ## 1. Purpose
@@ -25,7 +25,10 @@ Function:
    nobody was told.
 3. **A development run stops there**, writing `mh.null-value`.
 4. **A production run executes the mkdtemp loop**: draw `TMP` + 8 of `[A-Z0-9]` from a CSPRNG, `POST
-   /rest/v1/rg/projects/add`; on "already exists" draw again, at most 10 times. Every other refusal is final.
+   /rest/v1/rg/projects/add`; on "already exists" draw again, at most 3 times. Every other refusal is final.
+
+The process timeout is 30s. The Function's own worst case stays under it: 3 attempts x 5s of HTTP plus the 5s
+handshake.
 
 ## 3. Run-data contract
 
@@ -39,17 +42,17 @@ source-level inputs (`562.120`).
 | `production` | in, required | whether anything is created | `true` creates; every other value, `mh.null-value` included, is a development run |
 | `projectCode` | out, ExecContext level | the code RG answered with | `TMP` + 8 of `[A-Z0-9]`; `mh.null-value` when nothing was created |
 
-**The credential is not a variable.** It is the vault key `RG_API_KEY`, declared as `api.keyCode` in
+**The credential is not a variable.** It is the vault entry `RG_API_AUTH`, declared as `api.keyCode` in
 `mh-function.yaml` and handed over by the Processor on the loopback secret channel. The vault holds the
 PLAIN `login:password` of an RG account with the role `ADMIN` or `LEGAL_ADMIN` - not base64; the Function
 encodes it for HTTP Basic, the only scheme RG's REST API accepts.
 
 ## 4. Durable side effects
 
-- **Production:** one RG project, in the company of the account in `RG_API_KEY`.
+- **Production:** one RG project, in the company of the account in `RG_API_AUTH`.
   `RgProjectTxService.createProjectTx` writes the info bank, the project (`isReady=false`, no SourceCode,
   the default `maxDepth`) and its empty DERIVATION / CONTAINMENT / VERIFICATION DAG records. Name:
-  `Temporary project <code>`. Description: `Temporary project created by mh.asset.rg-temp-project_1.0 in
+  `Temporary project <code>`. Description: `Temporary project created by mh.asset.rg-temp-project_1.1 in
   ExecContext #<id>`.
 - **Development:** nothing.
 - No meta storage is written, so there is nothing to register in `MH_META_STORAGE_REGISTRY`.

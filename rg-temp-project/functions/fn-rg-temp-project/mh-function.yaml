@@ -1,6 +1,6 @@
 version: 3
 function:
-  code: mh.asset.rg-temp-project_1.0
+  code: mh.asset.rg-temp-project_1.1
   type: mh.asset.rg-temp-project
   env: python-3
   sourcing: git
@@ -23,7 +23,7 @@ function:
   # Function over its loopback secret channel - never argv, env or disk. The vault holds the PLAIN
   # login:password of an RG account; the Function base64-encodes it for HTTP Basic.
   api:
-    keyCode: RG_API_KEY
+    keyCode: RG_API_AUTH
   metas:
     # 2, not 1: every variable this Function reads or writes is named by a process meta, and
     # task.metas does not exist before params version 2. Version 2 also carries task.checkCode and
