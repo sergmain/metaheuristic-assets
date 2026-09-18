@@ -1,0 +1,31 @@
+version: 3
+function:
+  code: mh.asset.rg-temp-project_1.0
+  type: mh.asset.rg-temp-project
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block, and it
+  # lives beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the
+  # tip at every ExecContext creation and pins the sha into every Task of that run.
+  #
+  # The whole payload directory is copied into {task.home}/asset at launch, so mh_secret_client.py
+  # is always the sibling of the script that imports it.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: rg-temp-project/payload/fn-rg-temp-project
+  targets:
+    mh-default:
+      src: src
+      file: mh_rg_temp_project.py
+  # The RG credential. The Processor fetches the vault entry sealed, decrypts it, and hands it to the
+  # Function over its loopback secret channel - never argv, env or disk. The vault holds the PLAIN
+  # login:password of an RG account; the Function base64-encodes it for HTTP Basic.
+  api:
+    keyCode: RG_API_KEY
+  metas:
+    # 2, not 1: every variable this Function reads or writes is named by a process meta, and
+    # task.metas does not exist before params version 2. Version 2 also carries task.checkCode and
+    # task.secretPort, which the secret handoff is read from.
+    - mh.task-params-version: 2
