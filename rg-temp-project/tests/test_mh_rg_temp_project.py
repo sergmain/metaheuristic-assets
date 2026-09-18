@@ -220,6 +220,19 @@ class EchoHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(answer)
 
+    def do_GET(self):
+        status = int(self.path.rsplit('/', 1)[1]) if self.path.startswith('/status/') else 200
+        answer = json.dumps({
+            'method': self.command,
+            'path': self.path,
+            'authorization': self.headers.get('Authorization'),
+        }).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(answer)))
+        self.end_headers()
+        self.wfile.write(answer)
+
     def log_message(self, fmt, *args):
         pass
 
@@ -263,3 +276,109 @@ def test_post_form_names_an_rg_it_cannot_reach():
 
     with pytest.raises(RuntimeError, match='cannot reach RG'):
         fn.post_form('http://127.0.0.1:' + str(port) + fn.CREATE_PATH, b'x=1', 'Basic x', timeout=5)
+
+
+# ---------------------------------------------------------------------------------------------------
+# the optional behaviour: the caller's description, maxDepth, creation in development, an RG pipeline
+
+@pytest.mark.parametrize('production, create_in_development, expected', [
+    ('true', None, True), ('false', None, False), ('false', 'true', True), ('mh.null-value', ' true ', True),
+    ('false', 'false', False), ('false', 'True', False),
+])
+def test_should_create(production, create_in_development, expected):
+    assert fn.should_create(production, create_in_development) is expected
+
+
+@pytest.mark.parametrize('value, expected', [
+    (None, None), ('', None), ('  ', None), ('mh.null-value', None), (' Derby \n', 'Derby'),
+])
+def test_optional_text(value, expected):
+    assert fn.optional_text(value) == expected
+
+
+@pytest.mark.parametrize('value, expected', [(None, None), ('', None), ('1', 1), (' 3 ', 3)])
+def test_parse_max_depth(value, expected):
+    assert fn.parse_max_depth(value) == expected
+
+
+@pytest.mark.parametrize('value', ['0', '-1', 'deep'])
+def test_parse_max_depth_refuses_what_is_not_a_positive_whole_number(value):
+    with pytest.raises(ValueError, match='max-depth'):
+        fn.parse_max_depth(value)
+
+
+def test_form_body_takes_the_callers_description_and_max_depth():
+    body = fn.form_body('TMPAAAAAAAA', 'en', 42, 'Requirements for java-based database Derby', 1)
+
+    assert urllib.parse.parse_qs(body.decode('utf-8')) == {
+        'name': ['Temporary project TMPAAAAAAAA'],
+        'infoBank': ['TMPAAAAAAAA'],
+        'locale': ['en'],
+        'description': ['Requirements for java-based database Derby'],
+        'maxDepth': ['1'],
+    }
+
+
+def test_project_id_is_the_id_rg_answered_with():
+    assert fn.project_id(json.dumps({'project': {'id': 7, 'infoBank': 'TMPAAAAAAAA'}})) == 7
+
+
+@pytest.mark.parametrize('body', [json.dumps({}), json.dumps({'project': {}}), '[]', 'not json'])
+def test_project_id_refuses_an_answer_without_one(body):
+    with pytest.raises(RuntimeError, match='no project id'):
+        fn.project_id(body)
+
+
+def test_rg_json_returns_the_answer_when_rg_reports_no_error():
+    assert fn.rg_json(200, json.dumps({'errorMessages': None, 'sourceCodes': []}), 'x') == \
+        {'errorMessages': None, 'sourceCodes': []}
+
+
+@pytest.mark.parametrize('status, body, phrase', [
+    (200, json.dumps({'errorMessages': ['04.812.200 frozen']}), '04.812.200 frozen'),
+    (401, '', 'HTTP 401'),
+    (403, '', 'LEGAL_ADMIN'),
+    (500, 'boom', 'HTTP 500'),
+    (200, '<html/>', 'not JSON'),
+])
+def test_rg_json_raises_naming_the_call_and_what_rg_said(status, body, phrase):
+    with pytest.raises(RuntimeError, match=phrase) as e:
+        fn.rg_json(status, body, 'assign SourceCode to TMPAAAAAAAA')
+    assert 'assign SourceCode to TMPAAAAAAAA' in str(e.value)
+
+
+def test_source_code_id_for_picks_the_uid():
+    answer = {'sourceCodes': [{'sourceCodeId': 8, 'uid': 'mhdg-rg-cc-1.0.76'},
+                              {'sourceCodeId': 17, 'uid': 'mhdg-rg-synthetic-1.0.76'}]}
+
+    assert fn.source_code_id_for('mhdg-rg-synthetic-1.0.76', answer) == 17
+
+
+def test_source_code_id_for_names_what_rg_offers_when_the_uid_is_not_there():
+    with pytest.raises(RuntimeError, match='mhdg-rg-cc-1.0.76') as e:
+        fn.source_code_id_for('mhdg-rg-cc-9.9', {'sourceCodes': [{'sourceCodeId': 8, 'uid': 'mhdg-rg-cc-1.0.76'}]})
+    assert 'mhdg-rg-cc-9.9' in str(e.value)
+
+
+def test_the_pipeline_calls():
+    assert fn.rg_base(' http://localhost:64967/ ') == 'http://localhost:64967'
+    assert fn.source_codes_url('http://localhost:64967', 'TMPAAAAAAAA') == \
+        'http://localhost:64967/rest/v1/rg/projects/TMPAAAAAAAA/source-codes'
+    assert fn.task_url('http://localhost:64967', 7) == 'http://localhost:64967/rest/v1/rg/projects/7/task'
+    assert urllib.parse.parse_qs(fn.task_body(8).decode('utf-8')) == {'sourceCodeId': ['8'], 'isReady': ['true']}
+
+
+def test_http_get_sends_the_authorization_header(echo_server):
+    status, text = fn.http_get(echo_server + '/rest/v1/rg/projects/TMPAAAAAAAA/source-codes',
+                               'Basic YWRtaW46c2VjcmV0', timeout=5)
+    echoed = json.loads(text)
+
+    assert status == 200
+    assert echoed['method'] == 'GET'
+    assert echoed['authorization'] == 'Basic YWRtaW46c2VjcmV0'
+
+
+def test_http_get_returns_an_error_status_instead_of_raising(echo_server):
+    status, _ = fn.http_get(echo_server + '/status/404', 'Basic x', timeout=5)
+
+    assert status == 404

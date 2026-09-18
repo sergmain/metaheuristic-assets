@@ -47,6 +47,18 @@ source-level inputs (`562.120`).
 PLAIN `login:password` of an RG account with the role `ADMIN` or `LEGAL_ADMIN` - not base64; the Function
 encodes it for HTTP Basic, the only scheme RG's REST API accepts.
 
+### Optional behaviour
+
+Every one of these is off unless the process declares it, so a process that declares none behaves exactly as
+described above.
+
+| meta | effect |
+|---|---|
+| `variable-for-description` | the named input Variable's text is the project's description, instead of the minted one |
+| `max-depth` | sent as RG's `maxDepth`; a project that is to receive hand-authored requirements needs `1` |
+| `create-in-development = "true"` | a development run creates the project for real - for a workflow whose temporary project is itself its scratch space |
+| `variable-for-rg-pipeline-uid` | after creating, the project is given that RG pipeline (resolved by uid through `/source-codes`) and marked ready through `/{id}/task` - the precondition for storing requirements in it |
+
 ## 4. Durable side effects
 
 - **Production:** one RG project, in the company of the account in `RG_API_AUTH`.
