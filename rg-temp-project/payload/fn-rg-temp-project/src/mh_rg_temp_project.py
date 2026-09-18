@@ -355,9 +355,15 @@ def task_url(base, pid):
     return base + TASK_PATH.format(id=pid)
 
 
-def task_body(source_code_id):
-    """Assign the pipeline and mark the project ready in one call. isReady must be sent: RG defaults it to false."""
-    return urllib.parse.urlencode({'sourceCodeId': str(source_code_id), 'isReady': 'true'}).encode('utf-8')
+def task_body(source_code_id, task):
+    """Assign the pipeline and mark the project ready in one call. isReady must be sent: RG defaults it to false.
+
+    task must be non-blank: RG marks a project ready only when it has task content AND a SourceCode AND isReady
+    was asked for (RgProjectTxService.updateTaskTx), and without task content it silently leaves the project
+    not ready - the genesis run then fails with 815.040."""
+    if not task or not task.strip():
+        raise ValueError('a project is marked ready only with task text - the task is empty')
+    return urllib.parse.urlencode({'task': task, 'sourceCodeId': str(source_code_id), 'isReady': 'true'}).encode('utf-8')
 
 
 def create_temp_project(create, next_code, max_attempts=MAX_ATTEMPTS):
@@ -493,7 +499,9 @@ def run(task, credential):
         # the project runs this RG pipeline and is ready - the precondition for storing requirements in it
         status, text = http_get(source_codes_url(base, code), authorization)
         source_code_id = source_code_id_for(pipeline_uid, rg_json(status, text, 'list the SourceCodes of ' + code))
-        status, text = post_form(task_url(base, created_ids[-1]), task_body(source_code_id), authorization)
+        # the task text is the project's description - the statement of what the project is for
+        task_text = description if description else project_description(exec_context_id)
+        status, text = post_form(task_url(base, created_ids[-1]), task_body(source_code_id, task_text), authorization)
         rg_json(status, text, 'assign SourceCode ' + pipeline_uid + ' to ' + code)
         print('project ' + code + ' runs ' + pipeline_uid + ' (SourceCode #' + str(source_code_id) + ') and is ready')
     write_text(target, code)

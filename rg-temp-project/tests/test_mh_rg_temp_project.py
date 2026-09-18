@@ -365,7 +365,14 @@ def test_the_pipeline_calls():
     assert fn.source_codes_url('http://localhost:64967', 'TMPAAAAAAAA') == \
         'http://localhost:64967/rest/v1/rg/projects/TMPAAAAAAAA/source-codes'
     assert fn.task_url('http://localhost:64967', 7) == 'http://localhost:64967/rest/v1/rg/projects/7/task'
-    assert urllib.parse.parse_qs(fn.task_body(8).decode('utf-8')) == {'sourceCodeId': ['8'], 'isReady': ['true']}
+    assert urllib.parse.parse_qs(fn.task_body(8, 'Requirements for java-based database Derby').decode('utf-8')) == {
+        'task': ['Requirements for java-based database Derby'], 'sourceCodeId': ['8'], 'isReady': ['true']}
+
+
+@pytest.mark.parametrize('task', [None, '', '   '])
+def test_task_body_refuses_an_empty_task_because_rg_would_silently_leave_the_project_not_ready(task):
+    with pytest.raises(ValueError, match='task text'):
+        fn.task_body(8, task)
 
 
 def test_http_get_sends_the_authorization_header(echo_server):
