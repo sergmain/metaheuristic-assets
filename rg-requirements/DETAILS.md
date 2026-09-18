@@ -1,6 +1,6 @@
 # rg-requirements
 
-SourceCode `mh-rg-requirements-from-file-1.0` · Functions `mh.asset.rg-req-prompt_1.0`, `mh.asset.rg-req-store_1.0`
+SourceCode `mh-rg-requirements-from-file-1.1` · Functions `mh.asset.rg-req-prompt_1.0`, `mh.asset.rg-req-store_1.0`
 · payload `rg-requirements/payload/fn-rg-requirements` · also uses `mh.asset.rg-temp-project_1.1`,
 `mh.asset.call-cc` and the internal `mh.meta-storage`
 
@@ -16,7 +16,7 @@ Declaration order is execution order.
 
 | # | process | Function | contributes |
 |---|---|---|---|
-| 1 | `mkproject` | `mh.asset.rg-temp-project_1.1` | the project: the given description, `maxDepth 1`, the given RG genesis pipeline, ready - created in development runs too |
+| 1 | `mkproject` | `mh.asset.rg-temp-project_1.1` | the project: the given description, the given RG genesis pipeline, ready - created in development runs too |
 | 2 | `select` | internal `mh.meta-storage`, `select` | `batchRecords` - the `batchKey` record of `metaTable`, from the table `synthetic` names |
 | 3 | `prompt` | `mh.asset.rg-req-prompt_1.0` | the path on the first line of the record, the file (up to 300000 bytes), and the prompt: description, document, answer contract |
 | 4 | `cc` | `mh.asset.call-cc` | CC's answer: a JSON array of `{name, content, rationale}`, 1 to 5 of them |
@@ -50,8 +50,7 @@ and `mh.asset.rg-req-store_1.0` and handed to each over the Processor's loopback
 
 ## 4. Durable side effects
 
-- One RG project, created in every run, development runs included: its description, `maxDepth 1`, the pipeline,
-  `isReady`.
+- One RG project, created in every run, development runs included: its description, the pipeline, `isReady`.
 - Its genesis run (an RG ExecContext) and one committed snapshot per stored requirement.
 - Nothing is written to meta storage; the batch record is only read.
 
@@ -66,4 +65,8 @@ and `mh.asset.rg-req-store_1.0` and handed to each over the Processor's loopback
 
 ## 6. Corrections
 
-None yet.
+- **2026-09-18, 1.0 → 1.1.** 1.0 created the project with `maxDepth 1`. RG refuses a `maxDepth` outside `[2, 6]`
+  (`RgConsts`, `03.877.010`), so no project was created (ExecContext #11). The requirement had been inferred
+  from an error message in `RgFirstManualRequirementService`; the code that runs the genesis
+  (`RgExecTxService`, `827.145`) already runs a MANUAL genesis at depth 1 whatever the project holds. 1.1 sends
+  no depth.

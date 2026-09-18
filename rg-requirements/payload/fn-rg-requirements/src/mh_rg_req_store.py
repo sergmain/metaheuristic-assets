@@ -8,6 +8,8 @@
 #   project-code   INPUT  - the project to store into. It must run an RG genesis pipeline, be ready and have
 #                           maxDepth 1 - what mh.asset.rg-temp-project does with metas max-depth = "1" and
 #                           variable-for-rg-pipeline-uid
+#                           Correction: not maxDepth - RG refuses a maxDepth below 2, and a MANUAL genesis runs at
+#                           depth 1 on its own (RgExecTxService 827.145). The pipeline and readiness are what count.
 #   cc-result      INPUT  - CC's answer: a JSON array of {name, content, rationale}
 #   req-ids        OUTPUT - the ids RG gave the stored requirements, one per line, in the answer's order
 #

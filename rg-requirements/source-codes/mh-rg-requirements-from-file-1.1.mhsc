@@ -21,8 +21,11 @@
 // source-level inputs (562.120).
 //
 // ORDER is declaration order: each process is chained to the one declared before it.
+//
+// 1.1: no max-depth. RG refuses a maxDepth below 2 (RgConsts.MIN_MAX_DEPTH, 03.877.010), and a MANUAL genesis
+// runs at maxDepth 1 whatever the project holds (RgExecTxService, 827.145) - the pipeline is all it needs.
 
-source "mh-rg-requirements-from-file-1.0" {
+source "mh-rg-requirements-from-file-1.1" {
 
     variables {
         <- rgBaseUrl
@@ -41,14 +44,14 @@ source "mh-rg-requirements-from-file-1.0" {
     mkproject := mh.asset.rg-temp-project_1.1 {
         name "Create the temporary RG project that will hold the requirements"
         // maxDepth 1 and a genesis pipeline are what RG needs before it accepts a hand-authored requirement
+        // 1.1: only the pipeline - see the header
         meta variable-for-rg-base-url = "rgBaseUrl",
              variable-for-locale = "locale",
              variable-for-production = "production",
              variable-for-project-code = "projectCode",
              variable-for-description = "projectDescription",
              variable-for-rg-pipeline-uid = "rgPipelineUid",
-             create-in-development = "true",
-             max-depth = "1"
+             create-in-development = "true"
         <- rgBaseUrl, locale, production, projectDescription, rgPipelineUid
         -> projectCode: ext=".txt"
         timeout 60
