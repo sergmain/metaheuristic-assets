@@ -220,6 +220,10 @@ def form_body(code, locale, exec_context_id, description=None, max_depth=None):
     Unless the process says otherwise: description replaces the minted description when given, and max_depth
     is sent as maxDepth when given - a project that is to receive hand-authored requirements needs 1
     (RgFirstManualRequirementService: its genesis run must mint exactly one requirement).
+
+    Correction: RG accepts maxDepth only in [2, 6] (RgConsts) and refuses anything else (03.877.010); a MANUAL
+    genesis runs at depth 1 whatever the project holds (RgExecTxService 827.145), so requirements need no
+    particular depth. max_depth stays for a caller that wants a deeper decomposition bound.
     """
     fields = {
         'name': project_name(code),
