@@ -57,7 +57,7 @@ described above.
 | `variable-for-description` | the named input Variable's text is the project's description, instead of the minted one |
 | `max-depth` | sent as RG's `maxDepth`, which RG accepts only in `[2, 6]`. Requirements need no particular depth: a MANUAL genesis runs at depth 1 whatever the project holds |
 | `create-in-development = "true"` | a development run creates the project for real - for a workflow whose temporary project is itself its scratch space |
-| `variable-for-rg-pipeline-uid` | after creating, the project is given that RG pipeline (resolved by uid through `/source-codes`) and marked ready through `/{id}/task` - the precondition for storing requirements in it |
+| `variable-for-rg-pipeline-uid` | after creating, the project is given that RG pipeline (resolved by uid through `/source-codes`), its description as the task text, and is marked ready through `/{id}/task` - the precondition for storing requirements in it. RG marks a project ready only with task text, a SourceCode and `isReady` together |
 
 ## 4. Durable side effects
 
