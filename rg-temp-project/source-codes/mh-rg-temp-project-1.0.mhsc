@@ -1,0 +1,45 @@
+// Create a temporary RG project and report its code - mkdtemp, for RG.
+//
+// The algorithm lives in the Function: a fixed prefix plus a random suffix, created atomically through
+// RG's REST API, and a fresh draw only when RG answers that the code is already taken. RG has no
+// 'temporary' flag; temporary is how the code is minted, and nothing here deletes the project later.
+//
+// Reusable by construction - nothing about a particular run appears below:
+//   rgBaseUrl    comes IN, the RG to create the project in, e.g. http://localhost:64967
+//   locale       comes IN, the project's language - RG validates it
+//   production   comes IN, REQUIRED: 'true' creates the project; every other value - 'mh.null-value'
+//                included - is a development run that checks its inputs and its credential and
+//                creates nothing
+//   projectCode  goes OUT at ExecContext level: the code RG answered with, or 'mh.null-value' when
+//                nothing was created
+//
+// Launch with mh_create_exec_context_with_variables, which initializes source-level inputs before
+// producing Tasks; mh_create_exec_context refuses a SourceCode that declares any (562.120).
+//
+// The credential is not a variable and never appears here. mh-function.yaml declares api keyCode
+// RG_API_KEY, and the Processor hands its value to the Function over the loopback secret channel.
+
+source "mh-rg-temp-project-1.0" {
+
+    variables {
+        <- rgBaseUrl
+        <- locale
+        <- production
+        -> projectCode
+    }
+
+    mkproject := mh.asset.rg-temp-project_1.0 {
+        name "Create a temporary RG project and report its code"
+        // Every name the Function reads or writes is bound here, never inside it - rename a variable
+        // and only these metas change.
+        meta variable-for-rg-base-url = "rgBaseUrl",
+             variable-for-locale = "locale",
+             variable-for-production = "production",
+             variable-for-project-code = "projectCode"
+        <- rgBaseUrl, locale, production
+        -> projectCode: ext=".txt"
+        // The Function allows itself at most 10 attempts x 30s of HTTP plus a 5s handshake. The process
+        // timeout must be the larger of the two, or MH kills the Task before it can say what went wrong.
+        timeout 600
+    }
+}
