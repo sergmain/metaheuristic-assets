@@ -94,7 +94,7 @@ def test_form_body_carries_what_rg_create_project_reads():
         'name': ['Temporary project TMPAAAAAAAA'],
         'infoBank': ['TMPAAAAAAAA'],
         'locale': ['ru'],
-        'description': ['Temporary project created by mh.asset.rg-temp-project_1.0 in ExecContext #42'],
+        'description': ['Temporary project created by mh.asset.rg-temp-project_1.1 in ExecContext #42'],
     }
 
 

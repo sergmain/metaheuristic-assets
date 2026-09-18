@@ -18,8 +18,11 @@
 //
 // The credential is not a variable and never appears here. mh-function.yaml declares api keyCode
 // RG_API_KEY, and the Processor hands its value to the Function over the loopback secret channel.
+//
+// 1.1: the vault entry is RG_API_AUTH - it holds a login:password, not an API key - and the process
+// timeout is 30s.
 
-source "mh-rg-temp-project-1.0" {
+source "mh-rg-temp-project-1.1" {
 
     variables {
         <- rgBaseUrl
@@ -28,7 +31,7 @@ source "mh-rg-temp-project-1.0" {
         -> projectCode
     }
 
-    mkproject := mh.asset.rg-temp-project_1.0 {
+    mkproject := mh.asset.rg-temp-project_1.1 {
         name "Create a temporary RG project and report its code"
         // Every name the Function reads or writes is bound here, never inside it - rename a variable
         // and only these metas change.
@@ -40,6 +43,7 @@ source "mh-rg-temp-project-1.0" {
         -> projectCode: ext=".txt"
         // The Function allows itself at most 10 attempts x 30s of HTTP plus a 5s handshake. The process
         // timeout must be the larger of the two, or MH kills the Task before it can say what went wrong.
-        timeout 600
+        // 1.1: 3 attempts x 5s of HTTP plus the 5s handshake - 20s, under the 30s below.
+        timeout 30
     }
 }
