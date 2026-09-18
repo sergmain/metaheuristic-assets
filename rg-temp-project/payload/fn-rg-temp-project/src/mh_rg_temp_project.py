@@ -67,6 +67,11 @@ HTTP_TIMEOUT_SEC = 5
 
 CREATE_PATH = '/rest/v1/rg/projects/add'
 
+# RG's other project calls - made only when a process names an RG pipeline: the SourceCodes a project may
+# run, and the call that assigns one and marks the project ready.
+SOURCE_CODES_PATH = '/rest/v1/rg/projects/{code}/source-codes'
+TASK_PATH = '/rest/v1/rg/projects/{id}/task'
+
 # RG states a taken code only in words: RgProjectService answers "Info bank with code 'X' already
 # exists", LegalInfoBankService "Info bank with this code already exists". Both carry this phrase. If RG
 # ever rewords them, the loop stops retrying and the run fails with RG's own message - it can never
@@ -172,6 +177,11 @@ def create_url(base_url):
     return url + CREATE_PATH
 
 
+def rg_base(base_url):
+    """The RG base url itself, validated exactly as create_url validates it - for the calls that are not the create."""
+    return create_url(base_url)[:-len(CREATE_PATH)]
+
+
 def basic_authorization(credential):
     """The Authorization header for the vault's plain login:password (RFC 7617).
 
@@ -202,17 +212,24 @@ def project_description(exec_context_id):
     return 'Temporary project created by ' + FUNCTION_CODE + ' in ExecContext #' + str(exec_context_id)
 
 
-def form_body(code, locale, exec_context_id):
+def form_body(code, locale, exec_context_id, description=None, max_depth=None):
     """The request parameters RgProjectController.createProject reads, form-encoded.
 
     maxDepth is left out: absent means RG's default, and a temporary project has no reason to differ.
+
+    Unless the process says otherwise: description replaces the minted description when given, and max_depth
+    is sent as maxDepth when given - a project that is to receive hand-authored requirements needs 1
+    (RgFirstManualRequirementService: its genesis run must mint exactly one requirement).
     """
-    return urllib.parse.urlencode({
+    fields = {
         'name': project_name(code),
         'infoBank': code,
         'locale': locale,
-        'description': project_description(exec_context_id),
-    }).encode('utf-8')
+        'description': description if description else project_description(exec_context_id),
+    }
+    if max_depth is not None:
+        fields['maxDepth'] = str(max_depth)
+    return urllib.parse.urlencode(fields).encode('utf-8')
 
 
 def excerpt(text, limit=300):
@@ -252,6 +269,91 @@ def classify(status, text):
     if not code:
         raise RuntimeError('RG answered without an error and without a project code: ' + excerpt(text))
     return CREATED, str(code)
+
+
+def should_create(production, create_in_development):
+    """Whether this run creates the project for real. A production run always does; a development run does
+    only when the process declares meta create-in-development = "true" - a workflow whose temporary project is
+    itself the scratch space it works in, and so has nothing to protect by not creating it."""
+    return is_production(production) or (create_in_development or '').strip() == 'true'
+
+
+def optional_text(value):
+    """The text of an optional input, or None when it is absent, blank or 'mh.null-value'."""
+    text = (value or '').strip()
+    return None if not text or text == NULL_VALUE else text
+
+
+def parse_max_depth(value):
+    """meta max-depth as a positive whole number, or None when the process does not declare it."""
+    if value is None or not str(value).strip():
+        return None
+    try:
+        depth = int(str(value).strip())
+    except ValueError:
+        raise ValueError("meta max-depth must be a whole number, got '" + str(value) + "'") from None
+    if depth < 1:
+        raise ValueError('meta max-depth must be at least 1, got ' + str(depth))
+    return depth
+
+
+def project_id(text):
+    """The numeric id of the project an add answered with - RG's other project calls address it by id."""
+    try:
+        answer = json.loads(text)
+    except ValueError:
+        answer = None
+    project = answer.get('project') if isinstance(answer, dict) else None
+    pid = project.get('id') if isinstance(project, dict) else None
+    if pid is None:
+        raise RuntimeError('RG created the project but its answer carries no project id: ' + excerpt(text))
+    return int(pid)
+
+
+def rg_json(status, text, what):
+    """RG's answer to a call whose only success condition is 'no error': the parsed JSON object - or a failure
+    that says which call it was and what RG answered."""
+    if status == 401:
+        raise RuntimeError(what + ': RG rejected the credential (HTTP 401) - RG_API_AUTH must be the plain '
+                           'login:password of an RG account')
+    if status == 403:
+        raise RuntimeError(what + ': RG refused the request (HTTP 403) - the account in RG_API_AUTH needs the '
+                           'role ADMIN or LEGAL_ADMIN')
+    if status != 200:
+        raise RuntimeError(what + ': RG answered HTTP ' + str(status) + ': ' + excerpt(text))
+    try:
+        answer = json.loads(text)
+    except ValueError:
+        raise RuntimeError(what + ': RG answered HTTP 200 with a body that is not JSON: ' + excerpt(text)) from None
+    if not isinstance(answer, dict):
+        raise RuntimeError(what + ': RG answered with JSON that is not an object: ' + excerpt(text))
+    errors = [str(m) for m in (answer.get('errorMessages') or [])]
+    if errors:
+        raise RuntimeError(what + ': ' + '; '.join(errors))
+    return answer
+
+
+def source_code_id_for(uid, answer):
+    """The id of the SourceCode named uid in RG's /source-codes answer - or a failure listing what RG does offer."""
+    options = [o for o in (answer.get('sourceCodes') or []) if isinstance(o, dict)]
+    for option in options:
+        if option.get('uid') == uid:
+            return int(option['sourceCodeId'])
+    raise RuntimeError("RG offers this project no SourceCode '" + uid + "'; it offers: "
+                       + str(sorted(str(o.get('uid')) for o in options)))
+
+
+def source_codes_url(base, code):
+    return base + SOURCE_CODES_PATH.format(code=urllib.parse.quote(code))
+
+
+def task_url(base, pid):
+    return base + TASK_PATH.format(id=pid)
+
+
+def task_body(source_code_id):
+    """Assign the pipeline and mark the project ready in one call. isReady must be sent: RG defaults it to false."""
+    return urllib.parse.urlencode({'sourceCodeId': str(source_code_id), 'isReady': 'true'}).encode('utf-8')
 
 
 def create_temp_project(create, next_code, max_attempts=MAX_ATTEMPTS):
@@ -297,6 +399,23 @@ def post_form(url, body, authorization, timeout=HTTP_TIMEOUT_SEC):
         raise RuntimeError('cannot reach RG at ' + url + ': ' + str(e.reason)) from None
 
 
+def http_get(url, authorization, timeout=HTTP_TIMEOUT_SEC):
+    """GET and return (status, body text), with post_form's rules: an HTTP error status is returned, not raised,
+    and no proxy is used."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(url, method='GET', headers={
+        'Authorization': authorization,
+        'Accept': 'application/json',
+    })
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            return response.status, response.read().decode('utf-8', errors='replace')
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode('utf-8', errors='replace')
+    except urllib.error.URLError as e:
+        raise RuntimeError('cannot reach RG at ' + url + ': ' + str(e.reason)) from None
+
+
 # ---------------------------------------------------------------------------------------------------
 # THE BOUNDARY
 
@@ -311,6 +430,14 @@ def write_text(path, content):
         f.write(content)
 
 
+def read_optional_input(metas, work_dir, inputs, role):
+    """The text of the Variable an OPTIONAL role is bound to, or None when the process binds none."""
+    name = meta_value(metas, 'variable-for-' + role)
+    if name is None or not name.strip():
+        return None
+    return read_text(input_path(work_dir, find_variable(inputs, name.strip())))
+
+
 def run(task, credential):
     metas = task.get('metas') or []
     work_dir = task['workingPath']
@@ -319,9 +446,15 @@ def run(task, credential):
     def read_input(role):
         return read_text(input_path(work_dir, find_variable(inputs, variable_name(metas, role))))
 
-    url = create_url(read_input('rg-base-url'))
+    base = rg_base(read_input('rg-base-url'))
+    url = base + CREATE_PATH
     locale = read_input('locale').strip()
     production = read_input('production')
+    # optional roles and metas - a process that declares none of them gets exactly the behaviour described above
+    description = optional_text(read_optional_input(metas, work_dir, inputs, 'description'))
+    pipeline_uid = optional_text(read_optional_input(metas, work_dir, inputs, 'rg-pipeline-uid'))
+    max_depth = parse_max_depth(meta_value(metas, 'max-depth'))
+    create_in_development = meta_value(metas, 'create-in-development')
     # resolved BEFORE RG is called: a missing output declaration is a SourceCode defect, and finding it
     # after the project exists would leave a project whose code nobody was told
     target = output_path(work_dir, find_variable(task.get('outputs'), variable_name(metas, 'project-code')))
@@ -334,20 +467,31 @@ def run(task, credential):
                          'but the params file carries no secretPort / checkCode')
     authorization = basic_authorization(credential)
 
-    if not is_production(production):
+    if not should_create(production, create_in_development):
         write_text(target, NULL_VALUE)
         print('development run: inputs and credential checked, nothing created in RG, projectCode='
               + NULL_VALUE)
         return 0
 
     exec_context_id = task['execContextId']
+    created_ids = []
 
     def create(code):
-        status, text = post_form(url, form_body(code, locale, exec_context_id), authorization)
+        status, text = post_form(url, form_body(code, locale, exec_context_id, description, max_depth), authorization)
         print('POST ' + url + ' infoBank=' + code + ' -> HTTP ' + str(status))
-        return classify(status, text)
+        outcome = classify(status, text)
+        if outcome[0] == CREATED:
+            created_ids.append(project_id(text))
+        return outcome
 
     code = create_temp_project(create, lambda: random_code(secrets.choice))
+    if pipeline_uid:
+        # the project runs this RG pipeline and is ready - the precondition for storing requirements in it
+        status, text = http_get(source_codes_url(base, code), authorization)
+        source_code_id = source_code_id_for(pipeline_uid, rg_json(status, text, 'list the SourceCodes of ' + code))
+        status, text = post_form(task_url(base, created_ids[-1]), task_body(source_code_id), authorization)
+        rg_json(status, text, 'assign SourceCode ' + pipeline_uid + ' to ' + code)
+        print('project ' + code + ' runs ' + pipeline_uid + ' (SourceCode #' + str(source_code_id) + ') and is ready')
     write_text(target, code)
     print('created temporary RG project ' + code)
     return 0

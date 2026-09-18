@@ -1,0 +1,103 @@
+// Requirements from one file, into a fresh RG project.
+//
+// A temporary RG project is created - for real, in development runs too - with the given description and an RG
+// genesis pipeline. One record of a meta table names the file (its first line), CC derives requirements from the
+// file for that description, and the requirements are stored in the project.
+//
+// Reusable by construction - nothing about a particular run appears below:
+//   rgBaseUrl           comes IN, the RG to work in, e.g. http://localhost:64967
+//   locale              comes IN, the project's language
+//   projectDescription  comes IN, what the requirements are for; it is the project's description and goes into
+//                       the prompt
+//   rgPipelineUid       comes IN, the RG genesis pipeline the project runs, e.g. mhdg-rg-cc-1.0.76
+//   metaTable           comes IN, the meta-storage type holding the batch records
+//   batchKey            comes IN, the record to read, e.g. batch-0001
+//   synthetic           comes IN, 'true' reads MH_META_STORAGE_SYNTHETIC, 'false' MH_META_STORAGE
+//   production          comes IN, REQUIRED by convention. It gates nothing here: the project is created and
+//                       filled in every run, and which table is read is 'synthetic'
+//   projectCode, sourcePath, reqIds go OUT at ExecContext level
+//
+// Launch with mh_create_exec_context_with_variables; mh_create_exec_context refuses a SourceCode that declares
+// source-level inputs (562.120).
+//
+// ORDER is declaration order: each process is chained to the one declared before it.
+
+source "mh-rg-requirements-from-file-1.0" {
+
+    variables {
+        <- rgBaseUrl
+        <- locale
+        <- projectDescription
+        <- rgPipelineUid
+        <- metaTable
+        <- batchKey
+        <- synthetic
+        <- production
+        -> projectCode
+        -> sourcePath
+        -> reqIds
+    }
+
+    mkproject := mh.asset.rg-temp-project_1.1 {
+        name "Create the temporary RG project that will hold the requirements"
+        // maxDepth 1 and a genesis pipeline are what RG needs before it accepts a hand-authored requirement
+        meta variable-for-rg-base-url = "rgBaseUrl",
+             variable-for-locale = "locale",
+             variable-for-production = "production",
+             variable-for-project-code = "projectCode",
+             variable-for-description = "projectDescription",
+             variable-for-rg-pipeline-uid = "rgPipelineUid",
+             create-in-development = "true",
+             max-depth = "1"
+        <- rgBaseUrl, locale, production, projectDescription, rgPipelineUid
+        -> projectCode: ext=".txt"
+        timeout 60
+    }
+
+    select := internal mh.meta-storage {
+        name "Read the batch record that names the source file"
+        meta action = "select",
+             type = "metaTable",
+             keys = "batchKey",
+             synthetic = "synthetic",
+             output = "batchRecords"
+        <- metaTable, batchKey, synthetic
+        -> batchRecords: ext=".json"
+        timeout 120
+    }
+
+    prompt := mh.asset.rg-req-prompt_1.0 {
+        name "Read the first file of the batch and build the CC prompt"
+        meta variable-for-records = "batchRecords",
+             variable-for-description = "projectDescription",
+             variable-for-prompt = "ccPrompt",
+             variable-for-source-path = "sourcePath"
+        <- batchRecords, projectDescription
+        -> ccPrompt: ext=".txt",
+           sourcePath: ext=".txt"
+        timeout 60
+    }
+
+    cc := mh.asset.call-cc {
+        name "Ask CC for the requirements"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-prompt = "ccPrompt",
+             variable-for-output = "ccResult",
+             timeout-sec = "900"
+        <- ccPrompt
+        -> ccResult: ext=".txt"
+        timeout 1200
+    }
+
+    store := mh.asset.rg-req-store_1.0 {
+        name "Store the requirements in the temporary project"
+        // requirement #1 waits for the project's genesis run (up to 900s), each next one is one transaction
+        meta variable-for-rg-base-url = "rgBaseUrl",
+             variable-for-project-code = "projectCode",
+             variable-for-cc-result = "ccResult",
+             variable-for-req-ids = "reqIds"
+        <- rgBaseUrl, projectCode, ccResult
+        -> reqIds: ext=".txt"
+        timeout 1800
+    }
+}

@@ -1,0 +1,21 @@
+version: 3
+function:
+  code: mh.asset.rg-req-prompt_1.0
+  type: mh.asset.rg-req-prompt
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
+  # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
+  # Both Functions of this capability share the payload directory; each names its own script.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: rg-requirements/payload/fn-rg-requirements
+  targets:
+    mh-default:
+      src: src
+      file: mh_rg_req_prompt.py
+  metas:
+    # 2: every variable is named by a process meta, and task.metas does not exist before params version 2
+    - mh.task-params-version: 2
