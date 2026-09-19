@@ -4,7 +4,7 @@ SourceCode `mh-rg-requirements-from-file-1.1` · Functions `mh.asset.rg-req-prom
 · payload `rg-requirements/payload/fn-rg-requirements` · also uses `mh.asset.rg-temp-project_1.1`,
 `mh.asset.call-cc` and the internal `mh.meta-storage`
 
-SourceCode `mh-rg-requirements-from-batch-1.1` (section 7) - Functions `mh.asset.rg-batch-paths_1.0`,
+SourceCode `mh-rg-requirements-from-batch-1.2` (section 7) - Functions `mh.asset.rg-batch-paths_1.0`,
 `mh.asset.rg-req-path-prompt_1.0`, `mh.asset.rg-req-check_1.0`, `mh.asset.rg-req-store-batch_1.0` - the same payload -
 also uses the internal `mh.batch-line-splitter` and `mh.aggregate`
 
@@ -77,7 +77,7 @@ and `mh.asset.rg-req-store_1.0` and handed to each over the Processor's loopback
 
 ---
 
-## 7. mh-rg-requirements-from-batch-1.1 - every file of a batch
+## 7. mh-rg-requirements-from-batch-1.2 - every file of a batch
 
 ### 7.1 Purpose
 
@@ -100,7 +100,7 @@ Declaration order is execution order; everything after `split` waits for all of 
 | 4.3 | `check` | `mh.asset.rg-req-check_1.0` | `reqAnswer` - the answer checked as the store checks it, written as one line of ASCII JSON `{sourcePath, requirements}` |
 | 5 | `gather` | internal `mh.aggregate`, `text` | `reqAnswers` - every branch's `reqAnswer`, collected by name across the ExecContext |
 | 6 | `store` | `mh.asset.rg-req-store-batch_1.0` | the requirements in the project, as one chain; `reqIds`, `reqSources` |
-| 7 | `dropRecord` | internal `mh.meta-storage`, `delete` | the `batchKey` record removed from the table `synthetic` names |
+| 7 | `dropRecord` | internal `mh.meta-storage`, `delete` | **disabled in 1.2** (commented out, 7.7) - the `batchKey` record would be removed from the table `synthetic` names |
 
 **Why the store is not in the branches.** `requirements/manual` forks a new STAGE from whichever COMMITTED snapshot
 it is given, and `RgSnapshotLifecycleService.openStageFromParent` checks only that the parent is COMMITTED - never
@@ -137,6 +137,7 @@ Launch with `mh_create_exec_context_with_variables`.
 - One RG project per run, development runs included: its description, the pipeline, `isReady`.
 - Its genesis run (an RG ExecContext) and one committed snapshot per stored requirement, in one linear chain.
 - The `batchKey` record is DELETED from the table `synthetic` names - after the store has succeeded, and only then.
+  ⚠️ Not in 1.2: `dropRecord` is commented out, so the record stays in the table and the batch can be run again.
 
 ### 7.5 Fitness criteria
 
@@ -182,3 +183,6 @@ Launch with `mh_create_exec_context_with_variables`.
   `mh.null-value` omits the flag (CC's default), any other value passes it. As inputs their content is hashed
   into the cache key. Seeding the DAHF 0.5 development pairing (opus 4.8 / medium) is done at launch, via
   `mh_create_exec_context_with_variables`, not in the SourceCode.
+- **2026-09-19, 1.1 -> 1.2.** `dropRecord` is commented out: for now the batch record stays in the meta table after
+  a run, so the same batch can be run again (1.0's ExecContext #26 finished without storing, leaving `batch-0004`
+  in place). The graph ends at `store`. To consume the queue again, restore the process and bump the uid.
