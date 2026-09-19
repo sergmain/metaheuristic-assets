@@ -71,6 +71,11 @@ STORE_RESULT_TOOL = 'mh_cc_store_result'
 # stdout, so the tail is what a usage-limit or quota rule gets to match against.
 MAX_OUTPUT_LINES = 2000
 
+# What a nullified Variable reads back as. An optional global input (`<- model?`) left unseeded, or one
+# seeded with this literal, both arrive as this exact text - the encoding MH uses for "no value" across a
+# variable boundary (mh.null-value). For an optional CLI flag it means: leave the flag off.
+NULL_VALUE = 'mh.null-value'
+
 
 # ---------------------------------------------------------------------------------------------------
 # METAS - the indirection that makes one Function serve every process that calls it.
@@ -113,6 +118,34 @@ def require_meta(metas, key):
 def variable_name(metas, logical_name):
     """The actual Variable name bound to a logical role, via meta 'variable-for-<logical_name>'."""
     return require_meta(metas, 'variable-for-' + logical_name)
+
+
+def optional_cli_value(metas, logical_name, read_variable):
+    """The value for an optional CLI flag (--model, --effort), or None to omit it.
+
+    The flag is driven by an OPTIONAL input Variable, named by meta 'variable-for-<logical_name>', not by a
+    literal meta: the model and effort a run uses are a property of the RUN, so they arrive as ExecContext-level
+    inputs, the same way `synthetic` does, and stay out of the SourceCode. All four "no value" states collapse to
+    omission, so the CLI's own default applies and the run still works:
+
+      - the meta is absent            -> the process did not wire this flag at all
+      - the named Variable is absent  -> wired but not bound (an optional input never seeded and not materialised)
+      - the value is blank
+      - the value is the mh.null-value sentinel  -> an unseeded optional input, read back
+
+    read_variable(name) -> the Variable's text, or None if it is not bound. Passed in rather than reached for, so
+    the resolution is testable without a task dir (production hands it the real reader; a test hands it a dict).
+    ❗ Omission is deliberate here and NOT the require_meta path: a missing optional flag is a runtime state, not a
+    SourceCode defect. The DAHF guide (0.5) is what obliges an authored workflow to declare model and effort; the
+    Function stays permissive so an ad-hoc call runs with CC's defaults.
+    """
+    var_name = meta_value(metas, 'variable-for-' + logical_name)
+    if var_name is None or not var_name.strip():
+        return None
+    value = read_variable(var_name.strip())
+    if value is None or not value.strip() or value.strip() == NULL_VALUE:
+        return None
+    return value.strip()
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -201,7 +234,7 @@ def mcp_config(python_exec, server_script, result_file, server_name=MCP_SERVER_N
     }, indent=2)
 
 
-def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, model=None):
+def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, model=None, effort=None):
     """The CC command line. The prompt is deliberately NOT in it.
 
     A prompt is tens of lines with newlines and quotes in it; passing it as an argv element does not
@@ -209,6 +242,10 @@ def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, m
 
     --allowedTools is derived from server_name so the two cannot drift: rename the server and the
     allow-list follows, instead of silently permitting nothing.
+
+    model and effort are each appended only when the process asked for one. An absent meta leaves the
+    flag off and the CLI's own default applies - which the DAHF guide (0.5) forbids for an authored
+    workflow, so both are declared there; the Function stays permissive so an ad-hoc call still runs.
     """
     command = [
         claude_code_exec,
@@ -220,6 +257,8 @@ def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, m
     ]
     if model is not None and model.strip():
         command += ['--model', model.strip()]
+    if effort is not None and effort.strip():
+        command += ['--effort', effort.strip()]
     return command
 
 
@@ -300,6 +339,19 @@ def main(argv):
     # finding it after a paid model call costs the call as well as the run.
     output_var = find_variable(params.get('outputs'), variable_name(metas, 'output'))
 
+    # model and effort are OPTIONAL ExecContext-level inputs (see optional_cli_value). The reader returns the
+    # text of an input variable by name, or None when it is not bound - so an optional input that was never
+    # seeded omits its flag rather than failing the Task.
+    def read_input_variable(name):
+        for var in params.get('inputs') or []:
+            if isinstance(var, dict) and var.get('name') == name:
+                return read_text(input_path(work_dir, var))
+        return None
+
+    model = optional_cli_value(metas, 'model', read_input_variable)
+    effort = optional_cli_value(metas, 'effort', read_input_variable)
+    print('model: ' + (model or '(CC default)') + ', effort: ' + (effort or '(CC default)'))
+
     env_params = yaml.load(read_text(os.path.join(work_dir, ARTIFACTS_DIR, MH_ENV_FILE)),
                            Loader=yaml.FullLoader)
     claude_code = resolve_env(env_params.get('envs'), CLAUDE_CODE_ENV_CODE)
@@ -328,7 +380,7 @@ def main(argv):
 
     # the config is passed by FILE NAME, not by path: cwd is the task dir, and a bare name is the one
     # spelling that cannot be mangled by quoting on the way into CC
-    command = cc_command(claude_code, MCP_CONFIG_FILE, MCP_SERVER_NAME, meta_value(metas, 'model'))
+    command = cc_command(claude_code, MCP_CONFIG_FILE, MCP_SERVER_NAME, model, effort)
     seconds = timeout_sec(metas)
     print('command: ' + str(command))
     print('timeout: ' + str(seconds) + 's')

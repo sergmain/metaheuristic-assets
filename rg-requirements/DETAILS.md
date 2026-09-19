@@ -96,7 +96,7 @@ Declaration order is execution order; everything after `split` waits for all of 
 | 3 | `paths` | `mh.asset.rg-batch-paths_1.0` | `batchPaths` - the record's paths, one per line; refuses a record that is missing or not unique, and a relative or repeated path |
 | 4 | `split` | internal `mh.batch-line-splitter` | one branch per path, the path in `sourcePath` |
 | 4.1 | `prompt` | `mh.asset.rg-req-path-prompt_1.0` | the file (up to 300000 bytes) and the prompt - the same prompt `mh.asset.rg-req-prompt_1.0` builds |
-| 4.2 | `cc` | `mh.asset.call-cc_1.1` | CC's answer; `tries 2`; cached - `cache on, cacheMeta`; a CC session limit is identified by the execution gate (7.7) |
+| 4.2 | `cc` | `mh.asset.call-cc_1.1` | CC's answer; model and effort from the optional `model`/`effort` inputs (DAHF 0.5); `tries 2`; cached - `cache on, cacheMeta`; a CC session limit is identified by the execution gate (7.7) |
 | 4.3 | `check` | `mh.asset.rg-req-check_1.0` | `reqAnswer` - the answer checked as the store checks it, written as one line of ASCII JSON `{sourcePath, requirements}` |
 | 5 | `gather` | internal `mh.aggregate`, `text` | `reqAnswers` - every branch's `reqAnswer`, collected by name across the ExecContext |
 | 6 | `store` | `mh.asset.rg-req-store-batch_1.0` | the requirements in the project, as one chain; `reqIds`, `reqSources` |
@@ -123,6 +123,8 @@ Launch with `mh_create_exec_context_with_variables`.
 | `rgBaseUrl`, `locale`, `projectDescription`, `rgPipelineUid`, `metaTable`, `production` | in | as in section 3 | |
 | `batchKey` | in | the record to process, then delete | `batch-0004` |
 | `synthetic` | in | the table the record is read from AND deleted from: exactly `true` (synthetic) or `false` (production) - the delete refuses any other value | `true` |
+| `model` | in, optional | the model CC uses (`--model`). Unseeded or `mh.null-value` -> the flag is omitted and CC's default applies | `claude-opus-4-8` |
+| `effort` | in, optional | the effort CC uses (`--effort`: `low`/`medium`/`high`/`xhigh`/`max`). Unseeded or `mh.null-value` -> omitted | `medium` |
 | `projectCode` | out | the project's code | `TMP...` |
 | `reqIds` | out | the stored requirements' ids, one per line, in storing order | |
 | `reqSources` | out | one line per stored requirement: its id, a TAB, the file it came from | |
@@ -170,3 +172,13 @@ Launch with `mh_create_exec_context_with_variables`.
   it failed the branch (Task #664, ExecContext #26). A new code rather than an edit of `mh.asset.call-cc`: the
   Dispatcher skips a Function code it already has without reading its descriptor again (`FunctionService`,
   `295.240`). Import the `call-cc` bundle before this one.
+- **2026-09-19.** `cc` declares `model = "claude-opus-4-8"` and `effort = "medium"` - the DAHF development pairing
+  (`DAHF-IMPLEMENTATION-AND-CONTINUOUS-IMPROVEMENT.md` 0.5), no longer left to the Processor host's CLI default.
+  `mh.asset.call-cc` passes `--effort` when the process declares an `effort` meta (as it already did for `--model`).
+  Both metas enter the cache key under `cacheMeta`.
+- **2026-09-19 (revised).** model and effort are now OPTIONAL ExecContext-level input variables (`model?`,
+  `effort?`), not literal metas - a property of the run, like `synthetic`. The `cc` process binds them with
+  `variable-for-model`/`variable-for-effort`, and `mh.asset.call-cc` reads each optional input: unseeded or
+  `mh.null-value` omits the flag (CC's default), any other value passes it. As inputs their content is hashed
+  into the cache key. Seeding the DAHF 0.5 development pairing (opus 4.8 / medium) is done at launch, via
+  `mh_create_exec_context_with_variables`, not in the SourceCode.

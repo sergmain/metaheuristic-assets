@@ -58,6 +58,13 @@ source "mh-rg-requirements-from-batch-1.1" {
         <- batchKey
         <- synthetic
         <- production
+        // model and effort are OPTIONAL ExecContext-level inputs, like synthetic - a property of the RUN, not of
+        // this SourceCode. Seed them to pin what CC uses (DAHF 0.5: opus 4.8 / medium for development); leave
+        // either unseeded and it reaches cc as mh.null-value, which mh.asset.call-cc reads as "omit the flag",
+        // so CC falls back to its own default. Nullable init: mh_create_exec_context_with_variables may pass
+        // "mh.null-value" for either, or omit it entirely.
+        <- model?
+        <- effort?
         -> projectCode
         -> reqIds
         -> reqSources
@@ -121,12 +128,17 @@ source "mh-rg-requirements-from-batch-1.1" {
                 // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
                 meta variable-for-prompt = "ccPrompt",
                      variable-for-output = "ccResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
                      timeout-sec = "900"
-                <- ccPrompt
+                <- ccPrompt, model?, effort?
                 -> ccResult: ext=".txt"
                 timeout 1200
                 tries 2
-                // 1.1: see the header - cacheMeta keeps a different model or timeout from sharing an entry
+                // 1.1: model and effort are optional inputs (see the variables block), not literals - a run pins
+                // the DAHF 0.5 development pairing (opus 4.8 / medium) by seeding them, or omits either for CC's
+                // default. As inputs their content is hashed into the cache key, so changing the model or effort a
+                // run uses correctly misses the old entry; cacheMeta additionally keeps the prompt and timeout apart.
                 cache on, cacheMeta
             }
 

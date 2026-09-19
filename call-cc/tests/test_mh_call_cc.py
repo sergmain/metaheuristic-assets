@@ -15,7 +15,7 @@ import pytest
 import mh_call_cc
 from mh_call_cc import (meta_value, meta_keys, require_meta, variable_name, find_variable,
                         input_path, output_path, resolve_env, timeout_sec, mcp_config, cc_command,
-                        tail_lines, DEFAULT_TIMEOUT_SEC)
+                        tail_lines, optional_cli_value, NULL_VALUE, DEFAULT_TIMEOUT_SEC)
 from mh_cc_mcp_server import store_once, log
 
 
@@ -265,6 +265,24 @@ def test_cc_command_appends_the_model_when_one_was_asked_for():
     assert command[command.index('--model') + 1] == 'opus'
 
 
+def test_cc_command_omits_the_effort_when_none_was_asked_for():
+    for effort in [None, '', '   ']:
+        assert '--effort' not in cc_command('claude', '.mcp.json', 'mhcc', 'opus', effort), repr(effort)
+
+
+def test_cc_command_appends_the_effort_when_one_was_asked_for():
+    command = cc_command('claude', '.mcp.json', 'mhcc', 'opus', '  medium  ')
+
+    assert command[command.index('--effort') + 1] == 'medium'
+
+
+def test_cc_command_carries_both_the_model_and_the_effort():
+    command = cc_command('claude', '.mcp.json', 'mhcc', 'opus', 'medium')
+
+    assert command[command.index('--model') + 1] == 'opus'
+    assert command[command.index('--effort') + 1] == 'medium'
+
+
 def test_cc_command_never_carries_the_prompt():
     # a prompt is tens of lines; it goes in on stdin, and an argv element would fail differently on
     # every platform
@@ -272,6 +290,61 @@ def test_cc_command_never_carries_the_prompt():
 
     for part in command:
         assert '\n' not in part, 'no element of a command line may contain a newline'
+
+
+# ----------------------------------------------------------------- model / effort as optional inputs
+#
+# optional_cli_value reads the OPTIONAL input variable named by 'variable-for-<flag>' and reduces every "no
+# value" state to None (omit the flag). The variable reader is a function parameter, so each test hands in a
+# plain dict lookup - the real value production computed, never a programmed double.
+
+def reader(store):
+    """A variable reader over a fixed dict: a name maps to its text, or to None when it is not bound."""
+    return lambda name: store.get(name)
+
+
+def var_for(flag, name):
+    return [{'variable-for-' + flag: name}]
+
+
+def test_optional_cli_value_is_the_variables_text_when_it_is_set():
+    value = optional_cli_value(var_for('model', 'modelVar'), 'model', reader({'modelVar': '  claude-opus-4-8 '}))
+
+    assert value == 'claude-opus-4-8'
+
+
+def test_optional_cli_value_is_none_when_the_meta_is_absent():
+    # the process did not wire the flag at all
+    assert optional_cli_value([{'variable-for-prompt': 'p'}], 'model', reader({'modelVar': 'opus'})) is None
+
+
+def test_optional_cli_value_is_none_when_the_variable_is_the_null_sentinel():
+    # an optional global input left unseeded reads back as mh.null-value
+    metas = var_for('effort', 'effortVar')
+
+    assert optional_cli_value(metas, 'effort', reader({'effortVar': NULL_VALUE})) is None
+    assert optional_cli_value(metas, 'effort', reader({'effortVar': '  ' + NULL_VALUE + '\n'})) is None
+
+
+def test_optional_cli_value_is_none_when_the_variable_is_blank():
+    assert optional_cli_value(var_for('model', 'm'), 'model', reader({'m': '   \n'})) is None
+
+
+def test_optional_cli_value_is_none_when_the_named_variable_is_not_bound():
+    # meta present but the optional input was never materialised - permissive, not a failure
+    assert optional_cli_value(var_for('model', 'missingVar'), 'model', reader({})) is None
+
+
+def test_optional_cli_value_feeds_cc_command_so_a_set_input_becomes_a_flag_and_null_omits_it():
+    metas = [{'variable-for-model': 'm'}, {'variable-for-effort': 'e'}]
+    store = {'m': 'opus', 'e': NULL_VALUE}
+
+    model = optional_cli_value(metas, 'model', reader(store))
+    effort = optional_cli_value(metas, 'effort', reader(store))
+    command = cc_command('claude', '.mcp.json', 'mhcc', model, effort)
+
+    assert command[command.index('--model') + 1] == 'opus'
+    assert '--effort' not in command, 'a null effort input must leave the flag off'
 
 
 # ----------------------------------------------------------------- console truncation
