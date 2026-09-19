@@ -168,6 +168,166 @@ def test_sources_text_pairs_each_id_with_its_file(batch):
 
 
 # ---------------------------------------------------------------------------------------------------
+# provenance: a stored requirement's rationale names the file it was derived from
+
+def test_a_stored_rationale_ends_with_the_file_it_was_derived_from(batch):
+    pairs = fn.plan('\n'.join(batch), [(batch[0], [req(1)]), (batch[1], [req(2)]), (batch[2], [req(3)])])
+
+    # requirements_to_store is what run() hands the store. Written as a characterization test before it existed:
+    # the fallback is exactly what run() stored then - the requirements as CC wrote them
+    stored = getattr(fn, 'requirements_to_store', lambda ps: [r for _, r in ps])(pairs)
+
+    assert [r['rationale'] for r in stored] == ['The file says so.\n\nsource: ' + path for path in batch]
+
+
+# ---------------------------------------------------------------------------------------------------
+# one STAGE instead of one snapshot per requirement
+
+class InMemoryRgWithStages:
+    """RG's snapshot rules for the store's four calls, the same for every test: a first only into a project that owns
+    no snapshot; a STAGE only from a COMMITTED snapshot; a write only into an OPEN STAGE, and only with content; a
+    seal only of an OPEN STAGE. The first commits; a write into a STAGE commits nothing; the seal commits it all."""
+
+    def __init__(self, code='TMPAAAAAAAA'):
+        self.code = code
+        self.snapshots = {}
+        self.stored = 0
+
+    def _snapshot(self, status, parent):
+        snapshot_id = 100 + len(self.snapshots)
+        self.snapshots[snapshot_id] = {'status': status, 'parent': parent, 'contents': [], 'rationales': []}
+        return snapshot_id
+
+    def _req(self, snapshot, body):
+        if not (body.get('content') or '').strip():
+            raise RuntimeError('RG refused the requirement: content is empty')
+        snapshot['contents'].append(body['content'])
+        snapshot['rationales'].append(body['rationale'])
+        self.stored += 1
+        return self.code + '-' + str(self.stored)
+
+    def first(self, body):
+        if self.snapshots:
+            raise RuntimeError('RG refused the requirement: 04.876.020 the project already owns snapshots')
+        snapshot_id = self._snapshot('COMMITTED', None)
+        return self._req(self.snapshots[snapshot_id], body), snapshot_id
+
+    def open_stage(self, parent):
+        if (self.snapshots.get(parent) or {}).get('status') != 'COMMITTED':
+            raise RuntimeError('a STAGE forks only from a COMMITTED snapshot, not ' + str(parent))
+        return self._snapshot('STAGE', parent)
+
+    def write(self, body):
+        snapshot = self.snapshots.get(body['snapshotId'])
+        if not snapshot or snapshot['status'] != 'STAGE':
+            raise RuntimeError('snapshot ' + str(body['snapshotId']) + ' is not an open STAGE')
+        return self._req(snapshot, body)
+
+    def seal(self, stage):
+        snapshot = self.snapshots.get(stage)
+        if not snapshot or snapshot['status'] != 'STAGE':
+            raise RuntimeError('snapshot ' + str(stage) + ' is not an open STAGE')
+        snapshot['status'] = 'COMMITTED'
+        return stage
+
+    def committed(self):
+        return [sid for sid, s in sorted(self.snapshots.items()) if s['status'] == 'COMMITTED']
+
+
+def store_in_stage(rg, requirements):
+    return fn.store_in_one_stage(requirements, rg.first, rg.open_stage, rg.write, rg.seal)
+
+
+def test_a_whole_batch_is_committed_as_two_snapshots_not_one_per_requirement():
+    rg = InMemoryRgWithStages()
+    requirements = [req(n) for n in range(1, 482)]
+
+    ids, genesis, sealed = store_in_stage(rg, requirements)
+
+    assert ids == ['TMPAAAAAAAA-' + str(n) for n in range(1, 482)]
+    assert rg.committed() == [genesis, sealed], 'the genesis and the sealed STAGE - nothing else'
+    assert rg.snapshots[sealed]['parent'] == genesis
+    assert rg.snapshots[genesis]['contents'] == [req(1)['content']]
+    assert rg.snapshots[sealed]['contents'] == [req(n)['content'] for n in range(2, 482)]
+
+
+def test_a_single_requirement_opens_no_stage():
+    rg = InMemoryRgWithStages()
+
+    ids, genesis, sealed = store_in_stage(rg, [req(1)])
+
+    assert (ids, sealed) == (['TMPAAAAAAAA-1'], None)
+    assert rg.committed() == [genesis]
+
+
+def test_nothing_to_store_is_refused():
+    with pytest.raises(ValueError, match='nothing to store'):
+        store_in_stage(InMemoryRgWithStages(), [])
+
+
+def test_a_refused_write_leaves_the_stage_open_and_says_what_is_not_committed():
+    rg = InMemoryRgWithStages()
+    requirements = [req(1), req(2), dict(req(3), content=' '), req(4)]
+
+    with pytest.raises(RuntimeError) as e:
+        store_in_stage(rg, requirements)
+
+    message = str(e.value)
+    assert message.startswith('RG refused the requirement: content is empty - committed: TMPAAAAAAAA-1 (snapshot 100)')
+    assert 'STAGE 101, which is still open and NOT committed: TMPAAAAAAAA-2' in message
+    assert rg.committed() == [100]
+    assert rg.snapshots[101]['status'] == 'STAGE'
+
+
+def test_a_failed_seal_says_the_stage_was_not_sealed():
+    rg = InMemoryRgWithStages()
+
+    def refusing_seal(stage):
+        raise RuntimeError('mhdg_rg_seal_snapshot failed: 689.030 refused')
+
+    with pytest.raises(RuntimeError) as e:
+        fn.store_in_one_stage([req(1), req(2), req(3)], rg.first, rg.open_stage, rg.write, refusing_seal)
+
+    assert str(e.value) == ('mhdg_rg_seal_snapshot failed: 689.030 refused - committed: TMPAAAAAAAA-1 (snapshot 100); '
+                            '2 requirement(s) are in STAGE 101, which was NOT sealed')
+
+
+def test_a_stage_write_answers_the_requirement_id_with_a_null_snapshot():
+    assert fn.written_into_stage(200, '{"documentId":7,"message":null,"reqId":"TMP-2","snapshotId":null}') == 'TMP-2'
+
+
+@pytest.mark.parametrize('status, text, phrase', [
+    (200, '{"documentId":null,"message":"04.876.020 ERROR: not a STAGE","reqId":"","snapshotId":null}',
+     'no requirement id: .*04.876.020'),
+    (200, '{"errorMessages":["610.020 refused"],"reqId":"TMP-2"}', 'RG refused the requirement: 610.020 refused'),
+    (200, 'not json', 'not JSON'),
+    (401, '', 'rejected the credential'),
+    (403, '', 'needs the role ADMIN'),
+    (500, 'boom', 'RG answered HTTP 500: boom'),
+])
+def test_a_stage_write_refuses(status, text, phrase):
+    with pytest.raises(RuntimeError, match=phrase):
+        fn.written_into_stage(status, text)
+
+
+def test_the_seam_stores_a_collected_batch_in_one_stage_with_every_rationale_naming_its_file(batch):
+    collected = collection(answer(batch[2], req(5)), answer(batch[0], req(1), req(2)), answer(batch[1], req(3)))
+    rg = InMemoryRgWithStages()
+
+    pairs = fn.plan('\n'.join(batch), fn.parse_answers(collected))
+    ids, genesis, sealed = store_in_stage(rg, fn.requirements_to_store(pairs))
+
+    assert rg.committed() == [genesis, sealed]
+    assert rg.snapshots[genesis]['rationales'] == ['The file says so.\n\nsource: ' + batch[0]]
+    assert rg.snapshots[sealed]['rationales'] == [
+        'The file says so.\n\nsource: ' + batch[0], 'The file says so.\n\nsource: ' + batch[1],
+        'The file says so.\n\nsource: ' + batch[2]]
+    assert fn.sources_text(ids, pairs).split('\n') == [
+        'TMPAAAAAAAA-1\t' + batch[0], 'TMPAAAAAAAA-2\t' + batch[0], 'TMPAAAAAAAA-3\t' + batch[1],
+        'TMPAAAAAAAA-4\t' + batch[2]]
+
+
+# ---------------------------------------------------------------------------------------------------
 # the seam: check -> mh.aggregate -> this Function -> the chain
 
 def test_the_batch_is_stored_as_one_chain_in_the_batchs_order_whatever_order_the_answers_arrive_in(batch):

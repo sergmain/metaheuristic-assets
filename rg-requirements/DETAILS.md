@@ -99,7 +99,7 @@ Declaration order is execution order; everything after `split` waits for all of 
 | 4.2 | `cc` | `mh.asset.call-cc_1.1` | CC's answer; model and effort from the optional `model`/`effort` inputs (DAHF 0.5); `tries 2`; cached - `cache on, cacheMeta`; a CC session limit is identified by the execution gate (7.7) |
 | 4.3 | `check` | `mh.asset.rg-req-check_1.0` | `reqAnswer` - the answer checked as the store checks it, written as one line of ASCII JSON `{sourcePath, requirements}` |
 | 5 | `gather` | internal `mh.aggregate`, `text` | `reqAnswers` - every branch's `reqAnswer`, collected by name across the ExecContext |
-| 6 | `store` | `mh.asset.rg-req-store-batch_1.0` | the requirements in the project, as one chain; `reqIds`, `reqSources` |
+| 6 | `store` | `mh.asset.rg-req-store-batch_1.0` | the requirements in the project as TWO committed snapshots - the genesis (#1) and one sealed STAGE with all the rest (7.7); every rationale ends with `source: <file>`; `reqIds`, `reqSources` |
 | 7 | `dropRecord` | internal `mh.meta-storage`, `delete` | **disabled in 1.2** (commented out, 7.7) - the `batchKey` record would be removed from the table `synthetic` names |
 
 **Why the store is not in the branches.** `requirements/manual` forks a new STAGE from whichever COMMITTED snapshot
@@ -155,6 +155,8 @@ Launch with `mh_create_exec_context_with_variables`.
 - A failure inside the store's chain is not resumable by a reset: the genesis is spent, and
   `requirements/manual/first` refuses a project that already owns a snapshot. The record is still in the queue, so
   a new run of the same batch writes a new project.
+- A failure after the genesis leaves the STAGE open and uncommitted: the project's committed state is the genesis
+  (requirement #1) alone, and the store's failure names the STAGE and the ids written into it.
 
 ### 7.7 Corrections
 
@@ -186,3 +188,13 @@ Launch with `mh_create_exec_context_with_variables`.
 - **2026-09-19, 1.1 -> 1.2.** `dropRecord` is commented out: for now the batch record stays in the meta table after
   a run, so the same batch can be run again (1.0's ExecContext #26 finished without storing, leaving `batch-0004`
   in place). The graph ends at `store`. To consume the queue again, restore the process and bump the uid.
+- **2026-09-19, store in one STAGE.** `mh.asset.rg-req-store-batch_1.0` no longer commits one snapshot per requirement:
+  every such commit cloned the parent's ExecContext, so ExecContext #27 managed ~250 commits in 19 minutes, each
+  slower than the last. Now #1 goes through `requirements/manual/first` (the genesis), ONE STAGE is opened from that
+  snapshot, every other requirement is written into it over the same REST endpoint (a STAGE write commits nothing and
+  answers a null `snapshotId`), and the STAGE is sealed once: two committed snapshots per batch. Opening and sealing
+  exist only as RG MCP tools (`mhdg_rg_open_stage`, `mhdg_rg_seal_snapshot`), called through the payload's
+  `mh_rg_mcp_client` over Streamable HTTP at `/rest/v1/legal/mcp`, with the same `RG_API_AUTH` Basic credential.
+  Every stored rationale now ends with an empty line and `source: <the file>`, so the provenance travels with the
+  requirement instead of living only in the run's `reqSources` output. Payload-only change: same Function code, same
+  SourceCode (1.2); a new ExecContext picks it up by resolving `HEAD`.
