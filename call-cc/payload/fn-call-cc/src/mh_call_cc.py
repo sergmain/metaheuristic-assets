@@ -234,6 +234,26 @@ def tail_lines(text, max_lines=MAX_OUTPUT_LINES):
 
 
 # ---------------------------------------------------------------------------------------------------
+# THE CONSOLE
+
+def utf8_console(stream):
+    """stream, re-encoded as UTF-8 so that writing to it can no longer fail - or left alone when it cannot be.
+
+    On a Windows Processor this Function's stdout is a pipe, and Python encodes a stdout that is not a
+    console with the ANSI code page - cp1252 - and strict errors. CC's --debug console is not cp1252: the
+    first character outside it (U+2192 RIGHTWARDS ARROW, observed) raised UnicodeEncodeError out of the
+    print of that console. That print runs on EVERY call and before the result is collected, so a run whose
+    answer was already stored in cc-result.out failed its Task. UTF-8 encodes every character, and
+    backslashreplace covers the one thing it cannot - a lone surrogate. main() hands stdout and stderr to
+    this before anything is printed.
+    """
+    reconfigure = getattr(stream, 'reconfigure', None)
+    if reconfigure is not None:
+        reconfigure(encoding='utf-8', errors='backslashreplace')
+    return stream
+
+
+# ---------------------------------------------------------------------------------------------------
 # THE BOUNDARY
 
 def read_text(path):
@@ -247,6 +267,10 @@ def write_text(path, content):
 
 
 def main(argv):
+    # FIRST, before anything is printed: on a Processor stdout and stderr are pipes - see utf8_console
+    utf8_console(sys.stdout)
+    utf8_console(sys.stderr)
+
     # imported here rather than at module scope: the core above must stay importable by a test that
     # has no PyYAML installed, because nothing in the core needs it
     import yaml

@@ -7,8 +7,12 @@
 #
 # Run:  pytest call-cc/tests
 
+import io
 import json
 
+import pytest
+
+import mh_call_cc
 from mh_call_cc import (meta_value, meta_keys, require_meta, variable_name, find_variable,
                         input_path, output_path, resolve_env, timeout_sec, mcp_config, cc_command,
                         tail_lines, DEFAULT_TIMEOUT_SEC)
@@ -288,6 +292,50 @@ def test_tail_lines_rejects_a_limit_below_one():
         assert False, 'keeping zero lines is not a truncation, it is a deletion'
     except ValueError:
         pass
+
+
+# ----------------------------------------------------------------- the console, on a Windows Processor
+
+# One line of a real CC --debug console, carrying the character that failed a Task: U+2192 is not in cp1252.
+CONSOLE = '[DEBUG] MCP server "mhcc": Connection established \u2192 1 tool'
+
+
+def processor_stdout():
+    """(buffer, stdout) - a stdout configured the way a Windows Processor's pipe is: Python encodes a stdout that
+    is not a console with the ANSI code page, cp1252, and strict errors. A real stream, not a stand-in: what is
+    written lands in a buffer the test reads. newline='\\n' only so the expected bytes do not depend on the OS."""
+    buffer = io.BytesIO()
+    return buffer, io.TextIOWrapper(buffer, encoding='cp1252', errors='strict', newline='\n')
+
+
+def test_the_cc_console_is_printed_whole_to_a_processor_stdout():
+    buffer, stdout = processor_stdout()
+    # main() hands its stdout to utf8_console first. Written as a characterization test before utf8_console
+    # existed: the fallback is exactly what main() did then - nothing
+    getattr(mh_call_cc, 'utf8_console', lambda stream: stream)(stdout)
+
+    print('--- CC console ---\n' + tail_lines(CONSOLE), file=stdout)
+    stdout.flush()
+
+    assert buffer.getvalue() == ('--- CC console ---\n' + CONSOLE + '\n').encode('utf-8')
+
+
+def test_utf8_console_never_fails_on_the_one_thing_utf8_cannot_encode():
+    buffer, stdout = processor_stdout()
+    mh_call_cc.utf8_console(stdout)
+
+    print('lone \ud800 surrogate', file=stdout)
+    stdout.flush()
+
+    assert buffer.getvalue() == b'lone \\ud800 surrogate\n'
+
+
+def test_utf8_console_leaves_a_stream_it_cannot_reconfigure_alone():
+    stream = io.StringIO()
+
+    assert mh_call_cc.utf8_console(stream) is stream
+    print(CONSOLE, file=stream)
+    assert stream.getvalue() == CONSOLE + '\n'
 
 
 # ----------------------------------------------------------------- store once, and only once

@@ -4,7 +4,7 @@ SourceCode `mh-rg-requirements-from-file-1.1` · Functions `mh.asset.rg-req-prom
 · payload `rg-requirements/payload/fn-rg-requirements` · also uses `mh.asset.rg-temp-project_1.1`,
 `mh.asset.call-cc` and the internal `mh.meta-storage`
 
-SourceCode `mh-rg-requirements-from-batch-1.0` (section 7) - Functions `mh.asset.rg-batch-paths_1.0`,
+SourceCode `mh-rg-requirements-from-batch-1.1` (section 7) - Functions `mh.asset.rg-batch-paths_1.0`,
 `mh.asset.rg-req-path-prompt_1.0`, `mh.asset.rg-req-check_1.0`, `mh.asset.rg-req-store-batch_1.0` - the same payload -
 also uses the internal `mh.batch-line-splitter` and `mh.aggregate`
 
@@ -77,7 +77,7 @@ and `mh.asset.rg-req-store_1.0` and handed to each over the Processor's loopback
 
 ---
 
-## 7. mh-rg-requirements-from-batch-1.0 - every file of a batch
+## 7. mh-rg-requirements-from-batch-1.1 - every file of a batch
 
 ### 7.1 Purpose
 
@@ -96,7 +96,7 @@ Declaration order is execution order; everything after `split` waits for all of 
 | 3 | `paths` | `mh.asset.rg-batch-paths_1.0` | `batchPaths` - the record's paths, one per line; refuses a record that is missing or not unique, and a relative or repeated path |
 | 4 | `split` | internal `mh.batch-line-splitter` | one branch per path, the path in `sourcePath` |
 | 4.1 | `prompt` | `mh.asset.rg-req-path-prompt_1.0` | the file (up to 300000 bytes) and the prompt - the same prompt `mh.asset.rg-req-prompt_1.0` builds |
-| 4.2 | `cc` | `mh.asset.call-cc` | CC's answer; `tries 2` |
+| 4.2 | `cc` | `mh.asset.call-cc_1.1` | CC's answer; `tries 2`; cached - `cache on, cacheMeta`; a CC session limit is identified by the execution gate (7.7) |
 | 4.3 | `check` | `mh.asset.rg-req-check_1.0` | `reqAnswer` - the answer checked as the store checks it, written as one line of ASCII JSON `{sourcePath, requirements}` |
 | 5 | `gather` | internal `mh.aggregate`, `text` | `reqAnswers` - every branch's `reqAnswer`, collected by name across the ExecContext |
 | 6 | `store` | `mh.asset.rg-req-store-batch_1.0` | the requirements in the project, as one chain; `reqIds`, `reqSources` |
@@ -152,3 +152,21 @@ Launch with `mh_create_exec_context_with_variables`.
 - A failure inside the store's chain is not resumable by a reset: the genesis is spent, and
   `requirements/manual/first` refuses a project that already owns a snapshot. The record is still in the queue, so
   a new run of the same batch writes a new project.
+
+### 7.7 Corrections
+
+- **2026-09-18, 1.0 -> 1.1.** `cc` is cached: `cache on, cacheMeta`. MH keys an entry on the Function code, the
+  SHA-256 and length of every input - here the prompt, which carries the description, the path and the whole file -
+  and, with `cacheMeta`, on every meta of the process; the Function's git revision is not part of the key
+  (`CacheUtils.getKey`). A re-run of a batch therefore pays CC only for files whose prompt changed or whose answer
+  was never stored. An entry is written only when a Task of a cached process finishes OK
+  (`TaskFinishingTxService.finishAsOk`), so a 1.0 run left nothing to reuse, and a failed `cc` Task leaves none.
+- With the cache, a reset of `cc` answers from it (`CHECK_CACHE`, `ExecContextTaskResettingService`): an answer the
+  `check` step refused comes back unchanged on a plain reset. Drop the entry first with the Task's reset-cache
+  (`POST /exec-context/task-reset-cache`). A `cc` Task that failed left no entry, so a plain reset asks CC again.
+- **2026-09-18, 1.0 -> 1.1.** `cc` runs `mh.asset.call-cc_1.1`: the same payload, plus an `analyzers` rule matching
+  CC's session-limit message (`hit your ... limit`). On a hit the execution gate withholds call-cc for 30 minutes
+  (scope `function`) and the Task's retry is free, so a spent CC session no longer uses up a branch's tries - in 1.0
+  it failed the branch (Task #664, ExecContext #26). A new code rather than an edit of `mh.asset.call-cc`: the
+  Dispatcher skips a Function code it already has without reading its descriptor again (`FunctionService`,
+  `295.240`). Import the `call-cc` bundle before this one.
