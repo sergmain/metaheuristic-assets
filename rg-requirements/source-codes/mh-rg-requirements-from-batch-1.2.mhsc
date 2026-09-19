@@ -46,8 +46,10 @@
 // 1.1: cc runs mh.asset.call-cc_1.1 - the same payload, plus the analyzer that lets the execution gate identify a CC
 // session limit: call-cc is withheld for a while and the Task retries for free, instead of spending its tries.
 // Import the call-cc bundle before this one, so the code is registered when this graph is validated.
+// 1.2: dropRecord is COMMENTED OUT - for now the batch record stays in the meta table after the run, so the same
+// batch can be run again. The graph ends at store. Restore the process (and bump the uid) to consume the queue again.
 
-source "mh-rg-requirements-from-batch-1.1" {
+source "mh-rg-requirements-from-batch-1.2" {
 
     variables {
         <- rgBaseUrl
@@ -180,13 +182,14 @@ source "mh-rg-requirements-from-batch-1.1" {
         timeout 14400
     }
 
-    dropRecord := internal mh.meta-storage {
-        name "Take the processed batch record off the queue"
-        meta action = "delete",
-             type = "metaTable",
-             keys = "batchKey",
-             synthetic = "synthetic"
-        <- metaTable, batchKey, synthetic
-        timeout 60
-    }
+    // 1.2: disabled - the batch record is left in the table for now (see the header)
+    // dropRecord := internal mh.meta-storage {
+    //     name "Take the processed batch record off the queue"
+    //     meta action = "delete",
+    //          type = "metaTable",
+    //          keys = "batchKey",
+    //          synthetic = "synthetic"
+    //     <- metaTable, batchKey, synthetic
+    //     timeout 60
+    // }
 }
