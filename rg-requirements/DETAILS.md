@@ -4,6 +4,10 @@ SourceCode `mh-rg-requirements-from-file-1.1` · Functions `mh.asset.rg-req-prom
 · payload `rg-requirements/payload/fn-rg-requirements` · also uses `mh.asset.rg-temp-project_1.1`,
 `mh.asset.call-cc` and the internal `mh.meta-storage`
 
+SourceCode `mh-rg-requirements-from-batch-1.0` (section 7) - Functions `mh.asset.rg-batch-paths_1.0`,
+`mh.asset.rg-req-path-prompt_1.0`, `mh.asset.rg-req-check_1.0`, `mh.asset.rg-req-store-batch_1.0` - the same payload -
+also uses the internal `mh.batch-line-splitter` and `mh.aggregate`
+
 ## 1. Purpose
 
 Turn one source file into requirements held in RG. A fresh RG project is created for the purpose; the file is
@@ -70,3 +74,81 @@ and `mh.asset.rg-req-store_1.0` and handed to each over the Processor's loopback
   from an error message in `RgFirstManualRequirementService`; the code that runs the genesis
   (`RgExecTxService`, `827.145`) already runs a MANUAL genesis at depth 1 whatever the project holds. 1.1 sends
   no depth.
+
+---
+
+## 7. mh-rg-requirements-from-batch-1.0 - every file of a batch
+
+### 7.1 Purpose
+
+Turn every file of one batch record into requirements held in one fresh RG project, then take the record off the
+queue. CC works on the files in parallel, one branch per file; the requirements are stored as one chain of
+snapshots; the record is deleted only after every file's requirements are stored.
+
+### 7.2 The graph
+
+Declaration order is execution order; everything after `split` waits for all of its branches.
+
+| # | process | Function | contributes |
+|---|---|---|---|
+| 1 | `mkproject` | `mh.asset.rg-temp-project_1.1` | the project, as in section 2 |
+| 2 | `select` | internal `mh.meta-storage`, `select` | `batchRecords` - the `batchKey` record of `metaTable` |
+| 3 | `paths` | `mh.asset.rg-batch-paths_1.0` | `batchPaths` - the record's paths, one per line; refuses a record that is missing or not unique, and a relative or repeated path |
+| 4 | `split` | internal `mh.batch-line-splitter` | one branch per path, the path in `sourcePath` |
+| 4.1 | `prompt` | `mh.asset.rg-req-path-prompt_1.0` | the file (up to 300000 bytes) and the prompt - the same prompt `mh.asset.rg-req-prompt_1.0` builds |
+| 4.2 | `cc` | `mh.asset.call-cc` | CC's answer; `tries 2` |
+| 4.3 | `check` | `mh.asset.rg-req-check_1.0` | `reqAnswer` - the answer checked as the store checks it, written as one line of ASCII JSON `{sourcePath, requirements}` |
+| 5 | `gather` | internal `mh.aggregate`, `text` | `reqAnswers` - every branch's `reqAnswer`, collected by name across the ExecContext |
+| 6 | `store` | `mh.asset.rg-req-store-batch_1.0` | the requirements in the project, as one chain; `reqIds`, `reqSources` |
+| 7 | `dropRecord` | internal `mh.meta-storage`, `delete` | the `batchKey` record removed from the table `synthetic` names |
+
+**Why the store is not in the branches.** `requirements/manual` forks a new STAGE from whichever COMMITTED snapshot
+it is given, and `RgSnapshotLifecycleService.openStageFromParent` checks only that the parent is COMMITTED - never
+whether it already has children. Branches storing in parallel would fork the project into one leaf per file, each
+holding a different subset; and `requirements/manual/first` is one-shot, so only one branch could have started the
+chain at all.
+
+**Every file or nothing.** Before RG is called, the store requires the answers to cover the batch exactly: one per
+path, none outside it. `mh.aggregate` collects only the variables that exist, so a branch that never wrote its
+answer would otherwise simply be missing. A failed branch therefore holds the whole batch back: nothing is stored
+and the record stays in the queue. Resetting the failed Task re-runs that file alone; the other files' answers are
+kept.
+
+### 7.3 Run-data contract
+
+Launch with `mh_create_exec_context_with_variables`.
+
+| variable | direction | meaning | example |
+|---|---|---|---|
+| `rgBaseUrl`, `locale`, `projectDescription`, `rgPipelineUid`, `metaTable`, `production` | in | as in section 3 | |
+| `batchKey` | in | the record to process, then delete | `batch-0004` |
+| `synthetic` | in | the table the record is read from AND deleted from: exactly `true` (synthetic) or `false` (production) - the delete refuses any other value | `true` |
+| `projectCode` | out | the project's code | `TMP...` |
+| `reqIds` | out | the stored requirements' ids, one per line, in storing order | |
+| `reqSources` | out | one line per stored requirement: its id, a TAB, the file it came from | |
+
+**Credential:** the vault entry `RG_API_AUTH`, declared by `mh.asset.rg-temp-project_1.1` and
+`mh.asset.rg-req-store-batch_1.0`.
+
+### 7.4 Durable side effects
+
+- One RG project per run, development runs included: its description, the pipeline, `isReady`.
+- Its genesis run (an RG ExecContext) and one committed snapshot per stored requirement, in one linear chain.
+- The `batchKey` record is DELETED from the table `synthetic` names - after the store has succeeded, and only then.
+
+### 7.5 Fitness criteria
+
+| id | criterion | hardness | type |
+|---|---|---|---|
+| F1 | the reported `projectCode` names a project RG lists, with the given description | hard | D |
+| F2 | every id in `reqIds` is a requirement of that project, as many as the answers held | hard | D |
+| F3 | the project's snapshots form one linear chain - no fork | hard | D |
+| F4 | every path of the record appears in `reqSources`, and no other path does | hard | D |
+| F5 | the `batchKey` record is gone from the table, and every other record of it is still there | hard | D |
+| F6 | a stored requirement is about its source file - its content can be traced to the document | soft | S |
+
+### 7.6 Limits
+
+- A failure inside the store's chain is not resumable by a reset: the genesis is spent, and
+  `requirements/manual/first` refuses a project that already owns a snapshot. The record is still in the queue, so
+  a new run of the same batch writes a new project.
