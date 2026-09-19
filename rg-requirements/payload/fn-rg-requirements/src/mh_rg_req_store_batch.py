@@ -28,12 +28,25 @@
 # never wrote its answer is simply absent from the collection - without this check the batch would be stored
 # short, its record deleted afterwards, and nothing would say that a file's requirements never arrived.
 # Requirements are stored in the batch's order, each file's in the order CC gave them.
+#
+# ONE STAGE, NOT ONE SNAPSHOT PER REQUIREMENT (supersedes the chain described above). The chain committed a snapshot
+# for every requirement, and every such commit cloned the whole ExecContext of its parent: hundreds of commits, each
+# slower than the last. Now requirement #1 still goes through requirements/manual/first - the project's one-shot
+# genesis, which commits the first snapshot - and then ONE STAGE is opened from that snapshot, every other
+# requirement is written into it (a write into an open STAGE commits nothing: RG answers a null snapshotId), and
+# the STAGE is sealed once. Two committed snapshots for the whole batch. Opening and sealing a STAGE exist only as
+# RG MCP tools (mhdg_rg_open_stage, mhdg_rg_seal_snapshot), reached through mh_rg_mcp_client; the writes stay on
+# the REST endpoint the chain already used, which takes an open STAGE's id as its snapshotId.
+#
+# EVERY RATIONALE NAMES ITS FILE. The stored rationale is CC's, followed by an empty line and 'source: <the file>'.
 
 import json
 import sys
 
 from mh_rg_req_store import (FIRST_TIMEOUT_SEC, NEXT_TIMEOUT_SEC, basic_authorization, created, excerpt,
                              first_url, next_url, parse_requirements, post_json, rg_base, store_all)
+from mh_rg_req_store import first_body, next_body
+from mh_rg_mcp_client import call_tool
 from mh_secret_client import exchange, extract_secret_fields, zero
 from mh_task_io import NULL_VALUE, load_params, output_role, read_role, write_text
 
@@ -41,6 +54,12 @@ FUNCTION_CODE = 'mh.asset.rg-req-store-batch_1.0'
 
 # How many paths a failure message names before it only counts the rest.
 LISTED = 10
+
+# RG's MCP endpoint, beside its REST API on the same base url.
+MCP_PATH = '/rest/v1/legal/mcp'
+# Opening clones the genesis snapshot's ExecContext; sealing commits every written requirement at once.
+OPEN_STAGE_TIMEOUT_SEC = 300
+SEAL_TIMEOUT_SEC = 1800
 
 
 def listing(paths):
@@ -108,6 +127,77 @@ def sources_text(ids, pairs):
     return '\n'.join(req_id + '\t' + path for req_id, (path, _) in zip(ids, pairs))
 
 
+# What every stored rationale ends with: an empty line, then the file the requirement was derived from. CC's
+# rationale says WHY; without this line the stored requirement no longer says WHERE it came from - req-sources is an
+# output of one run, and it does not travel with the requirement into RG.
+SOURCE_LINE = '\n\nsource: '
+
+
+def requirements_to_store(pairs):
+    """What is stored, in order: each requirement - a copy, the plan is not touched - with its rationale followed
+    by an empty line and 'source: <the file>'."""
+    return [dict(requirement, rationale=requirement['rationale'] + SOURCE_LINE + path) for path, requirement in pairs]
+
+
+def written_into_stage(status, text):
+    """RG's answer to one write into an OPEN STAGE: the requirement id. Such a write commits nothing, so RG answers a
+    null snapshotId - the expected shape here, which created() rightly refuses for a committed write."""
+    if status == 401:
+        raise RuntimeError('RG rejected the credential (HTTP 401) - RG_API_AUTH must be the plain login:password '
+                           'of an RG account')
+    if status == 403:
+        raise RuntimeError('RG refused the request (HTTP 403) - the account in RG_API_AUTH needs the role ADMIN, '
+                           'LEGAL or LEGAL_ADMIN')
+    if status != 200:
+        raise RuntimeError('RG answered HTTP ' + str(status) + ': ' + excerpt(text))
+    try:
+        answer = json.loads(text)
+    except ValueError:
+        raise RuntimeError('RG answered HTTP 200 with a body that is not JSON: ' + excerpt(text)) from None
+    if not isinstance(answer, dict):
+        raise RuntimeError('RG answered with JSON that is not an object: ' + excerpt(text))
+    errors = [str(m) for m in (answer.get('errorMessages') or [])]
+    if errors:
+        raise RuntimeError('RG refused the requirement: ' + '; '.join(errors))
+    req_id = answer.get('reqId')
+    if not isinstance(req_id, str) or not req_id.strip():
+        raise RuntimeError('RG answered with no requirement id: ' + excerpt(text))
+    return req_id.strip()
+
+
+def store_in_one_stage(requirements, post_first, open_stage, post_into_stage, seal):
+    """Every requirement, in TWO committed snapshots instead of one per requirement.
+
+      post_first(body)          -> (reqId, committed snapshotId)   requirements/manual/first: the genesis
+      open_stage(parent)        -> STAGE snapshotId                 one STAGE, forked from the genesis snapshot
+      post_into_stage(body)     -> reqId                            a write into that STAGE; commits nothing
+      seal(stage)               -> committed snapshotId             the whole batch committed at once
+
+    Returns (the ids in storing order, the genesis snapshotId, the sealed snapshotId - None when there was only #1,
+    since then no STAGE is opened). A failure after the genesis says what is committed and what is not."""
+    if not requirements:
+        raise ValueError('nothing to store')
+    first_id, genesis = post_first(first_body(requirements[0]))
+    ids = [first_id]
+    if len(requirements) == 1:
+        return ids, genesis, None
+    stage = open_stage(genesis)
+    for requirement in requirements[1:]:
+        try:
+            ids.append(post_into_stage(next_body(requirement, stage)))
+        except RuntimeError as e:
+            raise RuntimeError(str(e) + ' - committed: ' + first_id + ' (snapshot ' + str(genesis) + '); written into '
+                               'STAGE ' + str(stage) + ', which is still open and NOT committed: '
+                               + (', '.join(ids[1:]) or 'none')) from None
+    try:
+        sealed = seal(stage)
+    except RuntimeError as e:
+        raise RuntimeError(str(e) + ' - committed: ' + first_id + ' (snapshot ' + str(genesis) + '); '
+                           + str(len(ids) - 1) + ' requirement(s) are in STAGE ' + str(stage)
+                           + ', which was NOT sealed') from None
+    return ids, genesis, sealed
+
+
 def run(task, credential):
     base = rg_base(read_role(task, 'rg-base-url'))
     code = read_role(task, 'project-code').strip()
@@ -130,15 +220,43 @@ def run(task, credential):
         print('POST requirements/manual/first -> HTTP ' + str(status))
         return created(status, text)
 
-    def post_next(body):
-        status, text = post_json(next_url(base, code), body, authorization, NEXT_TIMEOUT_SEC)
-        print('POST requirements/manual onto snapshot ' + str(body['snapshotId']) + ' -> HTTP ' + str(status))
-        return created(status, text)
+    mcp_url = base + MCP_PATH
 
-    ids = store_all([requirement for _, requirement in pairs], post_first, post_next)
+    def open_stage(parent):
+        result = call_tool(mcp_url, authorization, 'mhdg_rg_open_stage',
+                           {'infoBank': code, 'parentSnapshotId': parent}, OPEN_STAGE_TIMEOUT_SEC)
+        stage = result.get('stageSnapshotId')
+        if not isinstance(stage, int):
+            raise RuntimeError('mhdg_rg_open_stage answered no stageSnapshotId: ' + excerpt(json.dumps(result)))
+        print('MCP mhdg_rg_open_stage from snapshot ' + str(parent) + ' -> STAGE ' + str(stage))
+        return stage
+
+    written = [0]
+
+    def post_into_stage(body):
+        status, text = post_json(next_url(base, code), body, authorization, NEXT_TIMEOUT_SEC)
+        req_id = written_into_stage(status, text)
+        written[0] += 1
+        if written[0] % 50 == 0:
+            print('written into STAGE ' + str(body['snapshotId']) + ': ' + str(written[0]))
+        return req_id
+
+    def seal(stage):
+        result = call_tool(mcp_url, authorization, 'mhdg_rg_seal_snapshot', {'snapshotId': stage}, SEAL_TIMEOUT_SEC)
+        sealed = result.get('snapshotId')
+        if sealed != stage:
+            raise RuntimeError('mhdg_rg_seal_snapshot answered for snapshot ' + str(sealed) + ', not STAGE '
+                               + str(stage) + ': ' + excerpt(json.dumps(result)))
+        print('MCP mhdg_rg_seal_snapshot ' + str(stage) + ' -> ' + str(result.get('status'))
+              + ', contentHash ' + str(result.get('contentHash')))
+        return sealed
+
+    ids, genesis, sealed = store_in_one_stage(requirements_to_store(pairs), post_first, open_stage,
+                                              post_into_stage, seal)
     write_text(ids_target, '\n'.join(ids))
     write_text(sources_target, sources_text(ids, pairs))
-    print('stored ' + str(len(ids)) + ' requirement(s): ' + ids[0] + ' .. ' + ids[-1])
+    print('stored ' + str(len(ids)) + ' requirement(s): ' + ids[0] + ' .. ' + ids[-1] + ' - genesis snapshot '
+          + str(genesis) + (', STAGE sealed as snapshot ' + str(sealed) if sealed is not None else ''))
     return 0
 
 
