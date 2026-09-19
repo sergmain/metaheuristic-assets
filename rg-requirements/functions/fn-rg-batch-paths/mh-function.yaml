@@ -1,0 +1,21 @@
+version: 3
+function:
+  code: mh.asset.rg-batch-paths_1.0
+  type: mh.asset.rg-batch-paths
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
+  # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
+  # Every Function of this capability shares the payload directory; each names its own script.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: rg-requirements/payload/fn-rg-requirements
+  targets:
+    mh-default:
+      src: src
+      file: mh_rg_batch_paths.py
+  metas:
+    # 2: every variable is named by a process meta, and task.metas does not exist before params version 2
+    - mh.task-params-version: 2
