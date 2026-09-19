@@ -300,6 +300,23 @@ def read_text(path):
         return f.read()
 
 
+def cc_version(claude_code_exec):
+    """`claude --version`, one line, or a short note why it could not be read.
+
+    Printed only when the CC call has ALREADY failed, so it costs a subprocess only on the failure path. Its job
+    is diagnosis: the flags this Function passes are version-gated - `--effort` exists from a certain CLI on - so a
+    host whose `claude` is too old rejects the argument and the call fails with nothing in the console naming the
+    CLI as the cause. The version turns that into a one-glance answer. Never raises: a diagnostic must not become a
+    second failure on top of the one it explains.
+    """
+    try:
+        completed = subprocess.run([claude_code_exec, '--version'],
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+        return completed.stdout.decode('utf-8', errors='replace').strip() or '(no output)'
+    except (OSError, subprocess.SubprocessError) as e:
+        return '(could not read: ' + str(e) + ')'
+
+
 def write_text(path, content):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -408,6 +425,9 @@ def main(argv):
         print('WARNING: no MCP server log at ' + mcp_log + ' - the server may never have started')
 
     if completed.returncode != 0:
+        # the flags this Function passes are version-gated (--effort in particular); on a failure, name the CLI so
+        # a too-old build is not mistaken for a bad prompt or a spent session
+        print('claude --version: ' + cc_version(claude_code))
         print('FAILED: Claude Code exited with code ' + str(completed.returncode))
         return 1
 
