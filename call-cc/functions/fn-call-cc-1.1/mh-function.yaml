@@ -1,0 +1,45 @@
+version: 3
+function:
+  # 1.1 = mh.asset.call-cc plus the analyzer below. A NEW code rather than an edit of fn-call-cc: the Dispatcher
+  # skips a Function whose code it already has (FunctionService 295.240 "already uploaded") without reading the
+  # descriptor again, so a rule added under the old code would never reach it. fn-call-cc stays as it is for the
+  # SourceCodes that still name mh.asset.call-cc.
+  code: mh.asset.call-cc_1.1
+  type: mh.asset.call-cc
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block, and it
+  # lives beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the
+  # tip at every ExecContext creation and pins the sha into every Task of that run.
+  #
+  # The whole payload directory is copied into {task.home}/asset at launch, so the MCP server
+  # travels with the Function and is always the sibling of the script that launches it.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: call-cc/payload/fn-call-cc
+  targets:
+    mh-default:
+      src: src
+      file: mh_call_cc.py
+  metas:
+    # 2, not 1. Every input this Function reads is named by a process meta, and task.metas does not
+    # exist before params version 2 - a version-1 params file upgrades with an EMPTY metas list, so
+    # the Function would fail on its first required meta with nothing to point at.
+    - mh.task-params-version: 2
+  # What the Dispatcher's execution gate matches against a failed Task's console (FunctionAnalyzerUtils: find(),
+  # any pattern, no implicit flags). The CC account behind the Processor's `claude` CLI running out of its session
+  # is not the Task's fault and resets on its own, so this Function is withheld for a while and the Task's retry is
+  # free: once the block lifts the Task runs again, and if the limit still holds it fails, and blocks, again.
+  analyzers:
+    - name: claude-code session limit
+      regex:
+        # observed (Task #664, ExecContext #26): "You've hit your session limit · resets 8:30pm (America/Los_Angeles)".
+        # The separator after "limit" is left out on purpose - it arrived at the Dispatcher as U+FFFD.
+        - '(?i)\bhit your [a-z0-9 -]*limit\b'
+      timeout: 30min
+      incrementTries: false
+      # every Processor here runs the same CC account; with several Processors on different accounts, 'processor'
+      # would be the precise scope - at the price of withholding every Function on that Processor
+      scope: function
