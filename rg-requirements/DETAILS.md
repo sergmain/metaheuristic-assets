@@ -4,7 +4,7 @@ SourceCode `mh-rg-requirements-from-file-1.1` · Functions `mh.asset.rg-req-prom
 · payload `rg-requirements/payload/fn-rg-requirements` · also uses `mh.asset.rg-temp-project_1.1`,
 `mh.asset.call-cc` and the internal `mh.meta-storage`
 
-SourceCode `mh-rg-requirements-from-batch-1.3` (section 7) - Functions `mh.asset.rg-batch-paths_1.0`,
+SourceCode `mh-rg-requirements-from-batch-1.4` (section 7) - Functions `mh.asset.rg-batch-paths_1.0`,
 `mh.asset.rg-req-path-prompt_1.0`, `mh.asset.rg-req-check_1.0`, `mh.asset.rg-req-store-batch_1.0` - the same payload -
 also uses the internal `mh.batch-line-splitter` and `mh.aggregate`
 
@@ -77,7 +77,7 @@ and `mh.asset.rg-req-store_1.0` and handed to each over the Processor's loopback
 
 ---
 
-## 7. mh-rg-requirements-from-batch-1.3 - every file of a batch
+## 7. mh-rg-requirements-from-batch-1.4 - every file of a batch
 
 ### 7.1 Purpose
 
