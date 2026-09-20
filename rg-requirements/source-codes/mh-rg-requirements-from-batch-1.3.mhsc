@@ -49,7 +49,9 @@
 // 1.2: dropRecord is COMMENTED OUT - for now the batch record stays in the meta table after the run, so the same
 // batch can be run again. The graph ends at store. Restore the process (and bump the uid) to consume the queue again.
 
-source "mh-rg-requirements-from-batch-1.2" {
+// 1.3: paths is cached (cache on) - the same batch record answers the same list of paths from the cache.
+
+source "mh-rg-requirements-from-batch-1.3" {
 
     variables {
         <- rgBaseUrl
@@ -105,6 +107,7 @@ source "mh-rg-requirements-from-batch-1.2" {
         <- batchRecords
         -> batchPaths: ext=".txt"
         timeout 60
+        cache on
     }
 
     split := internal mh.batch-line-splitter {
