@@ -17,7 +17,7 @@ import os
 import sys
 
 from mh_rg_req_prompt import compose_prompt, parse_max_file_bytes, read_capped
-from mh_task_io import NULL_VALUE, load_params, meta_value, output_role, read_role, write_text
+from mh_task_io import load_params, meta_value, output_role, read_role, write_text
 
 FUNCTION_CODE = 'mh.asset.rg-req-path-prompt_1.0'
 
@@ -38,7 +38,7 @@ def the_path(text):
 
 def prompt_for(path, description, max_bytes):
     """(prompt, characters of the file): the file read under the cap and put into the prompt whole."""
-    if not description or not description.strip() or description.strip() == NULL_VALUE:
+    if not description or not description.strip():
         raise ValueError('input description is empty - the prompt has to say what the requirements are for')
     content = read_capped(path, max_bytes)
     return compose_prompt(description.strip(), path, content), len(content)

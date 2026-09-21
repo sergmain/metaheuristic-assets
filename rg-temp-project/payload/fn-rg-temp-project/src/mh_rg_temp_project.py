@@ -23,7 +23,8 @@
 #   rg-base-url    an INPUT  - which RG to create the project in, e.g. http://localhost:64967
 #   locale         an INPUT  - the project's language, validated by RG rather than copied here
 #   production     an INPUT  - 'true' creates the project; every other value is a development run
-#   project-code   an OUTPUT - the code RG answered with, or 'mh.null-value' when nothing was created
+#   project-code   an OUTPUT - the code RG answered with, or NULL when nothing was created: no file is written,
+#                  and MH nullifies the output (the SourceCode declares it nullable)
 #
 # THE CREDENTIAL comes from the vault, never from a variable. mh-function.yaml declares api keyCode
 # RG_API_KEY and the Processor hands its value over the loopback secret channel at launch. The vault
@@ -80,10 +81,6 @@ EXISTS_PHRASE = 'already exists'
 
 CREATED = 'created'
 EXISTS = 'exists'
-
-# The null value of a required variable, by the repo-wide convention: greppable, and never mistakable for
-# a project code.
-NULL_VALUE = 'mh.null-value'
 
 ARTIFACTS_DIR = 'artifacts'
 
@@ -147,7 +144,7 @@ def output_path(working_path, var):
 def is_production(value):
     """Production is the literal 'true' and nothing else.
 
-    'mh.null-value', an empty string, 'True', a typo - every other value is a development run. A project
+    None (a nullified production), an empty string, 'True', a typo - every other value is a development run. A project
     created by mistake stays in RG until someone deletes it, while a development run that should have
     been production costs one re-run; so the expensive outcome is the one that needs a deliberate act.
     """
@@ -283,9 +280,9 @@ def should_create(production, create_in_development):
 
 
 def optional_text(value):
-    """The text of an optional input, or None when it is absent, blank or 'mh.null-value'."""
+    """The text of an optional input, or None when it is absent, blank or nullified."""
     text = (value or '').strip()
-    return None if not text or text == NULL_VALUE else text
+    return None if not text else text
 
 
 def parse_max_depth(value):
@@ -441,11 +438,15 @@ def write_text(path, content):
 
 
 def read_optional_input(metas, work_dir, inputs, role):
-    """The text of the Variable an OPTIONAL role is bound to, or None when the process binds none."""
+    """The text of the Variable an OPTIONAL role is bound to, or None when the process binds none or the Variable is
+    NULLIFIED (MH marks it 'empty' and downloads no file)."""
     name = meta_value(metas, 'variable-for-' + role)
     if name is None or not name.strip():
         return None
-    return read_text(input_path(work_dir, find_variable(inputs, name.strip())))
+    var = find_variable(inputs, name.strip())
+    if var.get('empty'):
+        return None
+    return read_text(input_path(work_dir, var))
 
 
 def run(task, credential):
@@ -454,7 +455,11 @@ def run(task, credential):
     inputs = task.get('inputs')
 
     def read_input(role):
-        return read_text(input_path(work_dir, find_variable(inputs, variable_name(metas, role))))
+        # None for a NULLIFIED input (marked 'empty', no file) - production is declared nullable
+        var = find_variable(inputs, variable_name(metas, role))
+        if var.get('empty'):
+            return None
+        return read_text(input_path(work_dir, var))
 
     base = rg_base(read_input('rg-base-url'))
     url = base + CREATE_PATH
@@ -468,7 +473,7 @@ def run(task, credential):
     # resolved BEFORE RG is called: a missing output declaration is a SourceCode defect, and finding it
     # after the project exists would leave a project whose code nobody was told
     target = output_path(work_dir, find_variable(task.get('outputs'), variable_name(metas, 'project-code')))
-    print('rg: ' + url + ', locale: ' + locale + ', production: ' + repr(production.strip()))
+    print('rg: ' + url + ', locale: ' + locale + ', production: ' + repr(production.strip() if production else None))
 
     if not locale:
         raise ValueError('input locale is empty - RG requires a language for every project')
@@ -478,9 +483,8 @@ def run(task, credential):
     authorization = basic_authorization(credential)
 
     if not should_create(production, create_in_development):
-        write_text(target, NULL_VALUE)
-        print('development run: inputs and credential checked, nothing created in RG, projectCode='
-              + NULL_VALUE)
+        # no file for the output: MH nullifies a nullable output the Function did not write
+        print('development run: inputs and credential checked, nothing created in RG, projectCode is null')
         return 0
 
     exec_context_id = task['execContextId']

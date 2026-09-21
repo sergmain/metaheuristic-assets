@@ -15,7 +15,7 @@ import pytest
 import mh_call_cc
 from mh_call_cc import (meta_value, meta_keys, require_meta, variable_name, find_variable,
                         input_path, output_path, resolve_env, timeout_sec, mcp_config, cc_command,
-                        tail_lines, optional_cli_value, NULL_VALUE, DEFAULT_TIMEOUT_SEC,
+                        tail_lines, optional_cli_value, DEFAULT_TIMEOUT_SEC,
                         cc_settings, mcp_unavailable_line, SETTINGS_FILE, SYSTEM_PROMPT_FILE,
                         MCP_UNAVAILABLE_RULE, MCP_UNAVAILABLE_MARKER, MCP_UNAVAILABLE_PLACEHOLDER)
 from mh_cc_mcp_server import store_once, log
@@ -411,12 +411,11 @@ def test_optional_cli_value_is_none_when_the_meta_is_absent():
     assert optional_cli_value([{'variable-for-prompt': 'p'}], 'model', reader({'modelVar': 'opus'})) is None
 
 
-def test_optional_cli_value_is_none_when_the_variable_is_the_null_sentinel():
-    # an optional global input left unseeded reads back as mh.null-value
+def test_optional_cli_value_is_none_when_the_variable_is_nullified():
+    # a nullified input has no file; the production reader returns None for it
     metas = var_for('effort', 'effortVar')
 
-    assert optional_cli_value(metas, 'effort', reader({'effortVar': NULL_VALUE})) is None
-    assert optional_cli_value(metas, 'effort', reader({'effortVar': '  ' + NULL_VALUE + '\n'})) is None
+    assert optional_cli_value(metas, 'effort', reader({'effortVar': None})) is None
 
 
 def test_optional_cli_value_is_none_when_the_variable_is_blank():
@@ -430,7 +429,7 @@ def test_optional_cli_value_is_none_when_the_named_variable_is_not_bound():
 
 def test_optional_cli_value_feeds_cc_command_so_a_set_input_becomes_a_flag_and_null_omits_it():
     metas = [{'variable-for-model': 'm'}, {'variable-for-effort': 'e'}]
-    store = {'m': 'opus', 'e': NULL_VALUE}
+    store = {'m': 'opus', 'e': None}
 
     model = optional_cli_value(metas, 'model', reader(store))
     effort = optional_cli_value(metas, 'effort', reader(store))

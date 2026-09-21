@@ -6,7 +6,6 @@
 
 import os
 
-NULL_VALUE = 'mh.null-value'
 ARTIFACTS_DIR = 'artifacts'
 
 
@@ -69,9 +68,13 @@ def write_text(path, content):
 
 
 def read_role(task, role):
-    """The text of the INPUT Variable bound to role."""
+    """The text of the INPUT Variable bound to role, or None when that Variable is NULLIFIED: MH marks it 'empty' in
+    the task params and downloads no file for it. A missing file on a Variable NOT marked empty stays an error."""
     metas = task.get('metas') or []
-    return read_text(input_path(task['workingPath'], find_variable(task.get('inputs'), variable_name(metas, role))))
+    var = find_variable(task.get('inputs'), variable_name(metas, role))
+    if var.get('empty'):
+        return None
+    return read_text(input_path(task['workingPath'], var))
 
 
 def output_role(task, role):

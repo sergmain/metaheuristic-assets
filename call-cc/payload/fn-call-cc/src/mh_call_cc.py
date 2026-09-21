@@ -71,11 +71,6 @@ STORE_RESULT_TOOL = 'mh_cc_store_result'
 # stdout, so the tail is what a usage-limit or quota rule gets to match against.
 MAX_OUTPUT_LINES = 2000
 
-# What a nullified Variable reads back as. An optional global input (`<- model?`) left unseeded, or one
-# seeded with this literal, both arrive as this exact text - the encoding MH uses for "no value" across a
-# variable boundary (mh.null-value). For an optional CLI flag it means: leave the flag off.
-NULL_VALUE = 'mh.null-value'
-
 # The settings file for the CC session, passed by FILE NAME with --settings - the same way .mcp.json is passed
 # with --mcp-config. It turns ultracode OFF, explicitly. Ultracode is a Claude Code setting (xhigh effort plus
 # automatic dynamic-workflow orchestration), and a user-level "ultracode": true on the Processor box would
@@ -180,7 +175,7 @@ def optional_cli_value(metas, logical_name, read_variable):
       - the meta is absent            -> the process did not wire this flag at all
       - the named Variable is absent  -> wired but not bound (an optional input never seeded and not materialised)
       - the value is blank
-      - the value is the mh.null-value sentinel  -> an unseeded optional input, read back
+      - the Variable is nullified     -> MH marks it 'empty' and downloads no file; the reader returns None
 
     read_variable(name) -> the Variable's text, or None if it is not bound. Passed in rather than reached for, so
     the resolution is testable without a task dir (production hands it the real reader; a test hands it a dict).
@@ -192,7 +187,7 @@ def optional_cli_value(metas, logical_name, read_variable):
     if var_name is None or not var_name.strip():
         return None
     value = read_variable(var_name.strip())
-    if value is None or not value.strip() or value.strip() == NULL_VALUE:
+    if value is None or not value.strip():
         return None
     return value.strip()
 
@@ -441,10 +436,13 @@ def main(argv):
 
     # model and effort are OPTIONAL ExecContext-level inputs (see optional_cli_value). The reader returns the
     # text of an input variable by name, or None when it is not bound - so an optional input that was never
-    # seeded omits its flag rather than failing the Task.
+    # seeded omits its flag rather than failing the Task. Also None when it is NULLIFIED: MH marks such an input
+    # 'empty' and downloads no file for it.
     def read_input_variable(name):
         for var in params.get('inputs') or []:
             if isinstance(var, dict) and var.get('name') == name:
+                if var.get('empty'):
+                    return None
                 return read_text(input_path(work_dir, var))
         return None
 

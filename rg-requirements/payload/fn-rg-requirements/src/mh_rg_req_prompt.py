@@ -22,7 +22,7 @@ import json
 import os
 import sys
 
-from mh_task_io import NULL_VALUE, load_params, meta_value, output_role, read_role, write_text
+from mh_task_io import load_params, meta_value, output_role, read_role, write_text
 
 FUNCTION_CODE = 'mh.asset.rg-req-prompt_1.0'
 DEFAULT_MAX_FILE_BYTES = 300_000
@@ -111,10 +111,10 @@ def main(argv):
     task = params['task']
     try:
         records = read_role(task, 'records')
-        description = read_role(task, 'description').strip()
+        description = (read_role(task, 'description') or '').strip()
         prompt_target = output_role(task, 'prompt')
         path_target = output_role(task, 'source-path')
-        if not description or description == NULL_VALUE:
+        if not description:
             raise ValueError('input description is empty - the prompt has to say what the requirements are for')
         max_bytes = parse_max_file_bytes(meta_value(task.get('metas') or [], 'max-file-bytes'))
         path = first_path(records)

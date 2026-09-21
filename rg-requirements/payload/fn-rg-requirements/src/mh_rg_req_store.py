@@ -35,7 +35,7 @@ import urllib.parse
 import urllib.request
 
 from mh_secret_client import exchange, extract_secret_fields, zero
-from mh_task_io import NULL_VALUE, load_params, output_role, read_role, write_text
+from mh_task_io import load_params, output_role, read_role, write_text
 
 FUNCTION_CODE = 'mh.asset.rg-req-store_1.0'
 
@@ -214,12 +214,12 @@ def post_json(url, payload, authorization, timeout):
 
 def run(task, credential):
     base = rg_base(read_role(task, 'rg-base-url'))
-    code = read_role(task, 'project-code').strip()
+    code = (read_role(task, 'project-code') or '').strip()
     requirements = parse_requirements(read_role(task, 'cc-result'))
     # resolved BEFORE RG is called: a missing output declaration found after the genesis would leave stored
     # requirements whose ids nobody was told
     target = output_role(task, 'req-ids')
-    if not code or code == NULL_VALUE:
+    if not code:
         raise ValueError('input project-code is empty - there is no project to store into')
     if credential is None:
         raise ValueError('no credential was handed over: mh-function.yaml declares api keyCode RG_API_AUTH, '
