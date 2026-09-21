@@ -15,7 +15,9 @@ import pytest
 import mh_call_cc
 from mh_call_cc import (meta_value, meta_keys, require_meta, variable_name, find_variable,
                         input_path, output_path, resolve_env, timeout_sec, mcp_config, cc_command,
-                        tail_lines, optional_cli_value, NULL_VALUE, DEFAULT_TIMEOUT_SEC)
+                        tail_lines, optional_cli_value, NULL_VALUE, DEFAULT_TIMEOUT_SEC,
+                        cc_settings, mcp_unavailable_line, SETTINGS_FILE, SYSTEM_PROMPT_FILE,
+                        MCP_UNAVAILABLE_RULE, MCP_UNAVAILABLE_MARKER, MCP_UNAVAILABLE_PLACEHOLDER)
 from mh_cc_mcp_server import store_once, log
 
 
@@ -290,6 +292,97 @@ def test_cc_command_never_carries_the_prompt():
 
     for part in command:
         assert '\n' not in part, 'no element of a command line may contain a newline'
+
+
+def test_cc_command_passes_the_settings_by_bare_name():
+    command = cc_command('claude', '.mcp.json')
+
+    assert command[command.index('--settings') + 1] == SETTINGS_FILE
+
+
+def test_cc_command_appends_the_system_prompt_from_a_file_by_bare_name():
+    command = cc_command('claude', '.mcp.json')
+
+    assert command[command.index('--append-system-prompt-file') + 1] == SYSTEM_PROMPT_FILE
+
+
+def test_cc_command_refuses_the_ultracode_effort():
+    # --effort ultracode switches ultracode on for the session whatever the settings say, so passing it on
+    # would undo the explicit disable
+    for effort in ['ultracode', '  ultracode  ', 'Ultracode']:
+        try:
+            cc_command('claude', '.mcp.json', 'mhcc', 'opus', effort)
+            assert False, repr(effort) + ' would switch ultracode back on and must be refused'
+        except ValueError as e:
+            assert 'ultracode' in str(e)
+
+
+def test_cc_command_still_passes_every_real_effort_level():
+    for effort in ['low', 'medium', 'high', 'xhigh', 'max']:
+        command = cc_command('claude', '.mcp.json', 'mhcc', 'opus', effort)
+
+        assert command[command.index('--effort') + 1] == effort
+
+
+# ----------------------------------------------------------------- ultracode off
+
+def test_cc_settings_turns_ultracode_off_and_nothing_else():
+    # parsed, not string-compared: the file must be JSON that CC reads as ultracode=false
+    assert json.loads(cc_settings()) == {'ultracode': False}
+
+
+# ----------------------------------------------------------------- the MCP_UNAVAILABLE report
+
+# A console of a healthy run: --debug lines and the model's final text, no report.
+HEALTHY_CONSOLE = ('[DEBUG] MCP server "mhcc": Connection established\n'
+                   '[DEBUG] Calling MCP tool: mh_cc_store_result\n'
+                   'Stored.\n')
+
+
+def test_mcp_unavailable_line_finds_the_models_report():
+    console = HEALTHY_CONSOLE + 'MCP_UNAVAILABLE: CONNECTION_CLOSED\n[DEBUG] Cleaning up MCP servers\n'
+
+    assert mcp_unavailable_line(console) == 'MCP_UNAVAILABLE: CONNECTION_CLOSED'
+
+
+def test_mcp_unavailable_line_strips_an_indented_report_with_windows_line_ends():
+    console = '[DEBUG] start\r\n   MCP_UNAVAILABLE: failed to reconnect   \r\n'
+
+    assert mcp_unavailable_line(console) == 'MCP_UNAVAILABLE: failed to reconnect'
+
+
+def test_mcp_unavailable_line_is_none_for_a_healthy_console():
+    assert mcp_unavailable_line(HEALTHY_CONSOLE) is None
+
+
+def test_mcp_unavailable_line_is_none_when_there_is_no_console():
+    for console in [None, '', ' \n \n']:
+        assert mcp_unavailable_line(console) is None, repr(console)
+
+
+def test_mcp_unavailable_line_skips_the_template_line():
+    # the rule's instruction line, as a console that echoed the system prompt would carry it
+    assert mcp_unavailable_line(HEALTHY_CONSOLE + 'MCP_UNAVAILABLE: <the error you saw>\n') is None
+
+
+def test_mcp_unavailable_line_ignores_the_marker_inside_a_line():
+    # a report is a whole line; the marker quoted inside a debug line is not the model reporting anything
+    assert mcp_unavailable_line('[DEBUG] system prompt: MCP_UNAVAILABLE: CONNECTION_CLOSED\n') is None
+
+
+def test_mcp_unavailable_line_never_fires_on_the_rule_itself():
+    # both halves are needed: without the first, the second would pass on a rule that lost its template line
+    template = MCP_UNAVAILABLE_MARKER + ' ' + MCP_UNAVAILABLE_PLACEHOLDER
+    assert template in [line.strip() for line in MCP_UNAVAILABLE_RULE.splitlines()], \
+        'the rule must still carry its template line: ' + template
+
+    assert mcp_unavailable_line(MCP_UNAVAILABLE_RULE) is None, \
+        'a console that echoes the system prompt must never be read as the model reporting the server gone'
+
+
+def test_mcp_unavailable_rule_names_this_functions_own_server_and_tool():
+    assert '"mhcc" MCP server' in MCP_UNAVAILABLE_RULE
+    assert 'mh_cc_store_result' in MCP_UNAVAILABLE_RULE
 
 
 # ----------------------------------------------------------------- model / effort as optional inputs
