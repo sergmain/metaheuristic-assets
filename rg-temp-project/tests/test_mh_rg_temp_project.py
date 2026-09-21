@@ -20,7 +20,7 @@ import mh_rg_temp_project as fn
 
 @pytest.mark.parametrize('value, expected', [
     ('true', True), ('true\n', True), (' true ', True),
-    ('True', False), ('false', False), ('mh.null-value', False), ('', False), (None, False),
+    ('True', False), ('false', False), ('', False), (None, False),
 ])
 def test_is_production_only_for_the_literal_true(value, expected):
     assert fn.is_production(value) is expected
@@ -54,7 +54,7 @@ def test_create_url_appends_the_create_path(base, expected):
     assert fn.create_url(base) == expected
 
 
-@pytest.mark.parametrize('base', ['localhost:64967', 'ftp://host', 'mh.null-value', '', None])
+@pytest.mark.parametrize('base', ['localhost:64967', 'ftp://host', '', None])
 def test_create_url_refuses_what_is_not_an_absolute_http_url(base):
     with pytest.raises(ValueError, match='rg-base-url'):
         fn.create_url(base)
@@ -282,7 +282,7 @@ def test_post_form_names_an_rg_it_cannot_reach():
 # the optional behaviour: the caller's description, maxDepth, creation in development, an RG pipeline
 
 @pytest.mark.parametrize('production, create_in_development, expected', [
-    ('true', None, True), ('false', None, False), ('false', 'true', True), ('mh.null-value', ' true ', True),
+    ('true', None, True), ('false', None, False), ('false', 'true', True), (None, ' true ', True),
     ('false', 'false', False), ('false', 'True', False),
 ])
 def test_should_create(production, create_in_development, expected):
@@ -290,10 +290,18 @@ def test_should_create(production, create_in_development, expected):
 
 
 @pytest.mark.parametrize('value, expected', [
-    (None, None), ('', None), ('  ', None), ('mh.null-value', None), (' Derby \n', 'Derby'),
+    (None, None), ('', None), ('  ', None), (' Derby \n', 'Derby'),
 ])
 def test_optional_text(value, expected):
     assert fn.optional_text(value) == expected
+
+
+def test_read_optional_input_is_none_for_a_nullified_variable(tmp_path):
+    # MH marks a nullified input 'empty' and downloads no file - nothing to open, it reads as None
+    metas = [{'variable-for-description': 'projectDescription'}]
+    inputs = [{'id': 5, 'name': 'projectDescription', 'empty': True}]
+
+    assert fn.read_optional_input(metas, str(tmp_path), inputs, 'description') is None
 
 
 @pytest.mark.parametrize('value, expected', [(None, None), ('', None), ('1', 1), (' 3 ', 3)])

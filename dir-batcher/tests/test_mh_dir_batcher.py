@@ -173,8 +173,17 @@ def test_production_mode_is_the_literal_true_and_nothing_else():
 
 
 def test_everything_other_than_true_means_development():
-    for value in ['mh.null-value', '', '  ', 'false', 'True', 'TRUE', 'yes', '1', 'production', None]:
+    for value in ['', '  ', 'false', 'True', 'TRUE', 'yes', '1', 'production', None]:
         assert is_synthetic(value) is True, repr(value) + ' must not select the production store'
+
+
+def test_read_input_is_none_for_a_nullified_variable(tmp_path):
+    # MH marks a nullified input 'empty' and downloads no file - so there is nothing to open, and it reads as None
+    from mh_dir_batcher import read_input
+    params = {'inputs': [{'id': 7, 'name': 'production', 'empty': True}]}
+
+    assert read_input(str(tmp_path), params, 'production') is None
+    assert is_synthetic(read_input(str(tmp_path), params, 'production')) is True
 
 
 def test_production_value_is_stripped_before_it_is_judged():

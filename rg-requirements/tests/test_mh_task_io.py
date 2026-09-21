@@ -38,3 +38,20 @@ def test_a_role_bound_to_an_undeclared_variable_fails_naming_what_is_declared(tm
 
     with pytest.raises(ValueError, match='projectDescription'):
         io.read_role(task, 'description')
+
+
+def test_a_nullified_input_reads_as_none(tmp_path):
+    # MH marks a nullified input 'empty' and downloads no file for it - there is nothing to open
+    task = {'workingPath': str(tmp_path), 'metas': [{'variable-for-description': 'projectDescription'}],
+            'inputs': [{'name': 'projectDescription', 'id': 31, 'empty': True}]}
+
+    assert io.read_role(task, 'description') is None
+
+
+def test_a_missing_file_that_is_not_nullified_still_fails(tmp_path):
+    # no file WITHOUT the empty mark is a defect, not a null
+    task = {'workingPath': str(tmp_path), 'metas': [{'variable-for-description': 'projectDescription'}],
+            'inputs': [{'name': 'projectDescription', 'id': 31}]}
+
+    with pytest.raises(FileNotFoundError):
+        io.read_role(task, 'description')

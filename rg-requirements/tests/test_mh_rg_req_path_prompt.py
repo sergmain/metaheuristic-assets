@@ -55,7 +55,7 @@ def test_prompt_for_refuses_a_file_over_the_cap(tmp_path):
         fn.prompt_for(str(source), 'Requirements for Derby', 10)
 
 
-@pytest.mark.parametrize('description', ['', '   \n', 'mh.null-value', ' mh.null-value\n'])
+@pytest.mark.parametrize('description', ['', '   \n', None])
 def test_prompt_for_refuses_an_empty_description(tmp_path, description):
     source = tmp_path / 'Engine.java'
     source.write_bytes(b'class Engine {}\n')

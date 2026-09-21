@@ -166,7 +166,7 @@ def is_synthetic(production):
     """Whether this run writes to the synthetic meta storage table.
 
     Production mode is the literal 'true' and nothing else. Every other value means development:
-    'mh.null-value', an empty string, 'True', a typo. That asymmetry is deliberate - a row written to
+    None (a nullified production), an empty string, 'True', a typo. That asymmetry is deliberate - a row written to
     the production store cannot be un-written by re-running, while a run that lands in the synthetic
     store costs one re-run. So the expensive mistake is the one requiring a deliberate act.
     """
@@ -188,7 +188,10 @@ def to_records(rec_type, paths, batch_size):
 
 
 def read_input(cwd, params, name):
+    """The text of input variable name, or None when it is NULLIFIED - MH marks it 'empty' and downloads no file."""
     var = next(v for v in params['inputs'] if v['name'] == name)
+    if var.get('empty'):
+        return None
     with open(os.path.join(cwd, 'variable', str(var['id'])), 'r', encoding='utf-8') as f:
         return f.read()
 
@@ -222,9 +225,8 @@ def main(argv):
         print('FAILED: not a dir: ' + target_dir)
         return 1
 
-    # REQUIRED, never optional: a caller with no value still has to pass something, so an optional
-    # declaration would only hide the question of which string means absent. 'mh.null-value' is that
-    # string by convention, and like every non-'true' value it selects development.
+    # NULLABLE ('production?'): a caller with no value passes null, MH hands a nullified input over with no file,
+    # read_input returns None - and like every non-'true' value that selects development.
     production = read_input(cwd, params, 'production')
     synthetic = is_synthetic(production)
 

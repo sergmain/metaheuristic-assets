@@ -48,7 +48,7 @@ from mh_rg_req_store import (FIRST_TIMEOUT_SEC, NEXT_TIMEOUT_SEC, basic_authoriz
 from mh_rg_req_store import first_body, next_body
 from mh_rg_mcp_client import call_tool
 from mh_secret_client import exchange, extract_secret_fields, zero
-from mh_task_io import NULL_VALUE, load_params, output_role, read_role, write_text
+from mh_task_io import load_params, output_role, read_role, write_text
 
 FUNCTION_CODE = 'mh.asset.rg-req-store-batch_1.0'
 
@@ -200,13 +200,13 @@ def store_in_one_stage(requirements, post_first, open_stage, post_into_stage, se
 
 def run(task, credential):
     base = rg_base(read_role(task, 'rg-base-url'))
-    code = read_role(task, 'project-code').strip()
+    code = (read_role(task, 'project-code') or '').strip()
     pairs = plan(read_role(task, 'paths'), parse_answers(read_role(task, 'answers')))
     # both resolved BEFORE RG is called: a missing output declaration found after the genesis would leave
     # stored requirements whose ids nobody was told
     ids_target = output_role(task, 'req-ids')
     sources_target = output_role(task, 'req-sources')
-    if not code or code == NULL_VALUE:
+    if not code:
         raise ValueError('input project-code is empty - there is no project to store into')
     if credential is None:
         raise ValueError('no credential was handed over: mh-function.yaml declares api keyCode RG_API_AUTH, '
