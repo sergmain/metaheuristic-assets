@@ -34,7 +34,7 @@ every caller that has something to ask.
 
 | # | process | what it contributes |
 |---|---|---|
-| 1 | `call` — `mh.asset.call-cc` | writes `.mcp.json`, runs CC with the prompt on stdin, copies the stored answer into `ccResult` |
+| 1 | `call` — `mh.asset.call-cc` | writes `.mcp.json`, `cc-settings.json` and `cc-system-prompt.txt`, runs CC with the prompt on stdin, copies the stored answer into `ccResult` |
 
 ❗ `ccResult` is declared with `->` in the source-level `variables` block. That is what makes it an
 ExecContext-level output global rather than a variable visible only inside the graph.
@@ -86,6 +86,8 @@ Inside the task dir only. Nothing is written outside it, and nothing survives th
 |---|---|
 | `cc-prompt.txt` | the prompt, as fed to CC on stdin |
 | `.mcp.json` | the generated MCP config |
+| `cc-settings.json` | the CC session settings — `{"ultracode": false}`, passed with `--settings` (§6) |
+| `cc-system-prompt.txt` | the MCP-availability rule, appended to CC's system prompt with `--append-system-prompt-file` (§5) |
 | `cc-data/cc-result.out` | the answer, written by the MCP server |
 | `cc-data/cc-console.log` | CC's console, whole |
 | `cc-data/mcp-server.log` | the MCP server's own log |
@@ -109,9 +111,39 @@ itself, and silently overwriting would keep whichever call happened to be last.
 the guard would be spent, and the Function would still report "no result" — the model having been
 told `stored: true` for a run that fails.
 
+❗ **A channel that is gone ends the run at once, with a NEGATIVE exit code.** The Function owns one
+instruction, about its own channel and nothing else: `cc-system-prompt.txt`, appended to CC's system
+prompt, tells the model that when the `mhcc` server is not connected — or a call to it fails at
+transport level — it must stop immediately, emit exactly one line `MCP_UNAVAILABLE: <the error>`, and
+end its turn. The prompt Variable is untouched: the rule rides on the system prompt, not on stdin.
+
+⚠️ **The model cannot set CC's exit code** — a `-p` run gives it no tool that ends the process with a
+code of its choosing — so the line is its request. `main()` finds it in CC's console and returns `-1`
+(`MCP_UNAVAILABLE_EXIT_CODE`); every other failure returns `1`. The line is checked before CC's own exit
+code: a run that reported the server gone produced nothing usable, whatever CC exited with.
+
+⚠️ **The rule's own template line is not a report.** `MCP_UNAVAILABLE: <the error you saw>` is skipped
+by its placeholder, so a console that echoes the system prompt never fails a healthy run. Keep it the
+only line of the rule that starts with the marker.
+
 ---
 
-## 6. Known limits
+## 6. Ultracode is off
+
+Ultracode is a Claude Code **setting** — `xhigh` effort plus automatic dynamic-workflow orchestration.
+A user-level `"ultracode": true` on the Processor box would otherwise start every run with it.
+
+- `cc-settings.json` (`{"ultracode": false}`) is passed with `--settings`, by bare name, the same way
+  `.mcp.json` goes in with `--mcp-config`. `--settings` outranks every `settings.json` scope except
+  managed settings.
+- ❌ **Not `.mcp.json`.** `--mcp-config` reads MCP servers only; a settings key placed there is never
+  consulted.
+- ❗ **An `effort` of `ultracode` is refused** before CC is started. `--effort ultracode` turns
+  ultracode on for the session whatever the settings say, so passing it on would undo the disable.
+
+---
+
+## 7. Known limits
 
 - ⚠️ **Timeout kills the CC process, not its children.** CC spawns the MCP server; on timeout the
   Python launcher terminates the direct child only. MH's own Java launcher walks the process tree.
@@ -126,3 +158,8 @@ told `stored: true` for a run that fails.
   here — so the name avoids the question rather than answering it.
 - ❌ **Nothing verifies the answer.** The Function checks that a non-empty result was stored and
   nothing else. Whether the answer is correct, or even on topic, is the caller's to judge.
+- ⚠️ **A negative exit code is literal only on Windows.** Exit codes there are 32-bit; POSIX keeps 8
+  bits, so `-1` from a Linux Processor reads as `255`.
+- ⚠️ **The outage report depends on the model obeying the rule.** A model that holds the work or
+  retries instead leaves no line; the run then fails as an ordinary "no result" (exit `1`) or at the
+  timeout. A wedged MCP client can also hold the CC process open whatever the model decides.

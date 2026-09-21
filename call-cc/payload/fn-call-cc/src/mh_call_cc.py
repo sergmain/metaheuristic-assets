@@ -76,6 +76,55 @@ MAX_OUTPUT_LINES = 2000
 # variable boundary (mh.null-value). For an optional CLI flag it means: leave the flag off.
 NULL_VALUE = 'mh.null-value'
 
+# The settings file for the CC session, passed by FILE NAME with --settings - the same way .mcp.json is passed
+# with --mcp-config. It turns ultracode OFF, explicitly. Ultracode is a Claude Code setting (xhigh effort plus
+# automatic dynamic-workflow orchestration), and a user-level "ultracode": true on the Processor box would
+# otherwise start every run with it. --settings outranks every settings.json scope except managed settings.
+#
+# NOT in .mcp.json: --mcp-config reads MCP servers only, and a settings key placed there is never consulted.
+SETTINGS_FILE = 'cc-settings.json'
+
+# The one --effort value that switches ultracode back on for a session, whatever the settings say. Refused.
+ULTRACODE_EFFORT = 'ultracode'
+
+# The Function's own instruction for when its MCP server is gone - appended to CC's SYSTEM prompt from this
+# file, so the prompt Variable still goes in on stdin verbatim. See MCP_UNAVAILABLE_RULE.
+SYSTEM_PROMPT_FILE = 'cc-system-prompt.txt'
+
+# The start of the one line the model emits, per MCP_UNAVAILABLE_RULE, when the MCP server is not usable. The
+# model cannot set CC's exit code - a -p run gives it no tool that ends the process with a code of its choosing -
+# so the line is its request, and main() turns it into MCP_UNAVAILABLE_EXIT_CODE.
+MCP_UNAVAILABLE_MARKER = 'MCP_UNAVAILABLE:'
+
+# The placeholder of the rule's own template line. That line is the instruction, never a report, so
+# mcp_unavailable_line() skips it: a console that echoes the system prompt must not fail a healthy run.
+MCP_UNAVAILABLE_PLACEHOLDER = '<the error you saw>'
+
+# Exit code of the Function when CC reported the MCP server unavailable. Negative on purpose: every other
+# failure returns 1. Literal only where exit codes are 32-bit (Windows); POSIX keeps 8 bits, so there it reads
+# as 255.
+MCP_UNAVAILABLE_EXIT_CODE = -1
+
+# What CC must do when this Function's result channel is gone. The Function owns this much and no more: it is
+# the contract of its own MCP server, not a word about the task - which is why it rides on the system prompt.
+# Keep the template line the only line here that starts with MCP_UNAVAILABLE_MARKER.
+MCP_UNAVAILABLE_RULE = '''MCP AVAILABILITY - READ THIS FIRST:
+Your answer can be returned only by calling the {tool} tool of the "{server}" MCP server. If that
+server is not connected, or a call to it fails with a connection error (CONNECTION_CLOSED, failed to
+reconnect, server unavailable, or any transport-level failure), STOP IMMEDIATELY.
+- Do NOT wait for it to come back, and do NOT poll or retry it.
+- Do NOT ask to be told when it reconnects. Nobody is reading your output interactively.
+- Do NOT do the work anyway and hold the answer: unsent work is lost work.
+- Do NOT print the answer instead of storing it. The console is not a fallback.
+Emit exactly one line, then end your turn:
+{marker} {placeholder}
+That line is how this run exits IMMEDIATELY with a NEGATIVE exit code, as it must. You cannot set
+the exit code yourself, so do not try - no shell command, no other tool: the Function that launched
+you reads the line and exits negative. Without the line the run is reported as an ordinary failure
+instead.
+'''.format(tool=STORE_RESULT_TOOL, server=MCP_SERVER_NAME, marker=MCP_UNAVAILABLE_MARKER,
+           placeholder=MCP_UNAVAILABLE_PLACEHOLDER)
+
 
 # ---------------------------------------------------------------------------------------------------
 # METAS - the indirection that makes one Function serve every process that calls it.
@@ -234,7 +283,8 @@ def mcp_config(python_exec, server_script, result_file, server_name=MCP_SERVER_N
     }, indent=2)
 
 
-def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, model=None, effort=None):
+def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, model=None, effort=None,
+               settings_name=SETTINGS_FILE, system_prompt_name=SYSTEM_PROMPT_FILE):
     """The CC command line. The prompt is deliberately NOT in it.
 
     A prompt is tens of lines with newlines and quotes in it; passing it as an argv element does not
@@ -246,6 +296,10 @@ def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, m
     model and effort are each appended only when the process asked for one. An absent meta leaves the
     flag off and the CLI's own default applies - which the DAHF guide (0.5) forbids for an authored
     workflow, so both are declared there; the Function stays permissive so an ad-hoc call still runs.
+
+    --settings and --append-system-prompt-file name files by bare name, like --mcp-config: the settings switch
+    ultracode OFF (SETTINGS_FILE), the system prompt carries MCP_UNAVAILABLE_RULE. An effort of 'ultracode' is
+    refused, not passed on: --effort ultracode turns ultracode on for the session whatever the settings say.
     """
     command = [
         claude_code_exec,
@@ -253,11 +307,16 @@ def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, m
         '--print',
         '--output-format', 'text',
         '--mcp-config', mcp_config_name,
+        '--settings', settings_name,
+        '--append-system-prompt-file', system_prompt_name,
         '--allowedTools', 'mcp__' + server_name + '__*',
     ]
     if model is not None and model.strip():
         command += ['--model', model.strip()]
     if effort is not None and effort.strip():
+        if effort.strip().lower() == ULTRACODE_EFFORT:
+            raise ValueError("effort '" + effort.strip() + "' is refused: ultracode is explicitly off for this "
+                             + 'Function, and --effort ultracode would switch it back on for the session')
         command += ['--effort', effort.strip()]
     return command
 
@@ -270,6 +329,30 @@ def tail_lines(text, max_lines=MAX_OUTPUT_LINES):
     if len(lines) <= max_lines:
         return text
     return '\n'.join(lines[-max_lines:])
+
+
+def cc_settings():
+    """The --settings JSON for the CC session: ultracode explicitly off, and nothing else.
+
+    json.dumps writes it for the same reason it writes .mcp.json: text built by hand is how a config ends up
+    parsed as something other than what was meant.
+    """
+    return json.dumps({'ultracode': False}, indent=2)
+
+
+def mcp_unavailable_line(console):
+    """The model's MCP_UNAVAILABLE report in the CC console, stripped, or None when there is none.
+
+    A report is a whole line starting with MCP_UNAVAILABLE_MARKER, as the rule demands - the marker mid-line is
+    not one. The rule's own template line is skipped by its placeholder, so a console that echoes the system
+    prompt never fails a healthy run.
+    """
+    for line in (console or '').splitlines():
+        line = line.strip()
+        if (line.startswith(MCP_UNAVAILABLE_MARKER)
+                and line[len(MCP_UNAVAILABLE_MARKER):].strip() != MCP_UNAVAILABLE_PLACEHOLDER):
+            return line
+    return None
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -395,6 +478,17 @@ def main(argv):
     write_text(config_file, mcp_config(python_exec, server_script, result_file))
     print('.mcp.json:\n' + read_text(config_file))
 
+    # ultracode explicitly off for this session - see SETTINGS_FILE
+    settings_file = os.path.join(work_dir, SETTINGS_FILE)
+    write_text(settings_file, cc_settings())
+    print(SETTINGS_FILE + ':\n' + read_text(settings_file))
+
+    # the Function's own rule for when its MCP server is gone, on CC's SYSTEM prompt - the prompt Variable still
+    # goes in on stdin verbatim
+    system_prompt_file = os.path.join(work_dir, SYSTEM_PROMPT_FILE)
+    write_text(system_prompt_file, MCP_UNAVAILABLE_RULE)
+    print(SYSTEM_PROMPT_FILE + ': ' + str(len(MCP_UNAVAILABLE_RULE)) + ' chars')
+
     # the config is passed by FILE NAME, not by path: cwd is the task dir, and a bare name is the one
     # spelling that cannot be mangled by quoting on the way into CC
     command = cc_command(claude_code, MCP_CONFIG_FILE, MCP_SERVER_NAME, model, effort)
@@ -423,6 +517,14 @@ def main(argv):
         print('--- MCP server log ---\n' + read_text(mcp_log))
     else:
         print('WARNING: no MCP server log at ' + mcp_log + ' - the server may never have started')
+
+    # the MCP server was unavailable. The model cannot set CC's exit code, so MCP_UNAVAILABLE_RULE has it emit one
+    # line and end its turn, and this is where that line becomes the NEGATIVE exit code. Checked first: a run that
+    # reported the server gone produced nothing usable, whatever CC's own exit code was.
+    unavailable = mcp_unavailable_line(console)
+    if unavailable is not None:
+        print('FAILED: Claude Code reported the MCP server unavailable - ' + unavailable)
+        return MCP_UNAVAILABLE_EXIT_CODE
 
     if completed.returncode != 0:
         # the flags this Function passes are version-gated (--effort in particular); on a failure, name the CLI so
