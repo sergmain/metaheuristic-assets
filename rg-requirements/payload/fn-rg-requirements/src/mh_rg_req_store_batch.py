@@ -48,7 +48,7 @@ from mh_rg_req_store import (FIRST_TIMEOUT_SEC, NEXT_TIMEOUT_SEC, basic_authoriz
 from mh_rg_req_store import first_body, next_body
 from mh_rg_mcp_client import call_tool
 from mh_secret_client import exchange, extract_secret_fields, zero
-from mh_task_io import load_params, output_role, read_role, write_text
+from mh_task_io import load_params, meta_value, output_role, read_role, write_text
 
 FUNCTION_CODE = 'mh.asset.rg-req-store-batch_1.0'
 
@@ -198,6 +198,22 @@ def store_in_one_stage(requirements, post_first, open_stage, post_into_stage, se
     return ids, genesis, sealed
 
 
+def optional_role(task, role):
+    """The stripped text of an OPTIONAL role, or None when the process binds none (no variable-for-<role> meta), the
+    Variable is nullified, or its text is blank."""
+    name = meta_value(task.get('metas') or [], 'variable-for-' + role)
+    if name is None or not name.strip():
+        return None
+    text = read_role(task, role)
+    return text.strip() if text and text.strip() else None
+
+
+def llm_pair(model, effort):
+    """The run's (model, effort) pair as request fields - only the ones given. RG validates both and refuses an
+    unsupported value; absent, it applies its own default for that field."""
+    return {key: value for key, value in (('model', model), ('effort', effort)) if value}
+
+
 def run(task, credential):
     base = rg_base(read_role(task, 'rg-base-url'))
     code = (read_role(task, 'project-code') or '').strip()
@@ -212,11 +228,14 @@ def run(task, credential):
         raise ValueError('no credential was handed over: mh-function.yaml declares api keyCode RG_API_AUTH, '
                          'but the params file carries no secretPort / checkCode')
     authorization = basic_authorization(credential)
+    # the run's (model, effort) pair - the pair cc wrote these requirements with. Sent to the genesis and to the STAGE
+    # so every snapshot this store seals records it; unbound or nullified sends none and RG's own default applies.
+    pair = llm_pair(optional_role(task, 'model'), optional_role(task, 'effort'))
     files = len({path for path, _ in pairs})
     print('storing ' + str(len(pairs)) + ' requirement(s) from ' + str(files) + ' file(s) into ' + code)
 
     def post_first(body):
-        status, text = post_json(first_url(base, code), body, authorization, FIRST_TIMEOUT_SEC)
+        status, text = post_json(first_url(base, code), dict(body, **pair), authorization, FIRST_TIMEOUT_SEC)
         print('POST requirements/manual/first -> HTTP ' + str(status))
         return created(status, text)
 
@@ -224,7 +243,7 @@ def run(task, credential):
 
     def open_stage(parent):
         result = call_tool(mcp_url, authorization, 'mhdg_rg_open_stage',
-                           {'infoBank': code, 'parentSnapshotId': parent}, OPEN_STAGE_TIMEOUT_SEC)
+                           dict({'infoBank': code, 'parentSnapshotId': parent}, **pair), OPEN_STAGE_TIMEOUT_SEC)
         stage = result.get('stageSnapshotId')
         if not isinstance(stage, int):
             raise RuntimeError('mhdg_rg_open_stage answered no stageSnapshotId: ' + excerpt(json.dumps(result)))
