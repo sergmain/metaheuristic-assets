@@ -209,7 +209,7 @@ def project_description(exec_context_id):
     return 'Temporary project created by ' + FUNCTION_CODE + ' in ExecContext #' + str(exec_context_id)
 
 
-def form_body(code, locale, exec_context_id, description=None, max_depth=None):
+def form_body(code, locale, exec_context_id, description=None, max_depth=None, model=None, effort=None):
     """The request parameters RgProjectController.createProject reads, form-encoded.
 
     maxDepth is left out: absent means RG's default, and a temporary project has no reason to differ.
@@ -221,6 +221,11 @@ def form_body(code, locale, exec_context_id, description=None, max_depth=None):
     Correction: RG accepts maxDepth only in [2, 6] (RgConsts) and refuses anything else (03.877.010); a MANUAL
     genesis runs at depth 1 whatever the project holds (RgExecTxService 827.145), so requirements need no
     particular depth. max_depth stays for a caller that wants a deeper decomposition bound.
+
+    model and effort are the run's (model, effort) pair, sent when given (plan 040: the project's pair is fixed at
+    creation). Absent, RG records RgLlmModel.DEFAULT / RgLlmEffort.DEFAULT - Opus 4.8 / High - on the project and on
+    every snapshot that resolves its pair from it, whichever model actually wrote the content. RG validates both and
+    refuses the create for an unsupported value.
     """
     fields = {
         'name': project_name(code),
@@ -230,6 +235,10 @@ def form_body(code, locale, exec_context_id, description=None, max_depth=None):
     }
     if max_depth is not None:
         fields['maxDepth'] = str(max_depth)
+    if model is not None:
+        fields['model'] = model
+    if effort is not None:
+        fields['effort'] = effort
     return urllib.parse.urlencode(fields).encode('utf-8')
 
 
@@ -468,6 +477,9 @@ def run(task, credential):
     # optional roles and metas - a process that declares none of them gets exactly the behaviour described above
     description = optional_text(read_optional_input(metas, work_dir, inputs, 'description'))
     pipeline_uid = optional_text(read_optional_input(metas, work_dir, inputs, 'rg-pipeline-uid'))
+    # the run's (model, effort) pair, recorded on the project - unbound or nullified leaves RG's default
+    model = optional_text(read_optional_input(metas, work_dir, inputs, 'model'))
+    effort = optional_text(read_optional_input(metas, work_dir, inputs, 'effort'))
     max_depth = parse_max_depth(meta_value(metas, 'max-depth'))
     create_in_development = meta_value(metas, 'create-in-development')
     # resolved BEFORE RG is called: a missing output declaration is a SourceCode defect, and finding it
@@ -491,7 +503,8 @@ def run(task, credential):
     created_ids = []
 
     def create(code):
-        status, text = post_form(url, form_body(code, locale, exec_context_id, description, max_depth), authorization)
+        status, text = post_form(url, form_body(code, locale, exec_context_id, description, max_depth, model, effort),
+                                 authorization)
         print('POST ' + url + ' infoBank=' + code + ' -> HTTP ' + str(status))
         outcome = classify(status, text)
         if outcome[0] == CREATED:

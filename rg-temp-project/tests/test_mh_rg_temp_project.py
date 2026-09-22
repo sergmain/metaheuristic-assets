@@ -327,6 +327,21 @@ def test_form_body_takes_the_callers_description_and_max_depth():
     }
 
 
+def test_form_body_carries_the_runs_model_and_effort():
+    # the run's (model, effort) pair must reach RG at creation; absent, RG records RgLlmModel.DEFAULT /
+    # RgLlmEffort.DEFAULT (Opus 4.8 / High) for a project whose content another model wrote
+    body = fn.form_body('TMPAAAAAAAA', 'en', 42, None, None, 'claude-sonnet-4-6', 'medium')
+
+    assert urllib.parse.parse_qs(body.decode('utf-8')) == {
+        'name': ['Temporary project TMPAAAAAAAA'],
+        'infoBank': ['TMPAAAAAAAA'],
+        'locale': ['en'],
+        'description': ['Temporary project created by mh.asset.rg-temp-project_1.1 in ExecContext #42'],
+        'model': ['claude-sonnet-4-6'],
+        'effort': ['medium'],
+    }
+
+
 def test_project_id_is_the_id_rg_answered_with():
     assert fn.project_id(json.dumps({'project': {'id': 7, 'infoBank': 'TMPAAAAAAAA'}})) == 7
 
