@@ -57,6 +57,9 @@
 // pair, and RG recorded RgLlmModel.DEFAULT / RgLlmEffort.DEFAULT - Opus 4.8 / High - on the project and on every
 // snapshot resolved from it, whichever model the run pinned for cc. mh.asset.rg-temp-project_1.1 sends both to
 // RgProjectController.createProject when they are bound; unseeded or nullified, RG's default still applies.
+// store is handed them too: the requirements it writes were produced by cc with that pair, so it sends the pair to
+// requirements/manual/first (the genesis) and to mhdg_rg_open_stage (the STAGE the rest go into) - every snapshot the
+// run seals records the pair that wrote its content. Needs the RG build whose mhdg_rg_open_stage accepts model/effort.
 source "mh-rg-requirements-from-batch-1.5" {
 
     variables {
@@ -187,8 +190,10 @@ source "mh-rg-requirements-from-batch-1.5" {
              variable-for-paths = "batchPaths",
              variable-for-answers = "reqAnswers",
              variable-for-req-ids = "reqIds",
-             variable-for-req-sources = "reqSources"
-        <- rgBaseUrl, projectCode, batchPaths, reqAnswers
+             variable-for-req-sources = "reqSources",
+             variable-for-model = "model",
+             variable-for-effort = "effort"
+        <- rgBaseUrl, projectCode, batchPaths, reqAnswers, model?, effort?
         -> reqIds: ext=".txt",
            reqSources: ext=".txt"
         timeout 14400
