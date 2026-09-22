@@ -1,0 +1,207 @@
+// Requirements from every file of one batch, into a fresh RG project: one CC call per file, in parallel, and
+// ONE chain of snapshots. The batch record is deleted from the meta table once every file's requirements are in.
+//
+// A temporary RG project is created - for real, in development runs too - with the given description and an RG
+// genesis pipeline. One record of a meta table (the output of a dir-batcher run) lists the files, one absolute
+// path per line. mh.batch-line-splitter gives every file a branch of its own: read the file, ask CC for its
+// requirements, check CC's answer. The branches converge, their answers are collected, one Task stores every
+// requirement in the project, and only then is the batch record deleted.
+//
+// Reusable by construction - nothing about a particular run appears below:
+//   rgBaseUrl           comes IN, the RG to work in, e.g. http://localhost:64967
+//   locale              comes IN, the project's language
+//   projectDescription  comes IN, what the requirements are for; the project's description and part of every
+//                       prompt
+//   rgPipelineUid       comes IN, the RG genesis pipeline the project runs, e.g. mhdg-rg-cc-1.0.76
+//   metaTable           comes IN, the meta-storage type holding the batch records
+//   batchKey            comes IN, the record to process and then delete, e.g. batch-0004
+//   synthetic           comes IN, 'true' reads and deletes in MH_META_STORAGE_SYNTHETIC, 'false' in MH_META_STORAGE.
+//                       The delete refuses anything but exactly true or false
+//   production          comes IN, REQUIRED by convention. It gates nothing here: the project is created and filled
+//                       in every run, and which table is read is 'synthetic'
+//   projectCode, reqIds, reqSources go OUT at ExecContext level
+//
+// WHY THE STORE IS NOT IN THE BRANCHES. Every requirement goes into one project, and RG's requirements/manual
+// forks a new STAGE from whichever COMMITTED snapshot it is given - it does not refuse a parent that already has
+// children. Branches storing in parallel would fork the project into one leaf per file, and only one of them
+// could have run the one-shot requirements/manual/first at all. So a branch only produces its checked answer,
+// mh.aggregate collects the answers by name across the ExecContext, and one Task stores them as a single chain.
+//
+// EVERY FILE OR NOTHING. A branch that fails holds its file back: the answers no longer cover the batch, the
+// store refuses before RG is touched, and the batch record stays in the queue. Resetting the failed Task re-runs
+// that file alone; the other files' answers are kept.
+//
+// Launch with mh_create_exec_context_with_variables; mh_create_exec_context refuses a SourceCode that declares
+// source-level inputs (562.120).
+//
+// ORDER is declaration order: each process is chained to the one declared before it, and everything after the
+// splitter waits for all of its branches.
+//
+// 1.1: cc is cached - cache on, cacheMeta. The key is the Function code, the SHA-256 and length of the prompt, and
+// every meta of the process (timeout-sec, and model when one is set); the Function's git revision is not part of
+// it. A re-run of a batch asks CC only about files whose prompt changed or whose answer was never stored. Only a
+// run of a version that declares the cache writes to it, so nothing a 1.0 run answered is in it.
+// A reset of a cached Task answers from the cache (CHECK_CACHE): an answer the check step refuses comes back on a
+// plain reset of cc. Drop the entry first with the Task's reset-cache (POST /exec-context/task-reset-cache).
+// 1.1: cc runs mh.asset.call-cc_1.1 - the same payload, plus the analyzer that lets the execution gate identify a CC
+// session limit: call-cc is withheld for a while and the Task retries for free, instead of spending its tries.
+// Import the call-cc bundle before this one, so the code is registered when this graph is validated.
+// 1.2: dropRecord is COMMENTED OUT - for now the batch record stays in the meta table after the run, so the same
+// batch can be run again. The graph ends at store. Restore the process (and bump the uid) to consume the queue again.
+
+// 1.3: paths is cached (cache on) - the same batch record answers the same list of paths from the cache.
+
+// 1.4: select is cached (cache on) - same batchKey + metaTable + synthetic always returns the same record body.
+
+// 1.5: mkproject is handed the run's model and effort too, not only cc. Without them the project was created with no
+// pair, and RG recorded RgLlmModel.DEFAULT / RgLlmEffort.DEFAULT - Opus 4.8 / High - on the project and on every
+// snapshot resolved from it, whichever model the run pinned for cc. mh.asset.rg-temp-project_1.1 sends both to
+// RgProjectController.createProject when they are bound; unseeded or nullified, RG's default still applies.
+source "mh-rg-requirements-from-batch-1.5" {
+
+    variables {
+        <- rgBaseUrl
+        <- locale
+        <- projectDescription
+        <- rgPipelineUid
+        <- metaTable
+        <- batchKey
+        <- synthetic
+        <- production
+        // model and effort are OPTIONAL ExecContext-level inputs, like synthetic - a property of the RUN, not of
+        // this SourceCode. Seed them to pin what CC uses (DAHF 0.5: opus 4.8 / medium for development); leave
+        // either unseeded and it reaches cc as mh.null-value, which mh.asset.call-cc reads as "omit the flag",
+        // so CC falls back to its own default. Nullable init: mh_create_exec_context_with_variables may pass
+        // "mh.null-value" for either, or omit it entirely.
+        <- model?
+        <- effort?
+        -> projectCode
+        -> reqIds
+        -> reqSources
+    }
+
+    mkproject := mh.asset.rg-temp-project_1.1 {
+        name "Create the temporary RG project that will hold the requirements"
+        meta variable-for-rg-base-url = "rgBaseUrl",
+             variable-for-locale = "locale",
+             variable-for-production = "production",
+             variable-for-project-code = "projectCode",
+             variable-for-description = "projectDescription",
+             variable-for-rg-pipeline-uid = "rgPipelineUid",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             create-in-development = "true"
+        <- rgBaseUrl, locale, production, projectDescription, rgPipelineUid, model?, effort?
+        -> projectCode: ext=".txt"
+        timeout 60
+    }
+
+    select := internal mh.meta-storage {
+        name "Read the batch record"
+        meta action = "select",
+             type = "metaTable",
+             keys = "batchKey",
+             synthetic = "synthetic",
+             output = "batchRecords"
+        <- metaTable, batchKey, synthetic
+        -> batchRecords: ext=".json"
+        timeout 120
+        cache on
+    }
+
+    paths := mh.asset.rg-batch-paths_1.0 {
+        name "Turn the batch record into its list of paths"
+        meta variable-for-records = "batchRecords",
+             variable-for-paths = "batchPaths"
+        <- batchRecords
+        -> batchPaths: ext=".txt"
+        timeout 60
+        cache on
+    }
+
+    split := internal mh.batch-line-splitter {
+        name "One branch per file of the batch"
+        meta number-of-lines-per-task = "1",
+             variable-for-splitting = "batchPaths",
+             output-is-dynamic = "true",
+             output-variable = "sourcePath",
+             is-array = "false"
+        sequential {
+            prompt := mh.asset.rg-req-path-prompt_1.0 {
+                name "Read the file and build the CC prompt"
+                meta variable-for-source-path = "sourcePath",
+                     variable-for-description = "projectDescription",
+                     variable-for-prompt = "ccPrompt"
+                <- sourcePath, projectDescription
+                -> ccPrompt: ext=".txt"
+                timeout 60
+            }
+
+            cc := mh.asset.call-cc_1.1 {
+                name "Ask CC for the file's requirements"
+                // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+                meta variable-for-prompt = "ccPrompt",
+                     variable-for-output = "ccResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
+                     timeout-sec = "900"
+                <- ccPrompt, model?, effort?
+                -> ccResult: ext=".txt"
+                timeout 1200
+                tries 2
+                // 1.1: model and effort are optional inputs (see the variables block), not literals - a run pins
+                // the DAHF 0.5 development pairing (opus 4.8 / medium) by seeding them, or omits either for CC's
+                // default. As inputs their content is hashed into the cache key, so changing the model or effort a
+                // run uses correctly misses the old entry; cacheMeta additionally keeps the prompt and timeout apart.
+                cache on, cacheMeta
+            }
+
+            check := mh.asset.rg-req-check_1.0 {
+                name "Check CC's answer and hand it on as one line"
+                meta variable-for-source-path = "sourcePath",
+                     variable-for-cc-result = "ccResult",
+                     variable-for-answer = "reqAnswer"
+                <- sourcePath, ccResult
+                -> reqAnswer: ext=".txt"
+                timeout 60
+            }
+        }
+    }
+
+    gather := internal mh.aggregate {
+        name "Collect every file's checked answer"
+        // collects by NAME across the whole ExecContext - a branch's variable is invisible at the top level
+        meta variables = "reqAnswer",
+             type = "text",
+             produce-metadata = "false",
+             error-control-policy = "fail"
+        -> reqAnswers: ext=".txt"
+        timeout 300
+    }
+
+    store := mh.asset.rg-req-store-batch_1.0 {
+        name "Store every file's requirements in the project, as one chain"
+        // requirement #1 waits for the project's genesis run (up to 900s), each next one is one transaction
+        meta variable-for-rg-base-url = "rgBaseUrl",
+             variable-for-project-code = "projectCode",
+             variable-for-paths = "batchPaths",
+             variable-for-answers = "reqAnswers",
+             variable-for-req-ids = "reqIds",
+             variable-for-req-sources = "reqSources"
+        <- rgBaseUrl, projectCode, batchPaths, reqAnswers
+        -> reqIds: ext=".txt",
+           reqSources: ext=".txt"
+        timeout 14400
+    }
+
+    // 1.2: disabled - the batch record is left in the table for now (see the header)
+    // dropRecord := internal mh.meta-storage {
+    //     name "Take the processed batch record off the queue"
+    //     meta action = "delete",
+    //          type = "metaTable",
+    //          keys = "batchKey",
+    //          synthetic = "synthetic"
+    //     <- metaTable, batchKey, synthetic
+    //     timeout 60
+    // }
+}
