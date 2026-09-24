@@ -8,6 +8,10 @@ SourceCode `mh-rg-requirements-from-batch-1.4` (section 7) - Functions `mh.asset
 `mh.asset.rg-req-path-prompt_1.0`, `mh.asset.rg-req-check_1.0`, `mh.asset.rg-req-store-batch_1.0` - the same payload -
 also uses the internal `mh.batch-line-splitter` and `mh.aggregate`
 
+SourceCode `mh-rg-requirements-from-batch-internal-1.0` (section 8) - the batch graph with its store run inside RG as
+the internal Function `mhdg-rg.req-store-batch` - Functions `mh.asset.rg-batch-paths_1.0`,
+`mh.asset.rg-req-path-prompt_1.0`, `mh.asset.rg-req-check_1.0`, `mh.asset.rg-temp-project_1.1`, `mh.asset.call-cc_1.1`
+
 ## 1. Purpose
 
 Turn one source file into requirements held in RG. A fresh RG project is created for the purpose; the file is
@@ -198,3 +202,100 @@ Launch with `mh_create_exec_context_with_variables`.
   Every stored rationale now ends with an empty line and `source: <the file>`, so the provenance travels with the
   requirement instead of living only in the run's `reqSources` output. Payload-only change: same Function code, same
   SourceCode (1.2); a new ExecContext picks it up by resolving `HEAD`.
+
+---
+
+## 8. mh-rg-requirements-from-batch-internal-1.0 - every file of a batch, stored inside RG
+
+### 8.1 Purpose
+
+Turn every file of one batch record into requirements held in one fresh RG project - the purpose of section 7 - with
+the store done INSIDE RG: the internal Function `mhdg-rg.req-store-batch` (RG's `RgReqStoreBatch`) writes the whole
+batch in one loop in the dispatcher, where `mh.asset.rg-req-store-batch_1.0` makes one HTTP request per requirement
+with the `RG_API_AUTH` credential. It stands beside `mh-rg-requirements-from-batch-1.5`, which keeps working; neither
+replaces the other, so this is a new uid rather than a version of 1.5.
+
+### 8.2 The graph
+
+Declaration order is execution order; everything after `split` waits for all of its branches. Processes 1-5 are 1.5's,
+unchanged except that `model` and `effort` are required inputs (8.3).
+
+| # | process | Function | contributes |
+|---|---|---|---|
+| 1 | `mkproject` | `mh.asset.rg-temp-project_1.1` | the project, as in section 2, with the run's model and effort recorded on it |
+| 2 | `select` | internal `mh.meta-storage`, `select` | `batchRecords` - the `batchKey` record of `metaTable`; cached |
+| 3 | `paths` | `mh.asset.rg-batch-paths_1.0` | `batchPaths`, as in 7.2; cached |
+| 4 | `split` | internal `mh.batch-line-splitter` | one branch per path, the path in `sourcePath` |
+| 4.1 | `prompt` | `mh.asset.rg-req-path-prompt_1.0` | the file and the prompt, as in 7.2 |
+| 4.2 | `cc` | `mh.asset.call-cc_1.1` | CC's answer, at the run's `model` / `effort`; `tries 2`; `cache on, cacheMeta` |
+| 4.3 | `check` | `mh.asset.rg-req-check_1.0` | `reqAnswer` - one line of ASCII JSON `{sourcePath, requirements}` |
+| 5 | `gather` | internal `mh.aggregate`, `text` | `reqAnswers` - every branch's `reqAnswer`, joined with a blank line (`AggregateFunction`, `"\n\n"`); a nullified one is skipped |
+| 6 | `store` | internal `mhdg-rg.req-store-batch` | the requirements as TWO committed snapshots: #1 through the project's genesis (`RgFirstManualRequirementService`, which waits for the genesis ExecContext to commit), every other one written into ONE STAGE forked from that snapshot (`RgPleAuthoringService.openStage`, `RgRequirementExtendedService.addManualDerivedRequirement`), the STAGE sealed once (`sealSnapshot`); every rationale ends with an empty line and `source: <file>`; `reqIds`, `reqSources` |
+
+There is no `dropRecord`: the record stays in the table, as in 1.5.
+
+**Why the store is not in the branches** and **every file or nothing** hold unchanged - see 7.2. The coverage check
+(one answer per path, none outside the batch, each requirement with at least 3 words of content - RG's own count - and
+a rationale) runs inside the internal Function before RG is called, and both outputs are resolved before it too, so a
+refused batch touches nothing.
+
+### 8.3 Run-data contract
+
+Launch with `mh_create_exec_context_with_variables`. Every input below must be passed; a nullable one takes JSON `null`.
+
+| variable | direction | meaning | example |
+|---|---|---|---|
+| `rgBaseUrl` | in | the RG the project is created in - `mkproject` only; the store runs inside RG and uses no URL | `http://localhost:64967` |
+| `locale`, `projectDescription`, `rgPipelineUid`, `metaTable` | in | as in section 3 | |
+| `batchKey` | in | the record to process; it is only read | `batch-0005` |
+| `synthetic` | in | the table the record is read from: `true` synthetic, `false` production | `true` |
+| `production` | in, nullable (`production?`) | gates nothing here - the project is created in every run (`create-in-development`). Only an exact `true` is production; `null` or anything else is a development run | `null` |
+| `model` | in, REQUIRED | the model CC uses, recorded on the project, the genesis snapshot and the STAGE. DAHF 0.5: `claude-opus-4-8` unless the run pins another | `claude-opus-4-8` |
+| `effort` | in, REQUIRED | the effort CC uses (`low`/`medium`/`high`/`extra`/`max`), recorded as `model` is | `medium` |
+| `projectCode` | out | the project's code | `TMP...` |
+| `reqIds` | out | the stored requirements' ids, one per line, in storing order | |
+| `reqSources` | out | one line per stored requirement: its id, a TAB, the file it came from | |
+
+**Credential:** the vault entry `RG_API_AUTH`, declared by `mh.asset.rg-temp-project_1.1` only. The store has none.
+
+❗ **Company.** `mkproject` creates the project as the `RG_API_AUTH` account, so the project belongs to that account's
+company. The internal store writes as the company of the ExecContext (`RgSystemUserContext`) and RG looks the project up
+within it. Launch the SourceCode in the company `RG_API_AUTH` belongs to; otherwise the store fails before writing
+anything - `04.984.010`, carrying RG's `04.876.010` (project not found).
+
+### 8.4 Durable side effects
+
+- One RG project per run, development runs included: its description, the pipeline, `isReady`, the run's model/effort.
+- Its genesis run (an RG ExecContext) and TWO committed snapshots: the genesis (requirement #1) and the sealed STAGE
+  holding every other requirement - ONE snapshot when the batch held a single requirement.
+- Nothing is written to meta storage; the batch record is only read.
+
+### 8.5 Fitness criteria
+
+| id | criterion | hardness | type |
+|---|---|---|---|
+| F1 | the reported `projectCode` names a project RG lists, with the given description | hard | D |
+| F2 | every id in `reqIds` is a requirement of that project, as many as the answers held | hard | D |
+| F3 | the project owns exactly two COMMITTED snapshots (one for a single-requirement batch), the second a child of the first - no fork | hard | D |
+| F4 | every path of the record appears in `reqSources`, and no other path does | hard | D |
+| F5 | a stored requirement's text carries its CC content and ends its rationale with `source: <file>`, the file `reqSources` pairs with its id | hard | D |
+| F6 | a stored requirement is about its source file - its content can be traced to the document | soft | S |
+
+### 8.6 Limits
+
+- A failure inside the store after the genesis is not resumable by a reset, as in 7.6: the genesis is spent, and the
+  genesis call refuses a project that already owns a snapshot. The store's failure says what is committed and names
+  the STAGE and the ids written into it; a new run of the same batch writes a new project.
+- A failed store Task goes to `ERROR_WITH_RECOVERY` and, having no `tries`, is finished `ERROR` by the dispatcher's
+  recovery pass - a refused batch is refused the same way again.
+- The genesis wait is RG's own bound (`RgPleAuthoringService.awaitGenesisCommitted`) - the same one the HTTP route
+  of 1.5 reaches through `requirements/manual/first`.
+
+### 8.7 Corrections
+
+- **2026-09-24, created** beside 1.5 rather than as its next version, so both stay live. Three differences from 1.5:
+  `store` is the internal `mhdg-rg.req-store-batch` (same metas minus `variable-for-rg-base-url`, `rgBaseUrl` no
+  longer one of its inputs); `production` is nullable (`production?`), which `mh.asset.rg-temp-project_1.1` reads as a
+  development run; `model` and `effort` are REQUIRED - the optional form 1.5 uses is retired for these two inputs
+  (`DAHF-IMPLEMENTATION-AND-CONTINUOUS-IMPROVEMENT.md` 0.5). The store was verified against a real `rg-req-check`
+  answer (a Derby `ContextImpl.java` answer of five requirements) in RG's `RgReqStoreBatchTest`, commit `e185ce7a`.
