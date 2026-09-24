@@ -299,3 +299,13 @@ anything - `04.984.010`, carrying RG's `04.876.010` (project not found).
   development run; `model` and `effort` are REQUIRED - the optional form 1.5 uses is retired for these two inputs
   (`DAHF-IMPLEMENTATION-AND-CONTINUOUS-IMPROVEMENT.md` 0.5). The store was verified against a real `rg-req-check`
   answer (a Derby `ContextImpl.java` answer of five requirements) in RG's `RgReqStoreBatchTest`, commit `e185ce7a`.
+- **2026-09-24, first development run - ExecContext #313, FINISHED, 13 of 13 Tasks OK, no retries (~2.3 min).**
+  Synthetic input only: the record `batch-synthetic-0001` of `mh.asset.rg-req-batch-synthetic` in
+  `MH_META_STORAGE_SYNTHETIC` (registered first, registry id 3), listing the two files of `synthetic/corpus/`;
+  `production` null, `synthetic` true, `claude-opus-4-8` / `medium`, `rgPipelineUid` `mhdg-rg-cc-1.0.80`. Observed:
+  project `TMP7K82YBKM`; `reqIds` `-1..-10`; `reqSources` `-1..-5` -> `SyntheticRateLimiter.java`, `-6..-10` ->
+  `SyntheticRetryPolicy.java` (F4); RG lists the same ten ids (F2); two COMMITTED snapshots, #288 the genesis by
+  `pipeline-run`, #289 the sealed STAGE by `system-rg`, parent #288, both recording opus 4.8 / medium (F3); `-8` read
+  in full at #289 - CC's content, rationale ending `source: ...SyntheticRetryPolicy.java` (F5), traceable to
+  `delayBefore` (F6). The company rule of 8.3 held: the store found the project `mkproject` created, both company 2.
+  The one difference from 1.5 visible in RG: the STAGE is signed `system-rg` instead of the `RG_API_AUTH` account.
