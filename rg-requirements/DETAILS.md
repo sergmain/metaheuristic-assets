@@ -303,7 +303,8 @@ anything - `04.984.010`, carrying RG's `04.876.010` (project not found).
   Synthetic input only: the record `batch-synthetic-0001` of `mh.asset.rg-req-batch-synthetic` in
   `MH_META_STORAGE_SYNTHETIC` (registered first, registry id 3), listing the two files of `synthetic/corpus/`;
   `production` null, `synthetic` true, `claude-opus-4-8` / `medium`, `rgPipelineUid` `mhdg-rg-cc-1.0.80`. Observed:
-  project `TMP7K82YBKM`; `reqIds` `-1..-10`; `reqSources` `-1..-5` -> `SyntheticRateLimiter.java`, `-6..-10` ->
+  project `TMP7K82YBKM`, which RG lists (project 24, ready) with exactly the launched description (F1); `reqIds`
+  `-1..-10`; `reqSources` `-1..-5` -> `SyntheticRateLimiter.java`, `-6..-10` ->
   `SyntheticRetryPolicy.java` (F4); RG lists the same ten ids (F2); two COMMITTED snapshots, #288 the genesis by
   `pipeline-run`, #289 the sealed STAGE by `system-rg`, parent #288, both recording opus 4.8 / medium (F3); `-8` read
   in full at #289 - CC's content, rationale ending `source: ...SyntheticRetryPolicy.java` (F5), traceable to
