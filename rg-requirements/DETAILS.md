@@ -310,3 +310,16 @@ anything - `04.984.010`, carrying RG's `04.876.010` (project not found).
   in full at #289 - CC's content, rationale ending `source: ...SyntheticRetryPolicy.java` (F5), traceable to
   `delayBefore` (F6). The company rule of 8.3 held: the store found the project `mkproject` created, both company 2.
   The one difference from 1.5 visible in RG: the STAGE is signed `system-rg` instead of the `RG_API_AUTH` account.
+- **2026-09-24, first production run - ExecContext #316, FINISHED in 989 s, store Task OK.** Inputs as ExecContext #310
+  (a 1.5 run of the same batch) except `production` = `true`, `claude-sonnet-4-6` / `medium`, `locale` `en`:
+  `batch-0005` of `mh.asset.dir-batch-for-requirements.2`, read with `synthetic` = `true` (where the record lives -
+  `synthetic` is an input of its own here, not derived from `production`), 100 Derby files, `rgPipelineUid`
+  `mhdg-rg-cc-1.0.80`. Observed: project `TMP2TH95BNR` (project 25, ready, the launched description - F1); `reqIds`
+  `-1..-491` contiguous, and RG lists exactly those 491 (F2); two COMMITTED snapshots, #290 the genesis and #291 the
+  sealed STAGE with parent #290, both `claude-sonnet-4-6` / `medium` (F3); `reqSources` pairs id and file in batch
+  order, starting at `ClassMember.java` (F4, spot-checked); `-250` read in full at #291 - CC's content, rationale
+  ending with the `source:` line of `FormatableProperties.java` (F5). F6 not checked: the Derby sources lie outside
+  the directory the executor may read. Timing: the store Task took 394.6 s, the STAGE was open 368.1 s - #310's HTTP
+  store kept its STAGE open 1437 s for the same batch (x3.9). Profiling events show the per-requirement RG work is
+  nearly equal on both paths (~0.73 s vs ~0.76 s); the gain is the ~2.1 s per requirement #310 spent between
+  creations, outside RG's add.
