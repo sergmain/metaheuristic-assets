@@ -532,3 +532,9 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   not available, request timed out after 30012ms (total=10, active=10, idle=0, waiting=9)` - a pool of 10 against ~18
   parallel `store-req` (and up to 20 internal-function permits) - and in the same 30 s the Processor's `srv-v2` and
   `keep-alive` requests timed out too; those are retried, `store-req` is not.
+- 2026-09-30, ExecContexts #20 and #21 (staged-1.2, `synthetic-0001` and `synthetic-0002` launched together, Haiku /
+  null effort, `mhdg-rg-cc-1.0.80`) after the dispatcher's `spring.datasource.hikari.maximum-pool-size` was raised from
+  10 to 100: both FINISHED, every Task OK, their `store-req` Tasks interleaved (#6589-#6605). Projects `TMPTO3MNA4F`
+  and `TMPZPXFHAYD`: genesis snapshots 14 / 15 committed in 23.3 s / 23.4 s; STAGEs 16 / 17 opened 8 ms apart and
+  COMMITTED 4.08 s after opening, each. The scenario #14 + #15 failed on (10.7, 11.6) passes with the pool of 100 -
+  S1-S3 hold for both.
