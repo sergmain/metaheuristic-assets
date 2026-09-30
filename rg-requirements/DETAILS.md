@@ -509,7 +509,8 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   refuses a boolean literal as a comparison operand (import `564.200`, line 183:28). Repaired in 1.1 with the bare
   Variable, `when hasFirstReq ? true : false` - the form RG's own pipeline gates with; 1.0 archived (MH-GIT-DELIVERY 1.6). Promoted (DAHF 4.4): the test
   `tests/test_mhsc_when_clauses.py` refuses any `.mhsc` of this capability whose `when` compares with `"true"` /
-  `"false"`.- 2026-09-30, 1.2: `effort` made nullable on the ExecContext and on `mkproject`, `cc` and `genesis`, for a run on Haiku
+  `"false"`.
+- 2026-09-30, 1.2: `effort` made nullable on the ExecContext and on `mkproject`, `cc` and `genesis`, for a run on Haiku
   with a null effort - which MH refuses for an input not declared nullable (`01.562.124`, `ExecContextCreatorService`).
   The flow is unchanged. 1.1 (SourceCode #21) archived (MH-GIT-DELIVERY 1.6); it stopped nothing - ExecContext #13, 1.1's
   `batch-0004` run, was no longer on the Dispatcher (not found).
