@@ -371,4 +371,9 @@ As 8.4: one RG project per run and what the stores commit into it; nothing is wr
 
 ### 9.6 Corrections
 
-(none yet - the first run is recorded here)
+- 2026-09-30, ExecContext #8 (SourceCode #18, `batch-0004` of `mh.asset.dir-batch-for-requirements.2`, synthetic,
+  claude-sonnet-4-6 / medium, project `TMPP6XH6FH1`): FAILED, stopped. The first branch's `store` ran the project's
+  genesis; every later branch's `store` was refused by RG with `04.876.020 ERROR: Project TMPP6XH6FH1 already owns 1
+  snapshot(s), so it is not a just-created project` (surfaced as `04.985.050` / `04.984.010`, e.g. Task #4679):
+  `mhdg-rg.req-store-batch` spends the project's one-shot genesis on requirement #1 of EVERY call, so it can run once per
+  project, not once per branch. 13 branch `store` Tasks had failed by 09:53:11 when the ExecContext was stopped.
