@@ -323,3 +323,52 @@ anything - `04.984.010`, carrying RG's `04.876.010` (project not found).
   store kept its STAGE open 1437 s for the same batch (x3.9). Profiling events show the per-requirement RG work is
   nearly equal on both paths (~0.73 s vs ~0.76 s); the gain is the ~2.1 s per requirement #310 spent between
   creations, outside RG's add.
+
+## 9. mh-rg-requirements-from-batch-parallel-1.0 - each file stored in its own branch
+
+### 9.1 Purpose
+
+The purpose of section 8, with the store moved into the fan-out: each branch stores ITS file's requirements right
+after `check`, so storing runs in parallel with the other branches instead of waiting for all of them. A changed flow,
+so a new uid beside internal-1.0, which is left as it is and keeps working.
+
+### 9.2 The graph
+
+internal-1.0's graph (8.2) with two changes, and nothing else - proven by comparing the two files line by line,
+comments and blank lines aside:
+
+- `gather` (internal `mh.aggregate`) and the top-level `store` are removed.
+- `store` (internal `mhdg-rg.req-store-batch`, the same metas) runs inside `split`'s sequential block after `check`,
+  bound to the branch's own Variables: `variable-for-paths = "sourcePath"` (the branch's one path) and
+  `variable-for-answers = "reqAnswer"` (the branch's one answer). The Function's coverage check then covers that one
+  file.
+
+### 9.3 Run-data contract
+
+The inputs of 8.3, unchanged. Outputs:
+
+| variable | direction | meaning |
+|---|---|---|
+| `projectCode` | out, ExecContext | the project's code |
+| `reqIds` | out, per branch | the ids of that branch's file's requirements, one per line |
+| `reqSources` | out, per branch | one line per requirement of that file: its id, a TAB, the file |
+
+With no `gather` there is no ExecContext-level `reqIds` / `reqSources`.
+
+### 9.4 Durable side effects
+
+As 8.4: one RG project per run and what the stores commit into it; nothing is written to meta storage.
+
+### 9.5 Fitness criteria
+
+| id | criterion | hardness | type |
+|---|---|---|---|
+| P1 | the reported `projectCode` names a project RG lists, with the given description | hard | D |
+| P2 | every branch's `store` Task is OK, and every path of the record is some branch's `reqSources` file | hard | D |
+| P3 | every id in the branches' `reqIds` is a requirement of that project, as many as the answers held | hard | D |
+| P4 | the project's COMMITTED snapshots form one chain - no fork | hard | D |
+| P5 | a stored requirement's text carries its CC content and ends its rationale with `source: <file>` | hard | D |
+
+### 9.6 Corrections
+
+(none yet - the first run is recorded here)
