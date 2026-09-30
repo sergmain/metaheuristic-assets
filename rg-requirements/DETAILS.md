@@ -454,7 +454,7 @@ There is no ExecContext-level `reqIds` / `reqSources`.
   Criterion added: **C6 (hard, D) - no `store-req` Task fails on a DB-connection timeout; a run that shows one is not
   a valid result and not a benchmark.** Limit added: the parallel store needs a dispatcher whose DB pool covers its
   internal-function concurrency.
-## 11. mh-rg-requirements-from-batch-staged-1.1 - requirement #1 as the genesis, the others in parallel into one STAGE
+## 11. mh-rg-requirements-from-batch-staged-1.2 - requirement #1 as the genesis, the others in parallel into one STAGE
 
 ### 11.1 Purpose
 
@@ -479,7 +479,9 @@ internal-1.0's processes 1-5 (8.2), `gather` included, unchanged. Then:
 
 ### 11.3 Run-data contract
 
-The inputs of 8.3, unchanged. Output: `projectCode`. **Credential:** `RG_API_AUTH`, declared by
+The inputs of 8.3, except that `effort` is NULLABLE (`effort?`, since 1.2): null for a model that takes no effort -
+`claude-haiku-4-5-20251001` (`RgLlmModel.takesEffort` false) - with which cc passes no `--effort` and RG records the
+model with a null effort. `model` stays required. Output: `projectCode`. **Credential:** `RG_API_AUTH`, declared by
 `mh.asset.rg-temp-project_1.1` and `mh.asset.rg-genesis-snapshot_1.0`.
 
 ### 11.4 Durable side effects
