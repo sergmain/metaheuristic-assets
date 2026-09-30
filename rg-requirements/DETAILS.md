@@ -551,3 +551,16 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   The 23.2 s from the genesis commit to the STAGE opening, split: 2.6 s until `parent` (Task #6915) was assigned,
   20.5 s for `parent` itself (1790805254980 -> 1790805275484; `first`, an external Task without a network call, took 9.9 s),
   90 ms for `open-stage`. `parent` exists only because `mhdg-rg.req-store-batch` does not output the genesis snapshot id.
+- 2026-09-30, DEFECT - wrong requirement type; staged-1.2 (SourceCode #32) and cascade-1.0 (SourceCode #19, section 10)
+  archived (DAHF 0.3). `mhdg-rg.store-req` is RG's decomposition write: it creates DECOMPOSED requirements
+  (`RgEnums` `DECOMPOSED(0)`; the dispatcher log of #14/#15 reads `075.240 Requirement created: TMPXIK2WWW6-2
+  type=DECOMPOSED`). This capability stores MANUAL requirements, DERIVED (`DERIVED(1)`) - what `req-store-batch`
+  writes. Checked on #24's project `TMPSROT3N5I`: `-1` (the genesis, through `req-store-batch`) reqType 1 = DERIVED,
+  `-2` (through `store-req`) reqType 0 = DECOMPOSED - so #24 stored 1 DERIVED and 463 DECOMPOSED requirements. #24's
+  benchmark therefore compares two different write paths: the 0.067 s vs 0.111 s per requirement is DECOMPOSED writes
+  in parallel against DERIVED writes in one Task, and is NOT a measure of what parallelism buys the manual store.
+  Criterion added for every variant of this capability: **every stored requirement is DERIVED (reqType 1), the type
+  internal-1.0 stores.** The one internal Function that writes DERIVED requirements, `mhdg-rg.req-store-batch`,
+  always starts with the project's genesis, so it cannot be the per-branch store (9.6); a parallel store of DERIVED
+  requirements needs either an RG internal Function that writes one manual requirement into an OPEN STAGE, or the
+  REST `requirements/manual` write into a STAGE from a git-sourced Function per branch (1.5's HTTP path).
