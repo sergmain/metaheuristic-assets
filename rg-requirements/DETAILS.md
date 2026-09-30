@@ -442,4 +442,15 @@ There is no ExecContext-level `reqIds` / `reqSources`.
 
 ### 10.7 Corrections
 
-(none yet - the first run is recorded here)
+- 2026-09-30, ExecContext #11 (SourceCode #19, `batch-0004` of `mh.asset.dir-batch-for-requirements.2`, synthetic,
+  claude-sonnet-4-6 / medium, project `TMPVG956AFJ`): stopped. The repair of 9.6 held - `open-stage` opened genesis
+  STAGE 7 41.5 s after the start, stamped with the run's pair, and no branch touched the genesis. Then `store-req`
+  failed: 22 Tasks by 10:17:22, in bursts, each with `977.060 ... Could not open JPA EntityManager for transaction`
+  after 30.1 s (Task #5640: 1790788507269 -> 1790788537380) - a DB-connection acquisition timeout. Up to 20
+  `store-req` run at once (`internalFunctionMaxConcurrency` 20); the repo's dispatcher config sets no pool size, i.e.
+  HikariCP's default of 10 connections and 30 s. 46 requirements were visible 231 s after the STAGE opened, the
+  numbering with gaps (-1, -17, -27, -44, -50, -51), so a `tries` retry could write a requirement twice - none was
+  added. Stopped as a hot-spin (DAHF 0.17 -> pause); nothing in the graph sets the dispatcher's concurrency or pool.
+  Criterion added: **C6 (hard, D) - no `store-req` Task fails on a DB-connection timeout; a run that shows one is not
+  a valid result and not a benchmark.** Limit added: the parallel store needs a dispatcher whose DB pool covers its
+  internal-function concurrency.
