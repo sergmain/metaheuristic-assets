@@ -377,3 +377,69 @@ As 8.4: one RG project per run and what the stores commit into it; nothing is wr
   snapshot(s), so it is not a just-created project` (surfaced as `04.985.050` / `04.984.010`, e.g. Task #4679):
   `mhdg-rg.req-store-batch` spends the project's one-shot genesis on requirement #1 of EVERY call, so it can run once per
   project, not once per branch. 13 branch `store` Tasks had failed by 09:53:11 when the ExecContext was stopped.
+- 2026-09-30, repair (DAHF 0.17 -> 4.3-4.5). SourceCode #18 archived (DAHF 0.3). Criterion added, and promoted into the
+  graph of section 10: **a store step that runs once per branch writes into a STAGE that is already open, and never
+  spends the genesis - the genesis STAGE is opened ONCE, before the fan-out**. RG's own refusal named the shape: open a
+  STAGE, write into it. Its in-graph form is RG's own cascade - `mhdg-rg.open-stage`, `mhdg-rg.store-req`,
+  `mhdg-rg.post-processing` - which section 10 uses.
+
+## 10. mh-rg-requirements-from-batch-cascade-1.0 - every requirement stored in its own branch, RG's cascade
+
+### 10.1 Purpose
+
+The purpose of section 8, with every requirement stored in parallel: each file's branch turns its checked answer into
+one line per requirement, and each requirement is stored in a branch of its own, into ONE STAGE opened once before the
+fan-out and committed once after it. It is the repair of section 9 (9.6) and a changed flow, so a new uid beside
+internal-1.0.
+
+### 10.2 The graph
+
+Processes 1-3 (`mkproject`, `select`, `paths`) and the branch's `prompt`, `cc`, `check` are internal-1.0's (8.2),
+unchanged. `gather` and `store` are gone. New:
+
+| # | process | Function | contributes |
+|---|---|---|---|
+| 4 | `genesis` | internal `mh.evaluation` | `parentSnapshotId` = the TEXT `null` (SpEL `'null'`) - the explicit genesis fork point `open-stage` requires (a bare `null` would nullify the Variable, refused `844.022`) |
+| 5 | `open` | internal `mhdg-rg.open-stage` | the project's genesis STAGE, recorded with THIS ExecContext, and a `PIPELINE_RUN` event; stamps the STAGE with `model` / `effort`; `stageSnapshotId`, `triggerEventId` |
+| 6.4 | `lines` | `mh.asset.rg-req-lines_1.0` | `reqLines` - the branch's answer as one `{name, content, rationale}` JSON line per requirement, the fields `RequirementLine` reads |
+| 6.5 | `reqs` | internal `mh.batch-line-splitter` | one branch per requirement, the line in `reqJson` |
+| 6.5.1 | `store` | internal `mhdg-rg.store-req` | the requirement written into the STAGE (`createRequirement`, then its revision prepared and activated); `requirementId` |
+| 7 | `commit` | internal `mhdg-rg.post-processing`, `tag terminal` | the STAGE committed and the event completed - or, if any Task of the ExecContext ended in `ERROR`, the STAGE marked FAILED (fail-closed) |
+
+`open-stage`, `store-req` and `post-processing` read `projectCode`, `parentSnapshotId`, `stageSnapshotId` and
+`triggerEventId` by those exact names.
+
+### 10.3 Run-data contract
+
+The inputs of 8.3, unchanged. Outputs: `projectCode` at ExecContext level; `requirementId` per requirement branch.
+There is no ExecContext-level `reqIds` / `reqSources`.
+
+### 10.4 Durable side effects
+
+- One RG project per run, as in 8.4.
+- ONE committed snapshot: the genesis STAGE, holding every requirement - opened and committed by THIS ExecContext,
+  which RG records as the project's pipeline run, with its `PIPELINE_RUN` event. The project's bound genesis pipeline
+  (`rgPipelineUid`) is not run.
+- Nothing is written to meta storage.
+
+### 10.5 Fitness criteria
+
+| id | criterion | hardness | type |
+|---|---|---|---|
+| C1 | the reported `projectCode` names a project RG lists, with the given description | hard | D |
+| C2 | every `store` Task is OK, and every path of the record had a branch whose `store` Tasks ran | hard | D |
+| C3 | the project owns exactly ONE COMMITTED snapshot, holding as many requirements as the answers held | hard | D |
+| C4 | a stored requirement carries its CC content | hard | D |
+| C5 | a stored requirement is about its source file | soft | S |
+
+### 10.6 Limits
+
+- The requirement text carries no `source: <file>` line: `store-req` composes its four items with one line each and
+  numbers them by counting, so an extra line would be numbered as the next item. The file of a requirement is the
+  `sourcePath` of the branch whose `store` Task wrote its `requirementId`.
+- The project's pipeline run is this batch ExecContext. What a later RG operation that clones the pipeline run (an
+  objection) does with it is not established.
+
+### 10.7 Corrections
+
+(none yet - the first run is recorded here)
