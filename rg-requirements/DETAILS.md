@@ -538,3 +538,13 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   and `TMPZPXFHAYD`: genesis snapshots 14 / 15 committed in 23.3 s / 23.4 s; STAGEs 16 / 17 opened 8 ms apart and
   COMMITTED 4.08 s after opening, each. The scenario #14 + #15 failed on (10.7, 11.6) passes with the pool of 100 -
   S1-S3 hold for both.
+- 2026-09-30, ExecContext #24 - the benchmark (staged-1.2, `batch-0004` of `mh.asset.dir-batch-for-requirements.2`,
+  synthetic, `claude-haiku-4-5-20251001` / null effort, `mhdg-rg-cc-1.0.80`, DB pool 100, project `TMPSROT3N5I`):
+  FINISHED in 723.4 s, every Task OK. 464 requirements (Haiku; Sonnet made 495 from the same batch). Fan-out of 100
+  files with UNCACHED CC to the end of `gather`: 630.0 s. `first` 9.9 s. Genesis snapshot 18 committed in 22.3 s; its
+  commit to STAGE 19 open (`req-store-batch` returning, `parent` over MCP, `open-stage`): 23.2 s. STAGE 19, 463
+  requirements written by parallel `store-req`, opened -> COMMITTED in **31.07 s = 0.067 s per requirement (~14.9/s)**.
+  Store phase, genesis opened -> STAGE committed: 76.6 s. Against internal-1.0 on the same build (ExecContext #5, 8.7:
+  STAGE 54.9 s for 495 = 0.111 s per requirement, store phase 78.5 s): the STAGE writes are 1.66x faster per
+  requirement, the whole store phase is level - the parallel writes win back what the second top-level round trip
+  (`parent` + `open-stage`, 23.2 s) costs.
