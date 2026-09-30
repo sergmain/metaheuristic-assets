@@ -454,3 +454,48 @@ There is no ExecContext-level `reqIds` / `reqSources`.
   Criterion added: **C6 (hard, D) - no `store-req` Task fails on a DB-connection timeout; a run that shows one is not
   a valid result and not a benchmark.** Limit added: the parallel store needs a dispatcher whose DB pool covers its
   internal-function concurrency.
+## 11. mh-rg-requirements-from-batch-staged-1.0 - requirement #1 as the genesis, the others in parallel into one STAGE
+
+### 11.1 Purpose
+
+The purpose of section 8, with the store split in two: requirement #1 of the batch's first file through the project's
+genesis (`mhdg-rg.req-store-batch`, handed one file and one requirement), and every other requirement written in
+parallel, one branch each, into ONE STAGE forked from the genesis and committed once. An experiment beside
+cascade-1.0 (section 10), which opens a genesis STAGE instead; a changed flow, so a new uid.
+
+### 11.2 The graph
+
+internal-1.0's processes 1-5 (8.2), `gather` included, unchanged. Then:
+
+| # | process | Function | contributes |
+|---|---|---|---|
+| 6 | `first` | `mh.asset.rg-req-first_1.0` | the batch store's own `plan` over the collected answers (every file or nothing), split into `firstPath` + `firstAnswer` (requirement #1 alone, one answer line), `otherReqs` (every other requirement, one `{name, content, rationale}` line each, batch order) and `hasFirstReq` |
+| 7 | `insert` | internal `mh.nop`, `when hasFirstReq == "true"` | holds 7.1-7.5 in order |
+| 7.1 | `genesis` | internal `mhdg-rg.req-store-batch` | requirement #1 as the project's genesis - one committed snapshot, no STAGE; `firstReqIds`, `firstReqSources` |
+| 7.2 | `parent` | `mh.asset.rg-genesis-snapshot_1.0` | `parentSnapshotId` - the id of the project's one COMMITTED parentless snapshot, read over MCP `mhdg_rg_list_snapshots`; anything else refused |
+| 7.3 | `open` | internal `mhdg-rg.open-stage` | ONE STAGE forked from the genesis; `stageSnapshotId`, `triggerEventId` |
+| 7.4 | `reqs` / `store` | internal `mh.batch-line-splitter` / `mhdg-rg.store-req` | every other requirement written into the STAGE, one branch each |
+| 7.5 | `close` | internal `mhdg-rg.post-processing`, `tag terminal` | the STAGE committed - or marked FAILED if any Task of the ExecContext ended in `ERROR` |
+
+### 11.3 Run-data contract
+
+The inputs of 8.3, unchanged. Output: `projectCode`. **Credential:** `RG_API_AUTH`, declared by
+`mh.asset.rg-temp-project_1.1` and `mh.asset.rg-genesis-snapshot_1.0`.
+
+### 11.4 Durable side effects
+
+One RG project per run; TWO committed snapshots - the genesis (requirement #1) and the STAGE holding every other
+requirement, opened and committed by this ExecContext. Nothing written to meta storage.
+
+### 11.5 Fitness criteria
+
+| id | criterion | hardness | type |
+|---|---|---|---|
+| S1 | the reported `projectCode` names a project RG lists, with the given description | hard | D |
+| S2 | every `store` Task is OK, and none failed on a DB-connection timeout (C6) | hard | D |
+| S3 | the project owns exactly TWO COMMITTED snapshots, the second a child of the first, holding as many requirements as the answers held | hard | D |
+| S4 | a stored requirement carries its CC content | hard | D |
+
+### 11.6 Corrections
+
+(none yet - the first run is recorded here)
