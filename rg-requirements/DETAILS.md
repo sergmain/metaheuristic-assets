@@ -454,7 +454,7 @@ There is no ExecContext-level `reqIds` / `reqSources`.
   Criterion added: **C6 (hard, D) - no `store-req` Task fails on a DB-connection timeout; a run that shows one is not
   a valid result and not a benchmark.** Limit added: the parallel store needs a dispatcher whose DB pool covers its
   internal-function concurrency.
-## 11. mh-rg-requirements-from-batch-staged-1.0 - requirement #1 as the genesis, the others in parallel into one STAGE
+## 11. mh-rg-requirements-from-batch-staged-1.1 - requirement #1 as the genesis, the others in parallel into one STAGE
 
 ### 11.1 Purpose
 
@@ -470,7 +470,7 @@ internal-1.0's processes 1-5 (8.2), `gather` included, unchanged. Then:
 | # | process | Function | contributes |
 |---|---|---|---|
 | 6 | `first` | `mh.asset.rg-req-first_1.0` | the batch store's own `plan` over the collected answers (every file or nothing), split into `firstPath` + `firstAnswer` (requirement #1 alone, one answer line), `otherReqs` (every other requirement, one `{name, content, rationale}` line each, batch order) and `hasFirstReq` |
-| 7 | `insert` | internal `mh.nop`, `when hasFirstReq == "true"` | holds 7.1-7.5 in order |
+| 7 | `insert` | internal `mh.nop`, `when hasFirstReq == true` (a boolean literal - 11.6) | holds 7.1-7.5 in order |
 | 7.1 | `genesis` | internal `mhdg-rg.req-store-batch` | requirement #1 as the project's genesis - one committed snapshot, no STAGE; `firstReqIds`, `firstReqSources` |
 | 7.2 | `parent` | `mh.asset.rg-genesis-snapshot_1.0` | `parentSnapshotId` - the id of the project's one COMMITTED parentless snapshot, read over MCP `mhdg_rg_list_snapshots`; anything else refused |
 | 7.3 | `open` | internal `mhdg-rg.open-stage` | ONE STAGE forked from the genesis; `stageSnapshotId`, `triggerEventId` |
@@ -498,4 +498,12 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
 
 ### 11.6 Corrections
 
-(none yet - the first run is recorded here)
+- 2026-09-30, ExecContext #12 (staged-1.0, SourceCode #20, `batch-0004`, synthetic, claude-sonnet-4-6 / medium,
+  project `TMPY1RO4KWF`): the fan-out, `gather` and `first` ran OK - `first` split 495 requirements into #1 (from
+  `...\authentication\UserAuthenticator.java`) and 494 others. The `insert` gate (Task #5727) then failed in 1 s with
+  `509.300 not supported type: class java.lang.String`: `when hasFirstReq == "true"` compares a Variable holding true
+  with a STRING, and MH's comparator (`EvaluateExpressionLanguage.getTypeComparator`) treats such a Variable as a
+  boolean and refuses the string operand (`getValueBoolean`). Nothing was stored. Repaired in 1.1 with the boolean
+  literal, `when hasFirstReq == true`; 1.0 archived (MH-GIT-DELIVERY 1.6). Promoted (DAHF 4.4): the test
+  `tests/test_mhsc_when_clauses.py` refuses any `.mhsc` of this capability whose `when` compares with `"true"` /
+  `"false"`.
