@@ -45,13 +45,20 @@ def test_the_first_answer_is_one_line_the_batch_store_parses_as_a_batch_of_one()
     assert plan(A, parse_answers(first_answer)) == [(A, json.loads(first_answer)['requirements'][0])]
 
 
-def test_an_other_line_carries_only_the_fields_store_req_reads_and_no_source_line():
+def test_an_other_line_carries_only_the_fields_store_req_reads_typed_derived_and_no_source_line():
     _, _, others = fn.first_and_others(A + '\n' + B, answers(ALPHA, BETA))
 
     b1 = json.loads(others[1])
-    assert list(b1.keys()) == ['name', 'content', 'rationale']
+    assert list(b1.keys()) == ['name', 'content', 'rationale', 'type']
     assert b1 == {'name': 'B1', 'content': 'Beta requirement one must always hold.',
-                  'rationale': 'SYNTHETIC fixture - B1.'}
+                  'rationale': 'SYNTHETIC fixture - B1.', 'type': 'DERIVED'}
+
+
+def test_every_other_line_is_derived_never_left_to_store_reqs_decomposed_default():
+    _, _, others = fn.first_and_others(A + '\n' + B, answers(ALPHA, BETA))
+
+    assert others
+    assert all(json.loads(line)['type'] == 'DERIVED' for line in others)
 
 
 def test_a_batch_of_one_requirement_has_no_others():

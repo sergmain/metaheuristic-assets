@@ -454,7 +454,7 @@ There is no ExecContext-level `reqIds` / `reqSources`.
   Criterion added: **C6 (hard, D) - no `store-req` Task fails on a DB-connection timeout; a run that shows one is not
   a valid result and not a benchmark.** Limit added: the parallel store needs a dispatcher whose DB pool covers its
   internal-function concurrency.
-## 11. mh-rg-requirements-from-batch-staged-1.2 - requirement #1 as the genesis, the others in parallel into one STAGE
+## 11. mh-rg-requirements-from-batch-staged-1.3 - requirement #1 as the genesis, the others in parallel into one STAGE
 
 ### 11.1 Purpose
 
@@ -560,7 +560,11 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   benchmark therefore compares two different write paths: the 0.067 s vs 0.111 s per requirement is DECOMPOSED writes
   in parallel against DERIVED writes in one Task, and is NOT a measure of what parallelism buys the manual store.
   Criterion added for every variant of this capability: **every stored requirement is DERIVED (reqType 1), the type
-  internal-1.0 stores.** The one internal Function that writes DERIVED requirements, `mhdg-rg.req-store-batch`,
-  always starts with the project's genesis, so it cannot be the per-branch store (9.6); a parallel store of DERIVED
-  requirements needs either an RG internal Function that writes one manual requirement into an OPEN STAGE, or the
-  REST `requirements/manual` write into a STAGE from a git-sourced Function per branch (1.5's HTTP path).
+  internal-1.0 stores.**
+- 2026-09-30, CORRECTION of the entry above and REPAIR - staged-1.3. `store-req` writes the type its line names: its
+  `RequirementLine.type` reads ABSENT as DECOMPOSED, and RG's own manual path sets it to DERIVED
+  (`RgStoreReq.authoredRequirementLine`). The DECOMPOSED requirements were a defect of this capability's own Function:
+  `mh.asset.rg-req-first_1.0` wrote its other-reqs lines without `type`. Fixed in its payload - every line now carries
+  `"type": "DERIVED"`, pinned by `tests/test_mh_rg_req_first.py` - and the graph relaunched as staged-1.3 (1.2 was
+  archived; the graph is unchanged). The claim above that only `req-store-batch` writes DERIVED requirements was
+  wrong and is withdrawn. cascade-1.0 stays archived: its genesis is `open-stage`'s empty genesis STAGE, not a manual one.
