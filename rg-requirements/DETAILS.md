@@ -525,3 +525,10 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   stopped later - wrote at the same moment (its store-req Tasks #6429-#6443 interleave with #14's #6428-#6442) and ended
   with 5 store-req Tasks in ERROR, not examined. So ~16 parallel writes, not hundreds (10.7), already starve the
   dispatcher's DB pool; the parallel store needs a pool sized for it.
+- 2026-09-30, ExecContext #18 (staged-1.2, `synthetic-0001` ALONE, Haiku / null effort, `mhdg-rg-cc-1.0.80`, project
+  `TMPB3XCT19I`): every Task OK. Genesis snapshot 12 committed in 22.1 s; STAGE 13 forked from it and COMMITTED 3.0 s
+  after it opened, with the ~8 `store-req` Tasks of the batch in parallel. S1-S3 hold. The same flow on the same record
+  failed in #14 only while #15 wrote beside it: the dispatcher's log of that window shows `HikariPool-1 - Connection is
+  not available, request timed out after 30012ms (total=10, active=10, idle=0, waiting=9)` - a pool of 10 against ~18
+  parallel `store-req` (and up to 20 internal-function permits) - and in the same 30 s the Processor's `srv-v2` and
+  `keep-alive` requests timed out too; those are retried, `store-req` is not.
