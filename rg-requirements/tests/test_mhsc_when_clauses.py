@@ -1,7 +1,9 @@
 # A `when` gate that compares a flag Variable with the STRING "true" / "false" fails at runtime: MH's expression
 # comparator (EvaluateExpressionLanguage.getTypeComparator) treats a Variable holding true/false as a boolean, then
 # refuses the string operand beside it - 509.300 "not supported type: class java.lang.String" (ExecContext #12, the
-# 'insert' gate of mh-rg-requirements-from-batch-staged-1.0). The boolean literal is what works: `when flag == true`.
+# 'insert' gate of mh-rg-requirements-from-batch-staged-1.0). A boolean literal cannot stand there either - the grammar
+# allows a Variable, an INT or a STRING as a comparison operand (MhSourceCode.g4, compareExpr). What works is the flag
+# alone, as RG's own pipeline gates: `when flag ? true : false`.
 #
 # Checked here over every .mhsc this capability ships, so the class is refused before a push instead of discovered
 # in a run (DAHF-IMPLEMENTATION 4.4).
@@ -32,6 +34,6 @@ def test_no_when_gate_compares_with_a_string_boolean():
 def test_the_rule_sees_the_shape_that_failed_and_passes_the_ones_that_work():
     assert offending_lines('        when hasFirstReq == "true" ? true : false')
     assert offending_lines('        when "false" != flag ? true : false')
-    assert not offending_lines('        when hasFirstReq == true ? true : false')
+    assert not offending_lines('        when hasFirstReq ? true : false')
     assert not offending_lines('        when genesisModeVar != "MANUAL" ? true : false')
     assert not offending_lines('        // when hasFirstReq == "true" - a comment is not a gate')

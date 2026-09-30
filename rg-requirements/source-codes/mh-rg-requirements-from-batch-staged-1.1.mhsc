@@ -17,8 +17,8 @@
 // per project (ExecContext #8, 04.876.020); here it runs once, on requirement #1 alone. The other writes are RG's own
 // cascade Functions, which write into an OPEN STAGE and never touch the genesis.
 //
-// 1.1: the 'insert' gate compares hasFirstReq with the boolean literal true - 1.0 compared it with the string "true",
-// which MH's expression comparator refuses (509.300, ExecContext #12). Nothing else changed.
+// 1.1: the 'insert' gate is the bare Variable hasFirstReq - 1.0 compared it with the string "true", which MH's
+// expression comparator refuses (509.300, ExecContext #12). Nothing else changed.
 //
 // Reusable by construction - nothing about a particular run appears below:
 //   rgBaseUrl           comes IN, the RG the project is created in, and the one parent reads the genesis id from
@@ -178,9 +178,10 @@ source "mh-rg-requirements-from-batch-staged-1.1" {
 
     insert := internal mh.nop {
         name "Store requirement #1, then every other requirement into one STAGE"
-        // a BOOLEAN literal: MH's comparator treats a Variable holding true/false as a boolean and refuses a string
-        // operand beside it - 1.0's == "true" failed with 509.300 (ExecContext #12)
-        when hasFirstReq == true ? true : false
+        // the Variable ALONE, as RG's own pipeline gates (when hasObjectives ? true : false): the evaluator converts it
+        // to the boolean condition. 1.0's == "true" failed at runtime with 509.300 (ExecContext #12), and == true is not
+        // in the grammar (a comparison operand is a Variable, an INT or a STRING)
+        when hasFirstReq ? true : false
         <- hasFirstReq
         sequential {
             genesis := internal mhdg-rg.req-store-batch {
