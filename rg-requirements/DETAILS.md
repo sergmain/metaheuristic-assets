@@ -548,3 +548,6 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   STAGE 54.9 s for 495 = 0.111 s per requirement, store phase 78.5 s): the STAGE writes are 1.66x faster per
   requirement, the whole store phase is level - the parallel writes win back what the second top-level round trip
   (`parent` + `open-stage`, 23.2 s) costs.
+  The 23.2 s from the genesis commit to the STAGE opening, split: 2.6 s until `parent` (Task #6915) was assigned,
+  20.5 s for `parent` itself (1790805254980 -> 1790805275484; `first`, an external Task without a network call, took 9.9 s),
+  90 ms for `open-stage`. `parent` exists only because `mhdg-rg.req-store-batch` does not output the genesis snapshot id.
