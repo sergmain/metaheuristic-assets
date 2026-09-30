@@ -11,11 +11,16 @@
 #   first-answer  OUTPUT - ONE answer line holding ONLY requirement #1 - what internal mhdg-rg.req-store-batch takes
 #                          (with first-path as its batch) to run the project's genesis on that one requirement
 #   other-reqs    OUTPUT - every other requirement, one JSON line each, in the batch's order: {name, content,
-#                          rationale} - what internal mh.batch-line-splitter hands internal mhdg-rg.store-req as reqJson
+#                          rationale, type} - what internal mh.batch-line-splitter hands internal mhdg-rg.store-req as reqJson
 #   has-first     OUTPUT - 'true' when there is a requirement #1, the flag the storing mh.nop is gated on
 #
 # EVERY FILE OR NOTHING, before anything is stored: the answers must cover the batch exactly - the same plan() the
 # batch store runs - so a file whose branch never answered stops the run here, not after the genesis has fired.
+#
+# EVERY LINE SAYS type DERIVED. store-req reads an ABSENT type as DECOMPOSED - CC's decomposition output - and these
+# are manual requirements, DERIVED like requirement #1 that req-store-batch writes. RG's own manual path states it the
+# same way (RgStoreReq.authoredRequirementLine). Without it ExecContext #24 stored #1 DERIVED and the 463 others
+# DECOMPOSED.
 #
 # The other-reqs lines carry only the fields store-req's RequirementLine reads, and no 'source:' line in the
 # rationale: store-req composes its four items one line each and numbers them by counting, so an extra line would be
@@ -29,9 +34,13 @@ from mh_task_io import load_params, output_role, read_role, write_text
 
 FUNCTION_CODE = 'mh.asset.rg-req-first_1.0'
 
+# RgEnums.RequirementType of a manual requirement - written by a human (here: CC, one file at a time), not decomposed
+DERIVED = 'DERIVED'
+
 
 def store_req_line(requirement):
-    """One requirement as one ASCII JSON line with only the fields store-req reads."""
+    """One requirement as one ASCII JSON line with only the fields store-req reads - type DERIVED, stated, never left
+    to store-req's default (DECOMPOSED)."""
     item = {}
     name = requirement.get('name')
     if isinstance(name, str) and name.strip():
@@ -40,6 +49,7 @@ def store_req_line(requirement):
     rationale = requirement.get('rationale')
     if isinstance(rationale, str) and rationale.strip():
         item['rationale'] = rationale
+    item['type'] = DERIVED
     return json.dumps(item, ensure_ascii=True)
 
 

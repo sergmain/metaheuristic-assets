@@ -17,6 +17,8 @@
 // per project (ExecContext #8, 04.876.020); here it runs once, on requirement #1 alone. The other writes are RG's own
 // cascade Functions, which write into an OPEN STAGE and never touch the genesis.
 //
+// 1.3: the same graph as 1.2, relaunchable after 1.2 was archived for storing the other requirements as DECOMPOSED -
+// the fix is in mh.asset.rg-req-first_1.0's payload, whose other-reqs lines now carry type DERIVED. Nothing here changed.
 // 1.2: effort is NULLABLE (effort?) - a model that takes no effort (Haiku, RgLlmModel.takesEffort false) runs with a
 // null effort, which MH refuses for an input not declared nullable (01.562.124). Nothing else changed.
 // 1.1: the 'insert' gate is the bare Variable hasFirstReq - 1.0 compared it with the string "true", which MH's
@@ -46,7 +48,7 @@
 //
 // ORDER is declaration order: each process is chained to the one declared before it; everything after the splitter
 // waits for all of its branches; inside 'insert' the steps run in the order above.
-source "mh-rg-requirements-from-batch-staged-1.2" {
+source "mh-rg-requirements-from-batch-staged-1.3" {
 
     variables {
         <- rgBaseUrl
