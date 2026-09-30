@@ -568,3 +568,12 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   `"type": "DERIVED"`, pinned by `tests/test_mh_rg_req_first.py` - and the graph relaunched as staged-1.3 (1.2 was
   archived; the graph is unchanged). The claim above that only `req-store-batch` writes DERIVED requirements was
   wrong and is withdrawn. cascade-1.0 stays archived: its genesis is `open-stage`'s empty genesis STAGE, not a manual one.
+- 2026-09-30, ExecContext #27 - staged-1.3 (SourceCode #33) on `batch-0004`, Haiku / null effort, DB pool 100, project
+  `TMPSCXVYV3U`: FINISHED in 337.7 s, both snapshots COMMITTED. 458 requirements, ALL DERIVED - checked `-2` (the first
+  written into the STAGE) and `-458` (the last): reqType 1. Fan-out to the end of `gather` 252.3 s (CC from the cache);
+  `first` 11.4 s; genesis snapshot 20 in 22.3 s; genesis commit -> STAGE 21 open 17.25 s (`parent`); STAGE 21, 457
+  DERIVED requirements by parallel `store-req`, open -> COMMITTED **27.87 s = 0.061 s per requirement (~16.4/s)**; store
+  phase (genesis open -> STAGE commit) 67.4 s. Against internal-1.0 (ExecContext #5, 8.7 - DERIVED too, one Task, 495
+  requirements): STAGE 54.9 s = 0.111 s per requirement, store phase 78.5 s. Same requirement type now: the parallel
+  STAGE writes are 1.82x faster per requirement and the store phase 14% shorter; `parent` (17.25 s) is what keeps the
+  gap from being wider (follow-up: `req-store-batch` does not output the genesis snapshot id).
