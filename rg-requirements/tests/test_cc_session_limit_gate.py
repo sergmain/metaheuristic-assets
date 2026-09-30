@@ -10,6 +10,10 @@
 # The matching below is MH's own, FunctionAnalyzerUtils.firstHit: every pattern of every analyzer, find() - not
 # matches() - anywhere in the console, no implicit flags. The patterns kept to here are the same in Java's and in
 # Python's regex dialect.
+#
+# EVERY batch workflow. The capability ships several mh-rg-requirements-from-batch-*.mhsc side by side (1.5,
+# internal-1.0 and the variants after it), each with a cc step of its own, so each one's cc step is checked - not
+# "the" one, which stopped existing when the second workflow was added.
 
 import glob
 import os
@@ -34,18 +38,22 @@ SESSION_LIMIT_CONSOLE = (
     'FAILED: Claude Code exited with code 1\n')
 
 
-def batch_mhsc():
-    paths = glob.glob(os.path.join(REPO, 'rg-requirements', 'source-codes', 'mh-rg-requirements-from-batch-*.mhsc'))
-    assert len(paths) == 1, 'expected exactly one batch workflow, found: ' + str(paths)
-    return paths[0]
+def batch_mhscs():
+    """Every batch workflow that ships, sorted - at least one."""
+    paths = sorted(glob.glob(os.path.join(REPO, 'rg-requirements', 'source-codes', 'mh-rg-requirements-from-batch-*.mhsc')))
+    assert paths, 'expected at least one batch workflow'
+    return paths
 
 
-def cc_function_code():
-    """The Function code the batch workflow's cc process runs, read from the .mhsc."""
-    with open(batch_mhsc(), encoding='utf-8') as f:
-        found = re.search(r'^\s*cc := (\S+) \{', f.read(), re.MULTILINE)
-    assert found, 'the batch workflow declares no cc process'
-    return found.group(1)
+def cc_function_codes():
+    """The Function code each batch workflow's cc process runs, read from the .mhsc files: {file name: code}."""
+    codes = {}
+    for path in batch_mhscs():
+        with open(path, encoding='utf-8') as f:
+            found = re.search(r'^\s*cc := (\S+) \{', f.read(), re.MULTILINE)
+        assert found, os.path.basename(path) + ' declares no cc process'
+        codes[os.path.basename(path)] = found.group(1)
+    return codes
 
 
 def descriptor_of(code):
@@ -68,28 +76,29 @@ def first_hit(analyzers, console):
 
 
 def test_the_batch_workflows_cc_step_identifies_a_cc_session_limit():
-    function = descriptor_of(cc_function_code())
+    for workflow, code in cc_function_codes().items():
+        function = descriptor_of(code)
 
-    hit = first_hit(function.get('analyzers'), SESSION_LIMIT_CONSOLE)
+        hit = first_hit(function.get('analyzers'), SESSION_LIMIT_CONSOLE)
 
-    assert hit is not None, 'the session limit must match an analyzer of the Function the cc step runs'
-    # what MH accepts in a descriptor (FunctionAnalyzerUtils.checkScopeAllowedInDescriptor, parseTimeout)
-    assert hit['scope'] in ('api', 'function', 'processor')
-    assert re.fullmatch(r'\d+(ms|s|min|h|d)', str(hit['timeout']).strip())
-    assert hit['incrementTries'] is False, 'a spent session is never the Task\'s fault - its retry must be free'
+        assert hit is not None, workflow + ': the session limit must match an analyzer of the Function the cc step runs'
+        # what MH accepts in a descriptor (FunctionAnalyzerUtils.checkScopeAllowedInDescriptor, parseTimeout)
+        assert hit['scope'] in ('api', 'function', 'processor'), workflow
+        assert re.fullmatch(r'\d+(ms|s|min|h|d)', str(hit['timeout']).strip()), workflow
+        assert hit['incrementTries'] is False, workflow + ': a spent session is never the Task\'s fault - its retry must be free'
 
 
 def test_the_limit_is_identified_whatever_separator_survives_the_trip():
-    analyzers = descriptor_of(cc_function_code()).get('analyzers')
+    for workflow, code in cc_function_codes().items():
+        analyzers = descriptor_of(code).get('analyzers')
 
-    for separator in ('\u00b7', '\u2219', '-', '\ufffd', ''):
-        console = "You've hit your session limit " + separator + ' resets 8:30pm (America/Los_Angeles)\n'
-        assert first_hit(analyzers, console) is not None, 'separator ' + repr(separator)
+        for separator in ('\u00b7', '\u2219', '-', '\ufffd', ''):
+            console = "You've hit your session limit " + separator + ' resets 8:30pm (America/Los_Angeles)\n'
+            assert first_hit(analyzers, console) is not None, workflow + ': separator ' + repr(separator)
 
 
 def test_a_console_that_merely_mentions_a_limit_blocks_nothing():
     # a false hit withholds call-cc for the analyzer's whole timeout, so the rule must not fire on ordinary output
-    analyzers = descriptor_of(cc_function_code()).get('analyzers')
     ordinary = (
         'mh.asset.call-cc\n'
         '--- CC console ---\n'
@@ -99,4 +108,6 @@ def test_a_console_that_merely_mentions_a_limit_blocks_nothing():
         'exit code: 0\n'
         'stored 3845 bytes into output variable "ccResult"\n')
 
-    assert first_hit(analyzers, ordinary) is None
+    for workflow, code in cc_function_codes().items():
+        analyzers = descriptor_of(code).get('analyzers')
+        assert first_hit(analyzers, ordinary) is None, workflow
