@@ -514,3 +514,12 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   with a null effort - which MH refuses for an input not declared nullable (`01.562.124`, `ExecContextCreatorService`).
   The flow is unchanged. 1.1 (SourceCode #21) archived (MH-GIT-DELIVERY 1.6); it stopped nothing - ExecContext #13, 1.1's
   `batch-0004` run, was no longer on the Dispatcher (not found).
+- 2026-09-30, ExecContext #14 (staged-1.2, SourceCode #32, SYNTHETIC record `synthetic-0001` of
+  `mh.asset.dir-batch-for-requirements.synthetic` - the two files of `synthetic/corpus` - model
+  `claude-haiku-4-5-20251001`, effort null, `rgPipelineUid` `mhdg-rg-cc-1.0.80`, project `TMPXIK2WWW6`): FINISHED in 196.2 s,
+  STAGE FAILED. Haiku with a null effort ran through `mkproject`, `cc` and the genesis, and both snapshots record the
+  model with a null effort. The genesis (snapshot 8) committed in 23.4 s; `parent` and `open-stage` forked STAGE 10 from
+  it. Of the ~8 `store-req` Tasks, 2 (#6428, #6440) failed after 31.2 s with `977.060 ... Could not open JPA
+  EntityManager for transaction`, and `post-processing` marked STAGE 10 FAILED (`822.055 Pipeline run had 2 errored
+  task(s)`). S2 / C6 violated at a batch of ~8 parallel writes, not only at hundreds (10.7): the parallel store needs a
+  dispatcher DB pool sized for it.
