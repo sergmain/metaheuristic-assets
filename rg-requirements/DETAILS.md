@@ -521,5 +521,7 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   model with a null effort. The genesis (snapshot 8) committed in 23.4 s; `parent` and `open-stage` forked STAGE 10 from
   it. Of the ~8 `store-req` Tasks, 2 (#6428, #6440) failed after 31.2 s with `977.060 ... Could not open JPA
   EntityManager for transaction`, and `post-processing` marked STAGE 10 FAILED (`822.055 Pipeline run had 2 errored
-  task(s)`). S2 / C6 violated at a batch of ~8 parallel writes, not only at hundreds (10.7): the parallel store needs a
-  dispatcher DB pool sized for it.
+  task(s)`). S2 / C6 violated. NOT a run alone: ExecContext #15 - the same SourceCode on a second record, launched with it and
+  stopped later - wrote at the same moment (its store-req Tasks #6429-#6443 interleave with #14's #6428-#6442) and ended
+  with 5 store-req Tasks in ERROR, not examined. So ~16 parallel writes, not hundreds (10.7), already starve the
+  dispatcher's DB pool; the parallel store needs a pool sized for it.
