@@ -16,6 +16,10 @@ SourceCode `mh-rg-requirements-from-batch-stage-first-1.0` (section 12) - ONE ST
 every file's requirements stored into it from the file's own branch - Functions `mh.asset.rg-open-stage_1.0`,
 `mh.asset.rg-req-lines_1.0`, and internal-1.0's except the store
 
+SourceCode `mh-rg-requirements-from-batch-stage-store-1.0` (section 12, E3) - the same STAGE, internal-1.0's `store`
+moved into every file's branch after `check`, one Task per file - Functions `mh.asset.rg-open-stage_1.0`,
+`mh.asset.rg-req-store-stage_1.0`, and internal-1.0's except the store
+
 ## 1. Purpose
 
 Turn one source file into requirements held in RG. A fresh RG project is created for the purpose; the file is
@@ -622,6 +626,13 @@ run before any CC call is made.
 could run the one-shot genesis - no longer applies: the genesis is spent once, by `open`, before the fan-out, and every
 branch writes into the one STAGE it opened; no branch commits anything.
 
+**E3's graph (`mh-rg-requirements-from-batch-stage-store-1.0`).** The table above with 5.4-5.5.1 replaced by ONE
+process - internal-1.0's `store` moved into the branch after `check`:
+
+| # | process | Function | contributes |
+|---|---|---|---|
+| 5.4 | `store` | `mh.asset.rg-req-store-stage_1.0` | the branch's file (`sourcePath`) and answer (`reqAnswer`) checked for coverage, then every requirement of the file written into the STAGE named by `stageSnapshotId` through RG's `requirements/manual` (`addManualDerivedRequirement`, STAGE mode - DERIVED, commits nothing); every rationale ends with `source: <file>`; `reqIds`, `reqSources` per branch |
+
 ### 12.3 Run-data contract
 
 The inputs of 8.3, except that `effort` is NULLABLE (`effort?`, as in 11.3) - null only for a model that takes none.
@@ -671,4 +682,5 @@ the company of the `RG_API_AUTH` account (8.3).
 | id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
 |---|---|---|---|---|---|
 | E1 | the STAGE opened on the EMPTY project by RG's own genesis (MCP `mhdg_rg_open_stage`, no parent), each file's requirements stored from its branch after `check` by internal `store-req`, one Task per requirement, the STAGE committed once by `post-processing` | the request of 2026-10-01; staged-1.3's split into requirement #1 and the others (11.2) | `mh-rg-requirements-from-batch-stage-first-1.0` (SourceCode #44, archived) | the deployed RG commits an EMPTY genesis - held (ExecContext #30) | REJECTED - by the human: the store is internal-1.0's `store`, ONE Task per file, not one per requirement. Evidence: ExecContext #30 (`synthetic-0001`, Haiku / null effort, `mhdg-rg-cc-1.0.81`, project `TMPPOR98994`) FINISHED in 136.1 s, 26 of 26 Tasks OK; `open` 32.0 s; genesis 22 parentless, no requirement, its own ExecContext #31; STAGE 23 child of 22, COMMITTED, 9 requirements all reqType 1, every `resetTaskId` null |
-| E2 | the human's shape (2026-10-01): internal-1.0's `store` (internal `mhdg-rg.req-store-batch`) MOVED into every file's branch right after `check` - one store Task per file -, the STAGE opened before the fan-out on the empty project by `open`, committed once by `close` | E1's rejection - one Task per requirement is not the shape | `mh-rg-requirements-from-batch-stage-branch-1.0` | `req-store-batch` writes the branch's requirements into the open STAGE. Read in RG's code on every ref: it takes no STAGE and starts with the project's genesis (`addFirstManualDerivedRequirement`), which RG refuses once the project owns a snapshot (`04.876.020`, as parallel-1.0's ExecContext #8). Shown by the first branch's `store` on `synthetic-0001` | OPEN |
+| E2 | the human's shape (2026-10-01): internal-1.0's `store` (internal `mhdg-rg.req-store-batch`) MOVED into every file's branch right after `check` - one store Task per file -, the STAGE opened before the fan-out on the empty project by `open`, committed once by `close` | E1's rejection - one Task per requirement is not the shape | `mh-rg-requirements-from-batch-stage-branch-1.0` (SourceCode #45, archived) | `req-store-batch` writes the branch's requirements into the open STAGE. Read in RG's code on every ref: it takes no STAGE and starts with the project's genesis (`addFirstManualDerivedRequirement`), which RG refuses once the project owns a snapshot (`04.876.020`, as parallel-1.0's ExecContext #8) | REJECTED - ExecContext #33 (`synthetic-0001`, Haiku / null effort, `mhdg-rg-cc-1.0.81`, project `TMPW8YIOATR`): `open` OK, both branch `store` Tasks (#8607, #8611) refused in 5 s - `04.985.050` / `04.984.010` / `04.876.020 Project TMPW8YIOATR already owns 2 snapshot(s) ... Open a STAGE with mhdg_rg_open_stage and use mhdg_rg_add_manual_derived_req against it`. The internal Function cannot be told the STAGE - a change inside RG, recorded as a follow-up |
+| E3 | E2's shape with the one thing it lacked: the branch's `store` - still ONE Task per file, right after `check` - writes into the STAGE named by `stageSnapshotId`, through the write RG's refusal names (`addManualDerivedRequirement`, REST `requirements/manual` in STAGE mode), by `mh.asset.rg-req-store-stage_1.0` | E2, ExecContext #33: the store must be told the STAGE, and RG named the write that takes it | `mh-rg-requirements-from-batch-stage-store-1.0` | parallel writes from many branches into ONE STAGE through REST land without a DB-connection timeout (C6) and number without collision; shown on `synthetic-0001`, then at volume on `batch-0004` | OPEN |
