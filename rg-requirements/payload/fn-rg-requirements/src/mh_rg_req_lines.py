@@ -15,10 +15,16 @@
 #
 # The answer was already checked by rg-req-check (parse_requirements): content, rationale and name are what that
 # check accepted. Only the shape is re-checked here, so a malformed line fails THIS branch, before store-req runs.
+#
+# EVERY LINE SAYS type DERIVED (2026-10-01; supersedes "name, content, rationale" above, which is now name, content,
+# rationale, type). store-req reads an ABSENT type as DECOMPOSED - CC's decomposition output - while this capability
+# stores manual requirements, DERIVED, as internal-1.0 does (DETAILS 11.6). The same value mh.asset.rg-req-first_1.0
+# writes on its other-reqs lines, taken from there so it has one definition.
 
 import json
 import sys
 
+from mh_rg_req_first import DERIVED
 from mh_task_io import load_params, output_role, read_role, write_text
 
 FUNCTION_CODE = 'mh.asset.rg-req-lines_1.0'
@@ -52,6 +58,7 @@ def requirement_lines(answer_text):
         rationale = requirement.get('rationale')
         if isinstance(rationale, str) and rationale.strip():
             item['rationale'] = rationale.strip()
+        item['type'] = DERIVED
         out.append(json.dumps(item, ensure_ascii=True))
     return answer.get('sourcePath'), out
 

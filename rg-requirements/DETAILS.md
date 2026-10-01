@@ -12,6 +12,10 @@ SourceCode `mh-rg-requirements-from-batch-internal-1.0` (section 8) - the batch 
 the internal Function `mhdg-rg.req-store-batch` - Functions `mh.asset.rg-batch-paths_1.0`,
 `mh.asset.rg-req-path-prompt_1.0`, `mh.asset.rg-req-check_1.0`, `mh.asset.rg-temp-project_1.1`, `mh.asset.call-cc_1.1`
 
+SourceCode `mh-rg-requirements-from-batch-stage-first-1.0` (section 12) - ONE STAGE opened on the still-empty project,
+every file's requirements stored into it from the file's own branch - Functions `mh.asset.rg-open-stage_1.0`,
+`mh.asset.rg-req-lines_1.0`, and internal-1.0's except the store
+
 ## 1. Purpose
 
 Turn one source file into requirements held in RG. A fresh RG project is created for the purpose; the file is
@@ -577,3 +581,87 @@ requirement, opened and committed by this ExecContext. Nothing written to meta s
   requirements): STAGE 54.9 s = 0.111 s per requirement, store phase 78.5 s. Same requirement type now: the parallel
   STAGE writes are 1.82x faster per requirement and the store phase 14% shorter; `parent` (17.25 s) is what keeps the
   gap from being wider (follow-up: `req-store-batch` does not output the genesis snapshot id).
+
+## 12. mh-rg-requirements-from-batch-stage-first-1.0 - ONE STAGE opened on the empty project, stored from every branch
+
+### 12.1 Purpose - the business frame
+
+- **Objective.** A batch's requirements go into a fresh RG project with NO requirement singled out as the first: the
+  STAGE is opened while the project is still empty, each file's requirements are stored from that file's own branch
+  right after its answer is checked, and the STAGE is committed once. staged-1.3 (section 11) needed requirement #1
+  as the project's genesis before any STAGE could be forked; RG now commits an EMPTY genesis, which removes that split.
+  A changed flow, so a new uid beside internal-1.0 and staged-1.3, both left as they are.
+- **Success criteria.** A FINISHED run on `batch-0004` of `mh.asset.dir-batch-for-requirements.2` (synthetic store)
+  that meets 12.5 G1-G5. Measured beside it, under the same model / effort as the baseline: the whole run, and the
+  store's tail - from the last `check` Task OK to the STAGE COMMITTED - beside staged-1.3's ExecContext #27 (Haiku /
+  null effort: `gather` end -> STAGE commit = `first` 11.4 s + store phase 67.4 s) and internal-1.0's #5 (store phase
+  78.5 s).
+- **Invariants.** internal-1.0 and staged-1.3 live and unchanged; the same inputs; one project per run; every file of
+  the batch stored; every stored requirement DERIVED; nothing written to meta storage.
+- **Done.** The run's observed values beside the baseline's, recorded in 12.6 and reported.
+
+### 12.2 The graph
+
+internal-1.0's graph (8.2) with these changes and nothing else - proven by comparing the two files line by line,
+comments and blank lines aside: `gather` and the top-level `store` are gone, so are the ExecContext-level outputs
+`reqIds` / `reqSources`; `effort` is nullable (`effort?`, as in 11.3); and:
+
+| # | process | Function | contributes |
+|---|---|---|---|
+| 2 | `open` | `mh.asset.rg-open-stage_1.0` | RG's MCP `mhdg_rg_open_stage` WITHOUT `parentSnapshotId`: RG (`RgPleAuthoringService.openStage`) runs the project's own genesis pipeline with no requirement, waits for it to commit (its own bound, `04.689.068`), and forks ONE STAGE from it with a copy of the genesis ExecContext; `stageSnapshotId`, `genesisSnapshotId` |
+| 5.4 | `lines` | `mh.asset.rg-req-lines_1.0` | `reqLines` - the file's checked answer as one `{name, content, rationale, type: DERIVED}` line per requirement |
+| 5.5 | `reqs` | internal `mh.batch-line-splitter` | one branch per requirement, the line in `reqJson` |
+| 5.5.1 | `store` | internal `mhdg-rg.store-req` | the requirement written into the STAGE, which it reads by the name `stageSnapshotId`; `requirementId` |
+| 6 | `close` | internal `mhdg-rg.post-processing`, `tag terminal` | the STAGE committed - or marked FAILED if any Task of the ExecContext ended in `ERROR` (fail-closed: every file or nothing). Its `triggerEventId` is optional and absent here |
+
+**Why `open` comes second.** It is the step the whole flow depends on and the only one that can fail on the deployed
+RG itself (an RG that cannot commit an empty genesis gives up after its own bound). Placed before `select`, it stops a
+run before any CC call is made.
+
+**Why the store is in the branches now.** 7.2's reason - parallel writes would fork the project, and only one branch
+could run the one-shot genesis - no longer applies: the genesis is spent once, by `open`, before the fan-out, and every
+branch writes into the one STAGE it opened; no branch commits anything.
+
+### 12.3 Run-data contract
+
+The inputs of 8.3, except that `effort` is NULLABLE (`effort?`, as in 11.3) - null only for a model that takes none.
+Output: `projectCode` at ExecContext level; `requirementId` per requirement branch; `stageSnapshotId` and
+`genesisSnapshotId` at the top level of the ExecContext. There is no ExecContext-level `reqIds` / `reqSources`: the file
+of a requirement is the `sourcePath` of the branch whose `store` Task wrote its `requirementId`.
+
+**Credential:** `RG_API_AUTH`, declared by `mh.asset.rg-temp-project_1.1` and `mh.asset.rg-open-stage_1.0`. Launch in
+the company of the `RG_API_AUTH` account (8.3).
+
+### 12.4 Durable side effects
+
+- One RG project per run, development runs included, as in 8.4.
+- Its genesis run - RG's own pipeline ExecContext, with no requirement - and TWO committed snapshots: the empty
+  genesis, and the STAGE forked from it holding every requirement.
+- If the run fails after `open`, the empty genesis stays COMMITTED and the STAGE is marked FAILED by `close`; the
+  project holds no requirement.
+- Nothing is written to meta storage; the batch record is only read.
+
+### 12.5 Fitness criteria
+
+| id | criterion | hardness | type |
+|---|---|---|---|
+| G1 | the reported `projectCode` names a project RG lists, with the given description | hard | D |
+| G2 | every `store` Task is OK, none failed on a DB-connection timeout (C6), and every path of the record had a branch whose `store` Tasks ran | hard | D |
+| G3 | the project owns exactly TWO COMMITTED snapshots: the parentless genesis holding NO requirement, and the STAGE, its child, holding every requirement - as many as the branches' `reqLines` held | hard | D |
+| G4 | every stored requirement is DERIVED (reqType 1), the type internal-1.0 stores (11.6) | hard | D |
+| G5 | a stored requirement carries its CC content | hard | D |
+| G6 | a stored requirement is about its source file - its content can be traced to the document | soft | S |
+
+### 12.6 Corrections
+
+- **2026-10-01, created.** `mh.asset.rg-req-lines_1.0` (written for cascade-1.0, section 10) wrote its lines WITHOUT
+  `type`, so `store-req` would have stored them DECOMPOSED - the defect 11.6 found in `rg-req-first_1.0`. Fixed in its
+  payload the same way: every line now carries `"type": "DERIVED"` (the value `rg-req-first_1.0` defines), pinned by
+  `tests/test_mh_rg_req_lines.py` (Characterization Test: the old key set pinned green, flipped red, payload fixed,
+  all 172 tests of the capability green). cascade-1.0 is archived and is not relaunched by this change.
+
+### 12.7 Experiments
+
+| id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
+|---|---|---|---|---|---|
+| E1 | the request as stated: the STAGE opened on the EMPTY project by RG's own genesis (MCP `mhdg_rg_open_stage`, no parent), each file's requirements stored from its branch right after `check` by internal `store-req`, the STAGE committed once by `post-processing` - no requirement #1 split | the request of 2026-10-01; staged-1.3's split into requirement #1 and the others (11.2) | `mh-rg-requirements-from-batch-stage-first-1.0` | the deployed RG commits an EMPTY genesis - the `mh.aggregate` null result of the null-genesis work; without it RG gives up after its bound (`04.689.068`). Shown by E1's own `open`, the second process, before any CC call: first on the synthetic record `synthetic-0001`, then on `batch-0004` | OPEN |
