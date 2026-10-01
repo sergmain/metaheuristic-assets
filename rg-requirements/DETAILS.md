@@ -676,6 +676,24 @@ the company of the `RG_API_AUTH` account (8.3).
   and `mhdg-rg-cc-1.0.81` is registered now. The project stays not ready, nothing else ran. Rule for every launch of
   this capability: `rgPipelineUid` is the latest `mhdg-rg-cc-*` the dispatcher lists. The pipeline runs only inside
   `open` (the empty genesis), so it does not touch what the store comparison measures.
+- **2026-10-01, E3 measured - ExecContext #39** (`batch-0004`, Haiku / null effort, `mhdg-rg-cc-1.0.81`, CC uncached
+  - every push changes the cache key -, DB pool 100, no other ExecContext running; project `TMPTZZ8MMVC`):
+
+  | measure | E3 stage-store-1.0, #39 | staged-1.2, #24 (uncached) | staged-1.3, #27 (CC cached) |
+  |---|---|---|---|
+  | whole run | 917.7 s | 723.4 s | 337.7 s |
+  | `open`: empty genesis committed + STAGE forked | 29.0 s (genesis 28 committed 10.2 s after creation) | - | - |
+  | first store starts | 179.7 s after the run starts, while CC still runs for other files | after `gather` (630 s fan-out) | after `gather` |
+  | after the last store starts (store + `close` + finish) | 29.9 s | `first` + STAGE store | `first` 11.4 s + store phase 67.4 s |
+  | one store Task (3 sampled: first, middle, last branch) | 24.8 s / 23.4 s / 26.3 s for 5 requirements each, ~5 s per write | - | - |
+  | requirements | 469, ids -1..-469 with no gap, all in STAGE 29 | - | 458 |
+  | governed (`resetTaskId` set) | yes - 8 of 8 read in #36 | no (`store-req`) | no (`store-req`) |
+
+  ⚠️ The whole run is 194.3 s LONGER than staged-1.2's #24 under the same conditions, while the part after the
+  fan-out is ~2.6x shorter. ❓ Not established why: the 100 store Tasks hold Processor slots for about 2,500 s inside
+  the fan-out (stores were seen on cores 1, 4 and 8), which may delay `cc` Tasks - deciding that needs the `cc` Tasks'
+  queueing in #39 beside #24. The ~5 s per HTTP write against ~0.11 s for the same write inside RG (internal-1.0, #5)
+  is recorded as a follow-up; the in-RG store into a named STAGE (follow-up on `req-store-batch`) would remove both.
 
 ### 12.7 Experiments
 
@@ -683,4 +701,4 @@ the company of the `RG_API_AUTH` account (8.3).
 |---|---|---|---|---|---|
 | E1 | the STAGE opened on the EMPTY project by RG's own genesis (MCP `mhdg_rg_open_stage`, no parent), each file's requirements stored from its branch after `check` by internal `store-req`, one Task per requirement, the STAGE committed once by `post-processing` | the request of 2026-10-01; staged-1.3's split into requirement #1 and the others (11.2) | `mh-rg-requirements-from-batch-stage-first-1.0` (SourceCode #44, archived) | the deployed RG commits an EMPTY genesis - held (ExecContext #30) | REJECTED - by the human: the store is internal-1.0's `store`, ONE Task per file, not one per requirement. Evidence: ExecContext #30 (`synthetic-0001`, Haiku / null effort, `mhdg-rg-cc-1.0.81`, project `TMPPOR98994`) FINISHED in 136.1 s, 26 of 26 Tasks OK; `open` 32.0 s; genesis 22 parentless, no requirement, its own ExecContext #31; STAGE 23 child of 22, COMMITTED, 9 requirements all reqType 1, every `resetTaskId` null |
 | E2 | the human's shape (2026-10-01): internal-1.0's `store` (internal `mhdg-rg.req-store-batch`) MOVED into every file's branch right after `check` - one store Task per file -, the STAGE opened before the fan-out on the empty project by `open`, committed once by `close` | E1's rejection - one Task per requirement is not the shape | `mh-rg-requirements-from-batch-stage-branch-1.0` (SourceCode #45, archived) | `req-store-batch` writes the branch's requirements into the open STAGE. Read in RG's code on every ref: it takes no STAGE and starts with the project's genesis (`addFirstManualDerivedRequirement`), which RG refuses once the project owns a snapshot (`04.876.020`, as parallel-1.0's ExecContext #8) | REJECTED - ExecContext #33 (`synthetic-0001`, Haiku / null effort, `mhdg-rg-cc-1.0.81`, project `TMPW8YIOATR`): `open` OK, both branch `store` Tasks (#8607, #8611) refused in 5 s - `04.985.050` / `04.984.010` / `04.876.020 Project TMPW8YIOATR already owns 2 snapshot(s) ... Open a STAGE with mhdg_rg_open_stage and use mhdg_rg_add_manual_derived_req against it`. The internal Function cannot be told the STAGE - a change inside RG, recorded as a follow-up |
-| E3 | E2's shape with the one thing it lacked: the branch's `store` - still ONE Task per file, right after `check` - writes into the STAGE named by `stageSnapshotId`, through the write RG's refusal names (`addManualDerivedRequirement`, REST `requirements/manual` in STAGE mode), by `mh.asset.rg-req-store-stage_1.0` | E2, ExecContext #33: the store must be told the STAGE, and RG named the write that takes it | `mh-rg-requirements-from-batch-stage-store-1.0` | parallel writes from many branches into ONE STAGE through REST land without a DB-connection timeout (C6) and number without collision; shown on `synthetic-0001`, then at volume on `batch-0004` | OPEN |
+| E3 | E2's shape with the one thing it lacked: the branch's `store` - still ONE Task per file, right after `check` - writes into the STAGE named by `stageSnapshotId`, through the write RG's refusal names (`addManualDerivedRequirement`, REST `requirements/manual` in STAGE mode), by `mh.asset.rg-req-store-stage_1.0` | E2, ExecContext #33: the store must be told the STAGE, and RG named the write that takes it | `mh-rg-requirements-from-batch-stage-store-1.0` (SourceCode #46) | parallel writes from many branches into ONE STAGE through REST land without a DB-connection timeout (C6) and number without collision - held: 100 concurrent-capable stores, ids contiguous | ACCEPTED - meets G1-G5 (G6 read on 2). ExecContext #36 (`synthetic-0001`, project `TMPU5MXIIU4`): FINISHED 159.7 s, 15 of 15 OK; genesis 26 empty, STAGE 27 its child with 8 DERIVED requirements, the two stores' ids interleaved, every `resetTaskId` set. ExecContext #39 (`batch-0004`, project `TMPTZZ8MMVC`): FINISHED 917.7 s, 407 of 407 OK, 100 store Tasks; genesis 28 empty, STAGE 29 its child holding 469 requirements; -235 and -469 read in full - DERIVED, CC's content, `source:` naming the file. Timing beside the baselines in 12.6 |
