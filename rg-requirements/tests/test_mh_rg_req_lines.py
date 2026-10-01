@@ -34,7 +34,8 @@ def test_every_requirement_becomes_one_line_in_ccs_order():
     assert [json.loads(line)['name'] for line in lines] == ['First', 'Second', 'Third']
     assert json.loads(lines[1]) == {'name': 'Second',
                                     'content': 'The second synthetic requirement must hold at all times.',
-                                    'rationale': 'SYNTHETIC fixture - why it matters.'}
+                                    'rationale': 'SYNTHETIC fixture - why it matters.',
+                                    'type': 'DERIVED'}
 
 
 def test_a_line_carries_only_the_fields_store_req_reads():
@@ -42,7 +43,10 @@ def test_a_line_carries_only_the_fields_store_req_reads():
 
     _, lines = fn.requirement_lines(answer)
 
-    assert list(json.loads(lines[0]).keys()) == ['name', 'content', 'rationale']
+    # type DERIVED is stated on every line: store-req reads an ABSENT type as DECOMPOSED (RgStoreReq.reqTypeCodeOf),
+    # and this capability stores manual requirements - DERIVED, as internal-1.0 stores them (DETAILS 11.6)
+    assert list(json.loads(lines[0]).keys()) == ['name', 'content', 'rationale', 'type']
+    assert json.loads(lines[0])['type'] == 'DERIVED'
 
 
 def test_an_absent_name_is_left_out_not_written_empty():
