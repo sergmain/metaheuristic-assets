@@ -687,7 +687,7 @@ the company of the `RG_API_AUTH` account (8.3).
   | after the last store starts (store + `close` + finish) | 29.9 s | `first` + STAGE store | `first` 11.4 s + store phase 67.4 s |
   | one store Task (3 sampled: first, middle, last branch) | 24.8 s / 23.4 s / 26.3 s for 5 requirements each, ~5 s per write | - | - |
   | requirements | 469, ids -1..-469 with no gap, all in STAGE 29 | - | 458 |
-  | governed (`resetTaskId` set) | yes - 8 of 8 read in #36 | no (`store-req`) | no (`store-req`) |
+  | `resetTaskId` set (an objection is refused without one, `04.817.120`) | 8 of 8 in #36 (snapshot 27); NOT read in #39 - same write path, unverified there | requirement #1 only (written by the genesis); the others null - read in the earlier chat, not re-read here | not read; the same `store-req` path as #24, and E1's `store-req` writes in #30 were 9 of 9 null |
 
   ⚠️ The whole run is 194.3 s LONGER than staged-1.2's #24 under the same conditions, while the part after the
   fan-out is ~2.6x shorter. ❓ Not established why: the 100 store Tasks hold Processor slots for about 2,500 s inside
