@@ -32,6 +32,7 @@ One process, `probe` -> `mh.asset.mh-api-probe_1.0`: one GET of `meta api-path` 
 - **Credential:** Vault entry `MH_API_AUTH` - the plain `login:password` of an MH account with `MAIN_ADMIN`
   or `ADMIN` (`MetaStorageRestController`: `hasAnyRole('MAIN_ADMIN', 'ADMIN')`). `MAIN_ADMIN` sees every
   company's tables, `ADMIN` its own company's.
+  - 1.1 (`mh.asset.mh-api-probe_1.1`) uses `RG_API_AUTH` instead - an existing entry; see E1/E2 below.
 - **Company:** launch in the company whose Vault holds `MH_API_AUTH` - the management company (uniqueId 1)
   for the runs below. Its key has priority over the same key in any other company's Vault.
 - **Launch:** `mh_create_exec_context_with_variables`, `production` passed as JSON `null`.
@@ -50,10 +51,15 @@ None. The endpoint is a read; the only thing a run leaves is its own `metaTables
 
 ## 6. Corrections
 
-(none yet)
+- **2026-10-02, E1, ExecContext #80, Task #24944.** `01.812.040 Vault has no entry for companyId=2,
+  keyCode=MH_API_AUTH`, exit -992, with the Vaults of company 1 and 2 both UNLOCKED - so the key is in
+  neither (the management Vault is consulted first). Learned: a probe must name a Vault entry that EXISTS;
+  `RG_API_AUTH` is the existing one holding an account's `login:password`. The SourceCode was imported into
+  company 2, so runs execute there and the management company's keys take priority.
 
 ## 7. Experiments
 
 | id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
 |---|---|---|---|---|---|
-| E1 | the request taken literally: one process, one authenticated GET with the Vault key `MH_API_AUTH` | - | `mh-api-probe-meta-tables-1.0` | the management Vault holds `MH_API_AUTH` with an admin's `login:password`, and the Processor reaches `http://localhost:64967` - the cheapest run that shows it is this run | OPEN |
+| E1 | the request taken literally: one process, one authenticated GET with the Vault key `MH_API_AUTH` | - | `mh-api-probe-meta-tables-1.0` | the management Vault holds `MH_API_AUTH` with an admin's `login:password`, and the Processor reaches `http://localhost:64967` - the cheapest run that shows it is this run | REJECTED - ExecContext #80: `812.040` no entry `MH_API_AUTH` in company 1 or 2 |
+| E2 | the same graph with the existing Vault entry `RG_API_AUTH` | E1, ExecContext #80: `MH_API_AUTH` exists in no Vault | `mh-api-probe-meta-tables-1.1` | the `RG_API_AUTH` account has `ADMIN` or `MAIN_ADMIN` - a 403 would falsify it | OPEN |

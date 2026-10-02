@@ -1,0 +1,22 @@
+version: 3
+function:
+  code: mh.asset.mh-api-probe_1.1
+  type: mh.asset.mh-api-probe
+  env: python-3
+  sourcing: git
+  # The same payload as 1.0 (mh-api-probe/payload/fn-mh-api-probe). Only the Vault key differs - see api below.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: mh-api-probe/payload/fn-mh-api-probe
+  targets:
+    mh-default:
+      src: src
+      file: mh_api_probe.py
+  # 1.1: RG_API_AUTH, an existing Vault entry holding the PLAIN login:password of an account on this server.
+  # E1 (1.0 with MH_API_AUTH, ExecContext #80) found no MH_API_AUTH in the Vault of company 1 or 2.
+  api:
+    keyCode: RG_API_AUTH
+  metas:
+    - mh.task-params-version: 2

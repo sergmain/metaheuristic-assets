@@ -1,0 +1,36 @@
+// Probe one MH REST endpoint from a DAHF flow: GET /rest/v1/dispatcher/meta-storage/meta-tables,
+// authenticated with a credential delivered from the Vault, and hand back its JSON answer.
+//
+// 1.1: the same graph as 1.0; it calls mh.asset.mh-api-probe_1.1, whose Vault key is RG_API_AUTH (an
+// existing entry) instead of MH_API_AUTH, which E1 (ExecContext #80) found in no Vault.
+//
+// Reusable by construction - nothing about a particular run appears below:
+//   mhBaseUrl   comes IN, the MH dispatcher to call, e.g. http://localhost:64967
+//   production  comes IN, nullable: exactly 'true' reads the production view of the endpoint; null and
+//               every other value read the synthetic one
+//   metaTables  goes OUT, the endpoint's JSON answer as received
+//
+// Launch with mh_create_exec_context_with_variables (source-level inputs, 562.120), in a company whose Vault -
+// or the management company's, whose keys have priority - holds RG_API_AUTH.
+
+source "mh-api-probe-meta-tables-1.1" {
+
+    variables {
+        <- mhBaseUrl
+        <- production?
+        -> metaTables
+    }
+
+    probe := mh.asset.mh-api-probe_1.1 {
+        name "GET meta-tables from the MH REST API"
+        // Every name the Function reads or writes is bound here, never inside it.
+        meta api-path = "/rest/v1/dispatcher/meta-storage/meta-tables",
+             variable-for-mh-base-url = "mhBaseUrl",
+             variable-for-production = "production",
+             variable-for-result = "metaTables"
+        <- mhBaseUrl, production?
+        -> metaTables: ext=".json"
+        // 10s of HTTP plus the 10s window of the secret handshake
+        timeout 30
+    }
+}
