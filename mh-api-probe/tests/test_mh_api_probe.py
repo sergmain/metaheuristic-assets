@@ -148,8 +148,8 @@ def test_run_fails_on_a_refused_credential_and_writes_nothing(mh, tmp_path):
     assert not os.path.exists(os.path.join(work_dir, 'artifacts', '21'))
 
 
-def test_run_without_a_credential_names_the_key_code(mh, tmp_path):
-    with pytest.raises(ValueError, match='MH_API_AUTH'):
+def test_run_without_a_credential_says_no_key_was_handed_over(mh, tmp_path):
+    with pytest.raises(ValueError, match='no credential was handed over'):
         p.run(_task(str(tmp_path), mh, production_empty=True), None)
 
 

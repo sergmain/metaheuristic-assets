@@ -22,6 +22,10 @@
 # HTTP Basic, so the pair is base64-encoded here. It is never printed, and the buffer it arrived in is zeroed
 # on the way out.
 #
+# 1.1 declares api keyCode RG_API_AUTH - an existing Vault entry holding an account's login:password - after
+# E1 (1.0, ExecContext #80) found no MH_API_AUTH in any Vault. Both versions share this payload, so nothing
+# below names a particular key.
+#
 # Any answer but HTTP 200 with a JSON body fails the Task, naming the status and an excerpt of the body.
 #
 # The core below is what mh-api-probe/tests exercises: pure functions, plus http_get and run, which work
@@ -38,7 +42,8 @@ import urllib.request
 
 from mh_secret_client import exchange, extract_secret_fields, zero
 
-FUNCTION_CODE = 'mh.asset.mh-api-probe_1.0'
+# printed at start; the payload serves every version of the Function, the version is in mh-function.yaml
+FUNCTION_CODE = 'mh.asset.mh-api-probe'
 
 # One request. With the 10s handshake window this is the Function's worst case, which the process timeout
 # in the .mhsc must exceed.
@@ -129,7 +134,7 @@ def basic_authorization(credential):
     raw = bytes(credential).strip(b'\r\n')
     login, colon, _ = raw.partition(b':')
     if not colon or not login:
-        raise ValueError('MH_API_AUTH must hold the plain login:password of an MH account - the MH REST API '
+        raise ValueError('the Vault key must hold the plain login:password of an MH account - the MH REST API '
                          'authenticates with HTTP Basic - but the value handed over has '
                          + ('no colon' if not colon else 'an empty login') + ' (the value is not printed)')
     return 'Basic ' + base64.b64encode(raw).decode('ascii')
@@ -207,7 +212,7 @@ def run(task, credential):
     print('GET ' + url)
 
     if credential is None:
-        raise ValueError('no credential was handed over: mh-function.yaml declares api keyCode MH_API_AUTH, '
+        raise ValueError('no credential was handed over: mh-function.yaml declares an api keyCode, '
                          'but the params file carries no secretPort / checkCode')
     status, text = http_get(url, basic_authorization(credential))
     answer = check_answer(status, text, url)
