@@ -1,0 +1,35 @@
+// Probe one MH REST endpoint from a DAHF flow: GET /rest/v1/dispatcher/meta-storage/meta-tables,
+// authenticated with a credential delivered from the Vault, and hand back its JSON answer.
+//
+// Reusable by construction - nothing about a particular run appears below:
+//   mhBaseUrl   comes IN, the MH dispatcher to call, e.g. http://localhost:64967
+//   production  comes IN, nullable: exactly 'true' reads the production view of the endpoint; null and
+//               every other value read the synthetic one
+//   metaTables  goes OUT, the endpoint's JSON answer as received
+//
+// Launch with mh_create_exec_context_with_variables - it initializes source-level inputs before producing
+// Tasks; mh_create_exec_context refuses a SourceCode that declares any (562.120). Launch it in a company
+// whose Vault holds MH_API_AUTH: the credential is not a variable, mh-function.yaml declares it.
+
+source "mh-api-probe-meta-tables-1.0" {
+
+    variables {
+        <- mhBaseUrl
+        <- production?
+        -> metaTables
+    }
+
+    probe := mh.asset.mh-api-probe_1.0 {
+        name "GET meta-tables from the MH REST API"
+        // Every name the Function reads or writes is bound here, never inside it.
+        meta api-path = "/rest/v1/dispatcher/meta-storage/meta-tables",
+             variable-for-mh-base-url = "mhBaseUrl",
+             variable-for-production = "production",
+             variable-for-result = "metaTables"
+        <- mhBaseUrl, production?
+        -> metaTables: ext=".json"
+        // The Function allows itself 10s of HTTP plus the 10s window of the secret handshake; the process
+        // timeout must be larger, or MH kills the Task before it can say what went wrong.
+        timeout 30
+    }
+}
