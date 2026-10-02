@@ -1,0 +1,30 @@
+version: 3
+function:
+  code: mh.asset.mh-api-probe_1.0
+  type: mh.asset.mh-api-probe
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block, and it lives
+  # beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the tip at every
+  # ExecContext creation and pins the sha into every Task of that run.
+  #
+  # The whole payload directory is copied into {task.home}/asset at launch, so mh_secret_client.py is
+  # always the sibling of the script that imports it.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: mh-api-probe/payload/fn-mh-api-probe
+  targets:
+    mh-default:
+      src: src
+      file: mh_api_probe.py
+  # The MH credential: the PLAIN login:password of an MH account whose role the probed endpoint admits.
+  # The Processor fetches the vault entry sealed, decrypts it, and hands it to the Function over its
+  # loopback secret channel - never argv, env or disk. The Function base64-encodes it for HTTP Basic.
+  api:
+    keyCode: MH_API_AUTH
+  metas:
+    # 2: every variable is named by a process meta, and task.metas, task.checkCode and task.secretPort
+    # exist only in params version 2.
+    - mh.task-params-version: 2
