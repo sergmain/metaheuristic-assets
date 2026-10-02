@@ -56,10 +56,17 @@ None. The endpoint is a read; the only thing a run leaves is its own `metaTables
   neither (the management Vault is consulted first). Learned: a probe must name a Vault entry that EXISTS;
   `RG_API_AUTH` is the existing one holding an account's `login:password`. The SourceCode was imported into
   company 2, so runs execute there and the management company's keys take priority.
+- **2026-10-02, E2, ExecContext #81, Task #24946 (OK, 20.3 s assigned -> completed).** Console:
+  `GET http://localhost:64967/rest/v1/dispatcher/meta-storage/meta-tables?production=false` -> `HTTP 200, keys
+  ['production', 'showCompany', 'tables'], list sizes {'tables': 2}`. `metaTables` (Variable #13514), read in
+  full: `production` false, `showCompany` false, two tables of company 2 - `mh.asset.dir-batch-for-requirements.2`
+  and `mh.asset.dir-batch-for-requirements.synthetic`. F1, F2, F3 hold. `showCompany` false means the
+  `RG_API_AUTH` account is an `ADMIN` (its own company's tables), not a `MAIN_ADMIN` (every company's) - a probe
+  that must see across companies needs a `MAIN_ADMIN` credential.
 
 ## 7. Experiments
 
 | id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
 |---|---|---|---|---|---|
 | E1 | the request taken literally: one process, one authenticated GET with the Vault key `MH_API_AUTH` | - | `mh-api-probe-meta-tables-1.0` | the management Vault holds `MH_API_AUTH` with an admin's `login:password`, and the Processor reaches `http://localhost:64967` - the cheapest run that shows it is this run | REJECTED - ExecContext #80: `812.040` no entry `MH_API_AUTH` in company 1 or 2 |
-| E2 | the same graph with the existing Vault entry `RG_API_AUTH` | E1, ExecContext #80: `MH_API_AUTH` exists in no Vault | `mh-api-probe-meta-tables-1.1` | the `RG_API_AUTH` account has `ADMIN` or `MAIN_ADMIN` - a 403 would falsify it | OPEN |
+| E2 | the same graph with the existing Vault entry `RG_API_AUTH` | E1, ExecContext #80: `MH_API_AUTH` exists in no Vault | `mh-api-probe-meta-tables-1.1` | the `RG_API_AUTH` account has `ADMIN` or `MAIN_ADMIN` - a 403 would falsify it | CHAMPION - ExecContext #81: Task OK, HTTP 200, F1-F3 hold; the account is `ADMIN` of company 2 |
