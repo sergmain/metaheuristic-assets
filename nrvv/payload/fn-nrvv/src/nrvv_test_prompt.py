@@ -18,6 +18,9 @@
 # THE MODULE: tests import the module nrvv_requirement_text.module_name names - the snake_case stem of the file the
 # requirement was recovered from - so every suite of one source file targets one module.
 #
+# Since TA1 (2026-10-04, correction C1, nrvv/DETAILS.md): CC answers the file alone, {"testFile": ...}; the writer
+# derives the suite's ids from it. Asking for testIds as well made one answer in four fail for omitting them.
+#
 # Pure but for run()/main().
 
 import re
@@ -80,8 +83,8 @@ def compose(req_id, content, criterion, suite_name, test_case_req_id):
         '- the standard library and pytest only; no network; files only under pytest\'s tmp_path.',
         '',
         'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"testFile": "<the whole content of ' + path + '>", "testIds": ["' + path + '::<test function>", ...]}',
-        'testIds names every test function of the file, as a pytest node id relative to the test-suite root.',
+        '{"testFile": "<the whole content of ' + path + '>"}',
+        'Every module-level test_ function of the file becomes part of the suite.',
         '',
         'TEST_CASE ' + tc + ', criterion:',
         crit,

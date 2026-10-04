@@ -19,6 +19,11 @@
 # of that file, and the ids name EVERY such function exactly once - a suite must not leave a test of its own file
 # unrun; no module-level class whose name pytest would collect (Test*): its tests could not be listed.
 #
+# Since TA1 (2026-10-04, correction C1 of the test-author flow, nrvv/DETAILS.md): the suite's ids are DERIVED from the
+# test file - its module-level test_* functions, in file order - and any testIds in the answer are ignored. CC left
+# them out in one branch of four (ExecContext #91, Task 25250) while the file alone decides which tests exist, so
+# asking for them added nothing but a way to fail. The checks on the file itself stay.
+#
 # Pure but for write_suite()/run()/main(): no git, no network, no subprocess.
 
 import ast
@@ -87,37 +92,15 @@ def parse_answer(cc_result, suite):
     if not isinstance(data, dict):
         raise ValueError('CC answered no JSON object {"testFile": ..., "testIds": [...]}: ' + excerpt(text))
     source = data.get('testFile')
-    ids = data.get('testIds')
     if not isinstance(source, str) or not source.strip():
         raise ValueError('CC answered no testFile: ' + excerpt(text))
-    if not isinstance(ids, list) or not ids or not all(isinstance(i, str) and i.strip() for i in ids):
-        raise ValueError('CC answered no testIds - expected a non-empty JSON array of node ids: ' + excerpt(text))
 
     path = test_file(suite)
     defined = module_level_tests(source, path)
-    listed = [i.strip() for i in ids]
-    problems = []
-    prefix = path + '::'
-    names = []
-    for node_id in listed:
-        if not node_id.startswith(prefix) or not node_id[len(prefix):].isidentifier():
-            problems.append("'" + node_id + "' is not " + prefix + '<function>')
-            continue
-        names.append(node_id[len(prefix):])
-    if len(set(listed)) != len(listed):
-        problems.append('an id is listed twice')
-    if not problems:
-        unknown = [n for n in names if n not in defined]
-        unlisted = [n for n in defined if n not in names]
-        if unknown:
-            problems.append('listed but not a module-level test function of ' + path + ': ' + ', '.join(unknown))
-        if unlisted:
-            problems.append('test functions of ' + path + ' the suite does not list: ' + ', '.join(unlisted))
-    if not defined and not problems:
-        problems.append(path + ' defines no test function')
-    if problems:
-        raise ValueError('CC answer refused before anything was written: ' + '; '.join(problems))
-    return source, listed
+    if not defined:
+        raise ValueError('CC answer refused before anything was written: ' + path + ' defines no test function')
+    # the suite runs every module-level test of its file, in file order (testIds of the answer are ignored, see above)
+    return source, [path + '::' + name for name in defined]
 
 
 def suite_text(suite, ids):

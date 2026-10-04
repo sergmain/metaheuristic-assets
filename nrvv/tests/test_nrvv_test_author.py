@@ -131,7 +131,9 @@ def test_the_test_prompt_names_the_module_the_file_and_the_governed_criterion():
     assert '`nrvv_sample`' in prompt
     assert 'tests/test_TMPSN3F36BJ_7_suite.py' in prompt
     assert "TEST_CASE TMPSN3F36BJ-7, criterion:\nRunning main() prints 'Hello, NRVV'." in prompt
-    assert '"testIds": ["tests/test_TMPSN3F36BJ_7_suite.py::<test function>", ...]' in prompt
+    # CT Red (TA1, C1): the answer is the file alone - the writer derives the ids
+    assert '{"testFile": "<the whole content of tests/test_TMPSN3F36BJ_7_suite.py>"}' in prompt
+    assert 'testIds' not in prompt
     assert 'Requirement TMPSN3F36BJ-3:' in prompt
     assert '{{M=' not in prompt
 
@@ -182,20 +184,45 @@ def test_parse_answer_unwraps_one_markdown_fence():
     assert tw.parse_answer('```json\n' + answer() + '\n```', SUITE)[0] == GOOD_TESTS
 
 
+# observed: TA1 (ExecContext #91), branch 2, Task 25250 - CC's test answer, Variable 13815, byte for byte. It carries
+# the test file and no testIds, although the prompt asked for both.
+TA1_BRANCH2_ANSWER = r"""{"testFile": "import inspect\n\nimport nrvv_sample\n\n\ndef _get_class():\n    cls = getattr(nrvv_sample, \"NrvvSample\", None)\n    assert cls is not None, \"module nrvv_sample must declare a class named 'NrvvSample'\"\n    assert inspect.isclass(cls), \"'NrvvSample' must be a class\"\n    return cls\n\n\ndef test_class_declares_main_member():\n    cls = _get_class()\n    assert \"main\" in dir(cls), \"class NrvvSample must declare a member named 'main'\"\n\n\ndef test_main_is_callable():\n    cls = _get_class()\n    main = getattr(cls, \"main\", None)\n    assert main is not None, \"class NrvvSample must have a 'main' method\"\n    assert callable(main), \"'main' must be callable (a method)\"\n\n\ndef test_main_is_a_function_or_method():\n    cls = _get_class()\n    main = inspect.getattr_static(cls, \"main\", None)\n    assert main is not None, \"class NrvvSample must declare 'main'\"\n    assert isinstance(\n        main, (staticmethod, classmethod)\n    ) or inspect.isfunction(main), \"'main' must be a method of NrvvSample\"\n"}"""
+
+
+def test_the_ta1_answer_without_test_ids_is_refused():
+    # CT Green-1 (TA1, correction C1 of the test-author flow): the answer is refused for its missing testIds
+    # CT Red: it is accepted - the ids are the file's module-level test functions, in file order
+    source, ids = tw.parse_answer(TA1_BRANCH2_ANSWER, SUITE)
+
+    assert source.startswith('import inspect\n')
+    assert ids == [PATH + '::test_class_declares_main_member', PATH + '::test_main_is_callable',
+                   PATH + '::test_main_is_a_function_or_method']
+
+
+@pytest.mark.parametrize('listed', [
+    [],
+    ['tests/test_other.py::test_main_prints_hello', PATH + '::test_main_prints_one_line'],
+    [PATH + '::test_main_prints_hello'],
+    [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line', PATH + '::test_x'],
+    [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line'],
+    'not a list',
+])
+def test_test_ids_in_the_answer_are_ignored_the_file_decides(listed):
+    # CT Red (TA1, C1): these answers were refused for their testIds; the file alone now decides the suite
+    source, ids = tw.parse_answer(json.dumps({'testFile': GOOD_TESTS, 'testIds': listed}), SUITE)
+
+    assert source == GOOD_TESTS
+    assert ids == [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line']
+
+
 @pytest.mark.parametrize('bad, why', [
     ('not json', 'not JSON'),
     (json.dumps(['x']), 'no JSON object'),
     (json.dumps({'testIds': [PATH + '::test_main_prints_hello']}), 'no testFile'),
-    (json.dumps({'testFile': GOOD_TESTS, 'testIds': []}), 'no testIds'),
-    (answer(ids=['tests/test_other.py::test_main_prints_hello', PATH + '::test_main_prints_one_line']), 'is not'),
-    (answer(ids=[PATH + '::test_main_prints_hello']), 'does not list: test_main_prints_one_line'),
-    (answer(ids=[PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line', PATH + '::test_x']),
-     'listed but not a module-level test function'),
-    (answer(ids=[PATH + '::test_main_prints_hello', PATH + '::test_main_prints_hello',
-                 PATH + '::test_main_prints_one_line']), 'listed twice'),
     (answer(source='def test_a(:\n    pass\n', ids=[PATH + '::test_a']), 'not valid Python'),
     (answer(source='class TestA:\n    def test_a(self):\n        pass\n', ids=[PATH + '::TestA']), 'test class'),
-    (answer(source='def helper():\n    pass\n', ids=[PATH + '::helper']), 'listed but not'),
+    (answer(source='def helper():\n    pass\n', ids=[PATH + '::helper']), 'defines no test function'),
+    (json.dumps({'testFile': 'def helper():\n    pass\n'}), 'defines no test function'),
 ])
 def test_parse_answer_refuses_before_anything_is_written(bad, why):
     with pytest.raises(ValueError, match=why):
