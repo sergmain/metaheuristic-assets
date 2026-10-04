@@ -1,0 +1,224 @@
+// NRVV test-author (plan 042, Phase 10): ONE test suite per TEST_CASE, written from the requirements alone, for every
+// requirement in scope at the run's named COMMITTED snapshot. Each requirement gets a TEST_CASE in RG - its verification
+// criterion, governed there - linked from its lineage root in the VERIFICATION DAG, and each TEST_CASE a suite in the
+// NRVV project's test-suite repository: tests/test_<suite>.py and suites/<suite>.suite, pushed in one commit. The
+// TEST_CASEs land in a child snapshot of the named one. Started by the Dispatcher (POST
+// /rest/v1/nrvv/projects/{id}/test-author -> NrvvRunService), never by hand: the run record NRVV_RUN #runId exists
+// before this ExecContext does, and mhdg-nrvv.finish-run closes it.
+//
+//   open      internal mhdg-rg.open-stage        the STAGE, forked from the named snapshot (parentSnapshotId) - FIRST:
+//                                                 the terminal close reads its stageSnapshotId, and a step that failed
+//                                                 before it would SKIP it, leaving that output uncreated, close
+//                                                 uninitialisable (MH 179.320) and the run STARTED for good (observed
+//                                                 2026-10-04, nrvv/DETAILS.md, Test-author part 6)
+//   checkout  mh.asset.nrvv-checkout_1.0         the test-suite repository at its branch, under the run workspace
+//   scope     internal mhdg-nrvv.list-scope       the requirements in scope at the named snapshot, one reqId per line;
+//                                                 refuses an empty scope
+//   split     internal mh.batch-line-splitter     one branch per requirement:
+//     read      internal mhdg-rg.read-req         the requirement's text at the STAGE
+//     cprompt   mh.asset.nrvv-criterion-prompt    the prompt for ONE pass/fail criterion, from the text alone
+//     ccrit     mh.asset.call-cc_1.1              CC answers {"criterion": ...}
+//     ccheck    mh.asset.nrvv-criterion-check     the criterion, checked, one line
+//     store     internal mhdg-nrvv.store-test-case the TEST_CASE (created, or the one the lineage has) and the
+//                                                 VERIFICATION edge from the lineage root, in the STAGE; suiteName and
+//                                                 testCaseCriterion - the criterion AS GOVERNED IN RG
+//     tprompt   mh.asset.nrvv-test-prompt         the prompt for the suite's pytest file, from requirement + criterion
+//     ctest     mh.asset.call-cc_1.1              CC answers {"testFile": ..., "testIds": [...]}
+//     twrite    mh.asset.nrvv-test-write          the answer checked; tests/test_<suite>.py and suites/<suite>.suite
+//                                                 written into the checkout - CC itself writes no file
+//   message   internal mh.string-as-variable      the commit message, lifted out of `inline`
+//   commit    mh.asset.nrvv-commit-push_1.0       one commit of every suite, pushed to the test-suite branch
+//   close     internal mhdg-rg.post-processing    commits the STAGE, or marks it FAILED if any Task failed
+//   finish    internal mhdg-nrvv.finish-run       the run record FINISHED or ERROR; TEST_SUITE_COMMIT and, when FINISHED,
+//                                                 RESULT_SNAPSHOT_ID (the committed STAGE)
+//
+// INDEPENDENCE (decision 17): no step of this graph reads the target repository - `target` is an input only because
+// every project run receives the same input map; CC sees the requirement and the criterion, never code.
+//
+// Inputs: exactly NrvvRunUtils.projectRunVariables for TEST_AUTHOR (MH refuses a missing or an undeclared name).
+// `model` is declared without '?' (DAHF 0.5): a TEST_AUTHOR run always carries one - NrvvRunService refuses a blank
+// model (06.004.070). Credentials: NRVV_GIT_AUTH (commit-push) for the push; read-req, store-test-case, open-stage and
+// post-processing run inside the Dispatcher and need none.
+//
+// ORDER is declaration order: each process is chained to the one declared before it; inside a branch the steps run in
+// order; message waits for every branch; close and finish run last, after failures too (tag terminal).
+source "nrvv-test-author-1.0" {
+
+    variables {
+        <- production?
+        <- runId, workspace, projectCode, nrvvCode, snapshotId, parentSnapshotId, testSuite, target
+        <- model
+        <- effort?
+        inline nrvvTestAuthor {
+            commitMessage = "nrvv test-author: one suite per TEST_CASE"
+        }
+    }
+
+    open := internal mhdg-rg.open-stage {
+        name "Open the STAGE the TEST_CASEs go into, forked from the named snapshot - first, see the header"
+        <- projectCode, parentSnapshotId
+        -> stageSnapshotId: type=stage-snapshot-id, ext=".txt",
+           triggerEventId: type=event-id, ext=".txt"
+        timeout 60
+    }
+
+    checkout := mh.asset.nrvv-checkout_1.0 {
+        name "Check the test-suite repository out at its branch, under the run workspace"
+        meta nrvv-role = "test-suite",
+             variable-for-workspace = "workspace",
+             variable-for-location = "testSuite",
+             variable-for-commit = "testSuiteBase",
+             variable-for-dir-path = "testSuiteDirPath"
+        <- workspace, testSuite
+        -> testSuiteBase: ext=".txt",
+           testSuiteDirPath: ext=".txt"
+        timeout 1800
+    }
+
+    scope := internal mhdg-nrvv.list-scope {
+        name "The requirements in scope at the named snapshot, one reqId per line"
+        <- runId
+        -> scope: ext=".txt"
+        timeout 60
+    }
+
+    split := internal mh.batch-line-splitter {
+        name "One branch per requirement"
+        meta number-of-lines-per-task = "1",
+             variable-for-splitting = "scope",
+             output-is-dynamic = "true",
+             output-variable = "reqId",
+             is-array = "false"
+        sequential {
+            read := internal mhdg-rg.read-req {
+                name "The requirement's text at the STAGE"
+                meta reqId = "reqId",
+                     requirementContent = "requirementContent",
+                     parentId = "parentId",
+                     ancestorStack = "ancestorStack"
+                <- reqId, stageSnapshotId
+                -> requirementContent: type=requirement-content, ext=".txt",
+                   parentId: type=parent-id, ext=".txt",
+                   ancestorStack: type=ancestor-stack, nullable, ext=".jsonl"
+                timeout 60
+            }
+
+            cprompt := mh.asset.nrvv-criterion-prompt_1.0 {
+                name "Build the prompt for ONE pass/fail criterion - the requirement's text, never code"
+                meta variable-for-req-id = "reqId",
+                     variable-for-requirement = "requirementContent",
+                     variable-for-prompt = "criterionPrompt"
+                <- reqId, requirementContent
+                -> criterionPrompt: ext=".txt"
+                timeout 60
+            }
+
+            ccrit := mh.asset.call-cc_1.1 {
+                name "Ask CC for the requirement's verification criterion"
+                // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+                meta variable-for-prompt = "criterionPrompt",
+                     variable-for-output = "criterionResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
+                     timeout-sec = "600"
+                <- criterionPrompt, model, effort?
+                -> criterionResult: ext=".txt"
+                timeout 900
+                tries 2
+                cache on, cacheMeta
+            }
+
+            ccheck := mh.asset.nrvv-criterion-check_1.0 {
+                name "Check CC's criterion and hand it on as one line"
+                meta variable-for-cc-result = "criterionResult",
+                     variable-for-criterion = "criterion"
+                <- criterionResult
+                -> criterion: ext=".txt"
+                timeout 60
+            }
+
+            store := internal mhdg-nrvv.store-test-case {
+                name "The TEST_CASE in the STAGE and its VERIFICATION edge from the lineage root"
+                // no 'tries': a TEST_CASE already linked is found again, but a retry is not where that is proven
+                <- projectCode, stageSnapshotId, reqId, criterion
+                -> testCaseReqId: ext=".txt",
+                   suiteName: ext=".txt",
+                   testCaseCriterion: ext=".txt"
+                timeout 120
+            }
+
+            tprompt := mh.asset.nrvv-test-prompt_1.0 {
+                name "Build the prompt for the suite's pytest file - requirement and governed criterion, never code"
+                meta variable-for-req-id = "reqId",
+                     variable-for-requirement = "requirementContent",
+                     variable-for-criterion = "testCaseCriterion",
+                     variable-for-suite-name = "suiteName",
+                     variable-for-test-case-req-id = "testCaseReqId",
+                     variable-for-prompt = "testPrompt"
+                <- reqId, requirementContent, testCaseCriterion, suiteName, testCaseReqId
+                -> testPrompt: ext=".txt"
+                timeout 60
+            }
+
+            ctest := mh.asset.call-cc_1.1 {
+                name "Ask CC for the tests of the TEST_CASE"
+                meta variable-for-prompt = "testPrompt",
+                     variable-for-output = "testResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
+                     timeout-sec = "900"
+                <- testPrompt, model, effort?
+                -> testResult: ext=".txt"
+                timeout 1200
+                tries 2
+                cache on, cacheMeta
+            }
+
+            twrite := mh.asset.nrvv-test-write_1.0 {
+                name "Check CC's tests and write the suite's two files into the test-suite checkout"
+                meta variable-for-workspace = "workspace",
+                     variable-for-location = "testSuite",
+                     variable-for-suite-name = "suiteName",
+                     variable-for-cc-result = "testResult",
+                     variable-for-suite-files = "suiteFiles"
+                <- workspace, testSuite, suiteName, testResult
+                -> suiteFiles: ext=".json"
+                timeout 60
+            }
+        }
+    }
+
+    message := internal mh.string-as-variable {
+        name "The commit message, lifted out of inline"
+        meta mapping = "mapping: [{key: nrvvTestAuthor, name: commitMessage, output: commitMessage}]"
+        -> commitMessage: ext=".txt"
+        timeout 60
+    }
+
+    commit := mh.asset.nrvv-commit-push_1.0 {
+        name "Commit every suite and push it to the test-suite branch"
+        meta nrvv-role = "test-suite",
+             variable-for-workspace = "workspace",
+             variable-for-location = "testSuite",
+             variable-for-commit-message = "commitMessage",
+             variable-for-commit = "testSuiteCommit"
+        <- workspace, testSuite, commitMessage
+        -> testSuiteCommit: ext=".txt"
+        timeout 600
+    }
+
+    close := internal mhdg-rg.post-processing {
+        name "Commit the STAGE - marked FAILED instead if any Task of this ExecContext failed"
+        <- projectCode, stageSnapshotId, triggerEventId
+        timeout 60
+        tag terminal
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed; record the commit and the snapshot"
+        // reads stageSnapshotId and testSuiteCommit only when they were written: it runs after failures too
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}

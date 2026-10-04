@@ -1,0 +1,22 @@
+version: 3
+function:
+  # checks CC's criterion answer and hands the criterion on as one line (plan 042, Phase 10)
+  code: mh.asset.nrvv-criterion-check_1.0
+  type: mh.asset.nrvv-criterion-check
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
+  # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
+  # Every Function of this capability shares the payload directory; each names its own script.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: nrvv/payload/fn-nrvv
+  targets:
+    mh-default:
+      src: src
+      file: nrvv_criterion_check.py
+  metas:
+    # 2: every variable is named by a process meta
+    - mh.task-params-version: 2
