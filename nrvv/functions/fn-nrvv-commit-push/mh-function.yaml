@@ -1,0 +1,27 @@
+version: 3
+function:
+  code: mh.asset.nrvv-commit-push_1.0
+  type: mh.asset.nrvv-commit-push
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
+  # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
+  # Every Function of this capability shares the payload directory; each names its own script.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: nrvv/payload/fn-nrvv
+  targets:
+    mh-default:
+      src: src
+      file: nrvv_commit_push.py
+  # The git credential: the vault entry holds user:token. The Processor fetches it sealed and hands it to the
+  # Function over its loopback secret channel - never argv, env or disk. The Function then gives it to the git
+  # child as an HTTP header through THAT child's environment (GIT_CONFIG_*): git has no channel that is neither
+  # argv nor a file, and the environment is readable by the same OS user only.
+  api:
+    keyCode: NRVV_GIT_AUTH
+  metas:
+    # 2: every variable is named by a process meta, and 2 carries task.checkCode / task.secretPort
+    - mh.task-params-version: 2
