@@ -21,7 +21,9 @@
 //     ccheck    mh.asset.nrvv-criterion-check     the criterion, checked, one line
 //     store     internal mhdg-nrvv.store-test-case the TEST_CASE (created, or the one the lineage has) and the
 //                                                 VERIFICATION edge from the lineage root, in the STAGE; suiteName and
-//                                                 testCaseCriterion - the criterion AS GOVERNED IN RG
+//                                                 testCaseCriterion - the criterion AS GOVERNED IN RG; in a
+//                                                 re-run (runId names a base run) a kept TEST_CASE takes the
+//                                                 new criterion as a new revision in the STAGE
 //     tprompt   mh.asset.nrvv-test-prompt         the prompt for the suite's pytest file, from requirement + criterion
 //     ctest     mh.asset.call-cc_1.1              CC answers {"testFile": ...}
 //     twrite    mh.asset.nrvv-test-write          the answer checked; tests/test_<suite>.py and suites/<suite>.suite
@@ -48,7 +50,8 @@
 // 1.1 against 1.0 (correction C2): a failed Task inside the split does not SKIP the processes after it - MH hands
 // out the next one while a sibling branch is live - so 1.0 could push the suites of TEST_CASEs only a FAILED STAGE
 // holds. noFailure is a top-level process: when it fails, message and commit are SKIPPED. When every branch
-// failed, noFailure itself is SKIPPED, and so is everything up to the terminal close and finish.
+// failed, noFailure itself is SKIPPED, and so is everything up to the terminal close and finish. And `store` reads
+// runId: in a re-run's TEST_AUTHOR the changed requirement's new criterion replaces a kept TEST_CASE's (Phase 13).
 source "nrvv-test-author-1.1" {
 
     variables {
@@ -147,7 +150,8 @@ source "nrvv-test-author-1.1" {
             store := internal mhdg-nrvv.store-test-case {
                 name "The TEST_CASE in the STAGE and its VERIFICATION edge from the lineage root"
                 // no 'tries': a TEST_CASE already linked is found again, but a retry is not where that is proven
-                <- projectCode, stageSnapshotId, reqId, criterion
+                // runId (1.1): the run's base run tells a re-run, whose changed requirement rewrites the criterion
+                <- projectCode, stageSnapshotId, reqId, criterion, runId
                 -> testCaseReqId: ext=".txt",
                    suiteName: ext=".txt",
                    testCaseCriterion: ext=".txt"
