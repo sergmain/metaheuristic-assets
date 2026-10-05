@@ -1,0 +1,94 @@
+// NRVV verification (plan 042, Phase 12): every test suite of the NRVV project run against the target, and the verdict
+// of every suite and every requirement stored on the run - bound to the run's named snapshot and to the two commits the
+// suites ran on. Started by the Dispatcher (POST /rest/v1/nrvv/projects/{id}/verification -> NrvvRunService), never by
+// hand; read back with GET /rest/v1/nrvv/runs/{id}.
+//
+//   suiteCheckout  mh.asset.nrvv-checkout_1.0        the test-suite repository at its branch; testSuiteCommit = its sha
+//   targetCheckout mh.asset.nrvv-checkout_1.0        the target repository at its branch; targetCommit = its sha
+//   allSuites      internal mh.string-as-variable     the launcher's `suites` input: [] - every suites/*.suite
+//   suiteRun       mh.asset.nrvv-suite-run_1.0       runs each suite's listed ids with pytest (decision 14) -> report
+//   store          internal mhdg-nrvv.store-verification
+//                                                     every verdict, recomputed from the report's facts, at the run's
+//                                                     snapshot -> NRVV_RUN_RESULT; a summary -> verification
+//   finish         internal mhdg-nrvv.finish-run      the run record FINISHED or ERROR; TEST_SUITE_COMMIT, TARGET_COMMIT
+//
+// A verdict is a RESULT, not the run's state: suites that FAIL leave the run FINISHED. Nothing is written to RG, to
+// git or to meta storage. No STAGE, no list-scope (verification runs EVERY suite, decision 18).
+//
+// Inputs: exactly NrvvRunUtils.projectRunVariables for VERIFICATION. `model?` / `effort?` are declared because every
+// project run gets them; a VERIFICATION run carries none and no step reads them. No credentials: both repositories are
+// cloned anonymously, nothing is pushed.
+//
+// ORDER is declaration order: each process is chained to the one declared before it.
+source "nrvv-verification-1.0" {
+
+    variables {
+        <- production?
+        <- runId, workspace, projectCode, nrvvCode, snapshotId, testSuite, target
+        <- model?
+        <- effort?
+        inline nrvvVerification {
+            suites = "[]"
+        }
+    }
+
+    suiteCheckout := mh.asset.nrvv-checkout_1.0 {
+        name "Check the test-suite repository out at its branch; its sha is the run's TEST_SUITE_COMMIT"
+        meta nrvv-role = "test-suite",
+             variable-for-workspace = "workspace",
+             variable-for-location = "testSuite",
+             variable-for-commit = "testSuiteCommit",
+             variable-for-dir-path = "testSuiteDirPath"
+        <- workspace, testSuite
+        -> testSuiteCommit: ext=".txt",
+           testSuiteDirPath: ext=".txt"
+        timeout 1800
+    }
+
+    targetCheckout := mh.asset.nrvv-checkout_1.0 {
+        name "Check the target repository out at its branch; its sha is the run's TARGET_COMMIT"
+        meta nrvv-role = "target",
+             variable-for-workspace = "workspace",
+             variable-for-location = "target",
+             variable-for-commit = "targetCommit",
+             variable-for-dir-path = "targetDirPath"
+        <- workspace, target
+        -> targetCommit: ext=".txt",
+           targetDirPath: ext=".txt"
+        timeout 1800
+    }
+
+    allSuites := internal mh.string-as-variable {
+        name "The launcher's suites input: [] - every suite of the test-suite checkout"
+        meta mapping = "mapping: [{key: nrvvVerification, name: suites, output: suites}]"
+        -> suites: ext=".json"
+        timeout 60
+    }
+
+    suiteRun := mh.asset.nrvv-suite-run_1.0 {
+        name "Run every suite's listed ids with pytest against the target (decision 14)"
+        meta variable-for-workspace = "workspace",
+             variable-for-test-suite-location = "testSuite",
+             variable-for-target-location = "target",
+             variable-for-suites = "suites",
+             variable-for-report = "report"
+        <- workspace, testSuite, target, suites
+        -> report: ext=".json"
+        timeout 1800
+    }
+
+    store := internal mhdg-nrvv.store-verification {
+        name "Every verdict - suites and requirements - at the run's snapshot, into NRVV_RUN_RESULT"
+        <- runId, report
+        -> verification: ext=".json"
+        timeout 120
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed; record both commits"
+        // reads testSuiteCommit and targetCommit only when they were written: it runs after failures too
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
