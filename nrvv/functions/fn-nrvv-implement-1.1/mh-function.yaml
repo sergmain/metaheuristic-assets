@@ -1,0 +1,24 @@
+version: 3
+function:
+  # ONE Claude Code session writing the implementation in the target dir (plan 042, Phases 11 and 13). _1.1 against
+  # _1.0: the optional input `suites` (meta variable-for-suites) names the suites to make pass - the same script.
+  # The `claude-code` env is resolved from the Task's mh-env.yaml, as mh.asset.call-cc resolves it.
+  code: mh.asset.nrvv-implement_1.1
+  type: mh.asset.nrvv-implement
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
+  # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
+  # Every Function of this capability shares the payload directory; each names its own script.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: nrvv/payload/fn-nrvv
+  targets:
+    mh-default:
+      src: src
+      file: nrvv_implement.py
+  metas:
+    # 2: every variable is named by a process meta
+    - mh.task-params-version: 2

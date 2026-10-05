@@ -1,4 +1,5 @@
-# mh.asset.nrvv-implement_1.0 (plan 042, Phase 11): which suites and test files the session is given, its prompt, its
+# mh.asset.nrvv-implement_1.0 / _1.1 (plan 042, Phases 11 and 13): which suites and test files the session is given,
+# narrowed by _1.1's input `suites`, its prompt, its
 # command line (the confinement), its environment - and run() end to end with a stand-in for the `claude` executable,
 # which no test can run for real (a process exec, the one place a stand-in has no real counterpart). The stand-in
 # records how it was started and writes a module where it was started; the real launcher then runs the suite against
@@ -220,3 +221,101 @@ def test_run_refuses_a_missing_target_checkout(tmp_path):
         'model': 'm', 'effort': 'medium'})
     with pytest.raises(ValueError, match='target checkout does not exist'):
         im.run(task, claude=[sys.executable, '-c', 'pass'])
+
+
+# ---------------------------------------------------------------------------------------------------
+# _1.1: the suites to make pass, named by the input `suites` (list-scope's scopeSuites)
+
+OTHER = 'TMPSN3F36BJ_9_suite'
+OTHER_FILE = 'tests/test_' + OTHER + '.py'
+OTHER_TESTS = "def test_other_requirement_holds():\n    assert 1 + 1 == 2\n"
+
+
+def test_parse_suite_names_reads_an_array_of_names_and_no_input_as_every_suite():
+    assert im.parse_suite_names(None) is None
+    assert im.parse_suite_names('  \n') is None
+    assert im.parse_suite_names('[]') == []
+    assert im.parse_suite_names('["A_1_suite", " B_2_suite "]') == ['A_1_suite', 'B_2_suite']
+
+
+@pytest.mark.parametrize('text', ['{"suite": "A_1_suite"}', '"A_1_suite"', '[1]', '["A_1_suite", ""]', '[null]', 'A_1_suite'])
+def test_parse_suite_names_refuses_anything_but_an_array_of_names(text):
+    with pytest.raises(ValueError):
+        im.parse_suite_names(text)
+
+
+def test_select_suites_aims_at_every_suite_when_none_is_named():
+    suites = [('A', ['a']), ('B', ['b'])]
+
+    assert im.select_suites(suites, None) == (suites, [])
+    assert im.select_suites(suites, []) == (suites, [])
+
+
+def test_select_suites_aims_at_the_named_in_checkout_order_and_names_the_others():
+    suites = [('A', ['a']), ('B', ['b']), ('C', ['c'])]
+
+    assert im.select_suites(suites, ['C', 'A']) == ([('A', ['a']), ('C', ['c'])], ['B'])
+
+
+def test_select_suites_refuses_a_named_suite_the_checkout_lacks():
+    with pytest.raises(ValueError, match='has no suite X, Y'):
+        im.select_suites([('A', ['a'])], ['X', 'A', 'Y'])
+
+
+def test_the_prompt_names_the_other_suites_as_suites_that_must_keep_passing():
+    aimed = [(SUITE, [TEST_FILE + '::test_main_prints_hello'])]
+
+    narrowed = im.compose_prompt('C:/ws/target/tg', 'C:/ws/test-suite/ts', aimed, {TEST_FILE: TESTS}, [OTHER])
+    every = im.compose_prompt('C:/ws/target/tg', 'C:/ws/test-suite/ts', aimed, {TEST_FILE: TESTS})
+
+    assert 'must keep passing' in narrowed and OTHER in narrowed
+    assert 'must keep passing' not in every
+
+
+def implement_named(tmp_path, monkeypatch, suites_json):
+    workspace = str(tmp_path / 'ws')
+    suite_dir_with(os.path.join(workspace, 'test-suite', 'nrvv', 'synthetic', 'test-suite'),
+                   suites={'suites/' + SUITE + '.suite': TEST_FILE + '::test_main_prints_hello\n',
+                           'suites/' + OTHER + '.suite': OTHER_FILE + '::test_other_requirement_holds\n'},
+                   files={TEST_FILE: TESTS, OTHER_FILE: OTHER_TESTS, 'pytest.ini': '[pytest]\naddopts = -p no:cacheprovider\n'})
+    os.makedirs(os.path.join(workspace, 'target'))
+    fake = tmp_path / 'fake_claude.py'
+    fake.write_text(FAKE_CLAUDE, encoding='utf-8')
+    record = tmp_path / 'record.json'
+    monkeypatch.setenv('NRVV_FAKE_RECORD', str(record))
+    monkeypatch.setenv('NRVV_FAKE_MODULE', GOOD_MODULE)
+    monkeypatch.setenv('NRVV_FAKE_EXIT', '0')
+    task = task_with_inputs(str(tmp_path / 'task'), {
+        'workspace': workspace,
+        'testSuite': json.dumps({'url': URL, 'branchOrRef': 'nrvv-synthetic-test-suite', 'dir': 'nrvv/synthetic/test-suite'}),
+        'target': json.dumps({'url': URL, 'branchOrRef': 'nrvv-synthetic-target', 'dir': 'nrvv/synthetic/target'}),
+        'model': 'claude-opus-4-8', 'effort': '', 'scopeSuites': suites_json}, empty=('effort',))
+    task['metas'] = METAS + [{'variable-for-suites': 'scopeSuites'}]
+    return im.run(task, claude=[sys.executable, str(fake)]), record
+
+
+def test_run_with_named_suites_gives_the_session_only_their_tests(tmp_path, monkeypatch):
+    code, record = implement_named(tmp_path, monkeypatch, json.dumps([SUITE]))
+
+    assert code == 0
+    with open(record, encoding='utf-8') as f:
+        prompt = json.load(f)['prompt']
+    assert SUITE + ':' in prompt and TESTS.rstrip('\n') in prompt
+    assert OTHER_TESTS.rstrip('\n') not in prompt, 'the other suite is named, its tests are not handed over'
+    assert OTHER + ':' not in prompt and 'must keep passing' in prompt and OTHER in prompt
+
+
+def test_run_with_an_empty_list_aims_at_every_suite(tmp_path, monkeypatch):
+    code, record = implement_named(tmp_path, monkeypatch, '[]')
+
+    assert code == 0
+    with open(record, encoding='utf-8') as f:
+        prompt = json.load(f)['prompt']
+    assert SUITE + ':' in prompt and OTHER + ':' in prompt and OTHER_TESTS.rstrip('\n') in prompt
+    assert 'must keep passing' not in prompt
+
+
+def test_run_refuses_a_named_suite_the_checkout_lacks_before_the_session(tmp_path, monkeypatch):
+    with pytest.raises(ValueError, match='has no suite TMPSN3F36BJ_77_suite'):
+        implement_named(tmp_path, monkeypatch, json.dumps([SUITE, 'TMPSN3F36BJ_77_suite']))
+    assert not (tmp_path / 'record.json').exists(), 'no session was started'

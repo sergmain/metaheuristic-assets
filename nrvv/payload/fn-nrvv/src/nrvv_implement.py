@@ -1,5 +1,6 @@
-# mh.asset.nrvv-implement_1.0 - ONE Claude Code session that writes the target-language implementation making the
-# NRVV project's test suites pass (plan 042, Phase 11; nrvv/DETAILS.md, Implementation).
+# mh.asset.nrvv-implement_1.0 / _1.1 - ONE Claude Code session that writes the target-language implementation making
+# the NRVV project's test suites pass (plan 042, Phases 11 and 13; nrvv/DETAILS.md, Implementation). Both codes run
+# this script; _1.1 also binds the optional input `suites`, which _1.0 never has.
 #
 # Inputs  (process metas variable-for-<role>):
 #   workspace    absolute path of the run workspace
@@ -7,6 +8,10 @@
 #   target       the target location, JSON {"url", "branchOrRef", "dir"} - checked out before; the session's cwd
 #   model        optional: the CC model, as mh.asset.call-cc reads it (NULLIFIED / absent = the CLI default)
 #   effort       optional: the CC effort, likewise; 'ultracode' is refused
+#   suites       optional (_1.1): JSON array of the suite names to make pass - the suites verifying the run's scope
+#                (mhdg-nrvv.list-scope's scopeSuites). Absent, NULLIFIED or [] = every suite of the checkout. Every
+#                named suite must be in the checkout; the others are named in the prompt as suites that must keep
+#                passing, without their test files
 # Meta:
 #   timeout-sec  seconds allowed to the session; absent = 1800
 # Output:
@@ -21,8 +26,9 @@
 # That confinement is an ASSUMPTION about the CLI; mh.asset.nrvv-guard_1.0, after this Function, is the CHECK
 # (decision 17: a path check, not trust).
 #
-# THE TESTS ARE THE SPECIFICATION: the prompt carries every suite of the test-suite checkout and the full text of every
-# test file the suites name; the session may run them with `python -m pytest`. Its environment puts the target dir on
+# THE TESTS ARE THE SPECIFICATION: the prompt carries every suite aimed at - every suite of the test-suite checkout
+# unless `suites` names some - and the full text of every test file those suites name; the session may run the
+# whole checkout with `python -m pytest`. Its environment puts the target dir on
 # PYTHONPATH (where the suites find the implementation, as nrvv-suite-run does), the interpreter running this Function
 # first on PATH (so the session's `python` has pytest), and PYTHONDONTWRITEBYTECODE=1 (no __pycache__ left in either
 # checkout).
@@ -30,6 +36,7 @@
 # It verifies nothing: the guard checks where the session wrote, the verification run checks what it wrote. ONE system
 # call (DAHF 0.8).
 
+import json
 import os
 import subprocess
 import sys
@@ -38,7 +45,7 @@ import mh_task_io as io
 import nrvv_paths
 from nrvv_checkout import parse_location
 
-FUNCTION_CODE = 'mh.asset.nrvv-implement_1.0'
+FUNCTION_CODE = 'mh.asset.nrvv-implement'
 
 CLAUDE_CODE_ENV_CODE = 'claude-code'
 MH_ENV_FILE = 'mh-env.yaml'
@@ -74,6 +81,37 @@ def read_suites(test_suite_dir):
     return suites
 
 
+def parse_suite_names(text):
+    """The suite names the input `suites` holds; None when there is no input (every suite). [] is every suite too.
+    A ValueError for anything but a JSON array of non-blank strings."""
+    if text is None or not text.strip():
+        return None
+    try:
+        names = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError('suites is not JSON: ' + str(e))
+    if not isinstance(names, list):
+        raise ValueError('suites must be a JSON array of suite names, got ' + type(names).__name__)
+    for name in names:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError('suites holds a value that is no suite name: ' + repr(name))
+    return [name.strip() for name in names]
+
+
+def select_suites(suites, names):
+    """(the suites aimed at, the names of the other suites of the checkout). names None or [] aims at every suite;
+    otherwise every name must be a suite of the checkout - a ValueError names the missing ones."""
+    if not names:
+        return list(suites), []
+    present = [name for name, _ in suites]
+    missing = [name for name in names if name not in present]
+    if missing:
+        raise ValueError('the test-suite checkout has no suite ' + ', '.join(missing)
+                         + ' - the suites to make pass and the test-suite commit disagree')
+    wanted = set(names)
+    return [s for s in suites if s[0] in wanted], [name for name in present if name not in wanted]
+
+
 def test_files(suites):
     """The test files the suites name (the part of each id before '::'), in order of first appearance."""
     files = []
@@ -98,7 +136,7 @@ def read_test_files(test_suite_dir, files):
     return texts
 
 
-def compose_prompt(target_dir, test_suite_dir, suites, texts):
+def compose_prompt(target_dir, test_suite_dir, suites, texts, others=()):
     target = posix(target_dir)
     ts = posix(test_suite_dir)
     lines = [
@@ -116,6 +154,14 @@ def compose_prompt(target_dir, test_suite_dir, suites, texts):
         '',
         'Finish when every test listed below passes. End with a short summary of the files you wrote.',
         '',
+    ]
+    if others:
+        lines += [
+            'The checkout holds other suites as well. They are not listed here, and they must keep passing - the',
+            'command above runs them too: ' + ', '.join(others),
+            '',
+        ]
+    lines += [
         'Suites - every line a pytest node id, relative to ' + ts + ':',
     ]
     for name, ids in suites:
@@ -211,6 +257,7 @@ def run(task, claude=None):
     target = parse_location(io.read_role(task, 'target'))
     model = optional_role(task, 'model')
     effort = optional_role(task, 'effort')
+    names = parse_suite_names(optional_role(task, 'suites'))
     summary_path = io.output_role(task, 'summary')   # resolved before the paid session
 
     test_suite_dir = nrvv_paths.dir_path(workspace, 'test-suite', test_suite['dir'])
@@ -220,9 +267,9 @@ def run(task, claude=None):
     target_dir = nrvv_paths.dir_path(workspace, 'target', target['dir'])
     os.makedirs(target_dir, exist_ok=True)
 
-    suites = read_suites(test_suite_dir)
+    suites, others = select_suites(read_suites(test_suite_dir), names)
     texts = read_test_files(test_suite_dir, test_files(suites))
-    prompt = compose_prompt(target_dir, test_suite_dir, suites, texts)
+    prompt = compose_prompt(target_dir, test_suite_dir, suites, texts, others)
 
     work_dir = task['workingPath']
     os.makedirs(work_dir, exist_ok=True)
@@ -233,7 +280,8 @@ def run(task, claude=None):
 
     command = cc_command(claude if claude is not None else claude_from_processor(task), settings_file, model, effort)
     seconds = timeout_sec(task.get('metas') or [])
-    print(FUNCTION_CODE + ': ' + str(len(suites)) + ' suite(s), ' + str(len(texts)) + ' test file(s), cwd ' + target_dir)
+    print(FUNCTION_CODE + ': ' + str(len(suites)) + ' suite(s) aimed at, ' + str(len(others)) + ' other(s), '
+          + str(len(texts)) + ' test file(s), cwd ' + target_dir)
     print('command: ' + str(command))
     print('model: ' + (model or '(CLI default)') + ', effort: ' + (effort or '(CLI default)') + ', timeout ' + str(seconds) + 's')
 
