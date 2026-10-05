@@ -5,6 +5,9 @@ class NrvvSample:
     def main(args=None):
         print("Hello, NRVV")
 
+    def greeting(self):
+        return 'Hello, NRVV'
+
 
 if __name__ == "__main__":
     NrvvSample.main()
