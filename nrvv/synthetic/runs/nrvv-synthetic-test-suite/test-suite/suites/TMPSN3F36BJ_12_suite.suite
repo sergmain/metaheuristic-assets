@@ -1,0 +1,5 @@
+# TMPSN3F36BJ_12_suite - written by nrvv-test-author
+tests/test_TMPSN3F36BJ_12_suite.py::test_output_contains_expected_text
+tests/test_TMPSN3F36BJ_12_suite.py::test_output_exact_literal_casing_and_spelling
+tests/test_TMPSN3F36BJ_12_suite.py::test_output_not_altered_variants
+tests/test_TMPSN3F36BJ_12_suite.py::test_output_on_its_own_line

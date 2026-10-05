@@ -1,0 +1,7 @@
+# TMPSN3F36BJ_10_suite - written by nrvv-test-author
+tests/test_TMPSN3F36BJ_10_suite.py::test_module_importable
+tests/test_TMPSN3F36BJ_10_suite.py::test_nrvv_sample_class_exists
+tests/test_TMPSN3F36BJ_10_suite.py::test_nrvv_sample_is_a_class
+tests/test_TMPSN3F36BJ_10_suite.py::test_nrvv_sample_name_is_exact
+tests/test_TMPSN3F36BJ_10_suite.py::test_nrvv_sample_is_public
+tests/test_TMPSN3F36BJ_10_suite.py::test_nrvv_sample_present_in_class_members
