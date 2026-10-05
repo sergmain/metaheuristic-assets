@@ -80,6 +80,19 @@ def test_a_requirement_without_a_source_file_targets_the_default_module():
 # ---------------------------------------------------------------------------------------------------
 # the criterion prompt and its check
 
+def test_the_criterion_prompt_words_source_language_constructs_as_behaviour():
+    # C3 (TA2, TA4): requirements recovered from Java name Java constructs - 'public class', 'void main()',
+    # System.out.println - and the criteria repeated them, which a Python implementation cannot meet literally
+    prompt = cp.compose('TMPVOP59D8L-1', E1_REQUIREMENT)
+
+    # the criterion must hold whatever language implements the requirement: a construct of the source language is
+    # stated as the observable behaviour it implies
+    assert 'ANY implementation language' in prompt
+    assert 'never the construct itself' in prompt
+    assert 'an access modifier' in prompt and 'a return type' in prompt and 'compiling' in prompt
+    assert 'Name no test framework, no file and no programming language.' in prompt, 'the existing rule stays'
+
+
 def test_the_criterion_prompt_carries_the_requirement_text_and_the_answer_shape():
     prompt = cp.compose(' TMPSN3F36BJ-3\n', E1_REQUIREMENT)
 

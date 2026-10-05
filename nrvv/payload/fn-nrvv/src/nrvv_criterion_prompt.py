@@ -12,6 +12,11 @@
 # is used whenever recovery provided one - and never target code (decision 17). CC answers through call-cc's result
 # tool with ONE JSON object; mh.asset.nrvv-criterion-check_1.0 checks it.
 #
+# LANGUAGE-NEUTRAL (correction C3): the requirement was recovered from code in one language and is implemented in
+# another, so a requirement about a construct of the source language (a declaration, an access modifier, a return
+# type, compiling, a printing call) is stated as the observable behaviour it implies - TA2 and TA4 criteria named
+# 'public', 'void', 'NrvvSample.java' and System.out.println, which a Python implementation cannot meet literally.
+#
 # Pure but for run()/main().
 
 import sys
@@ -47,6 +52,11 @@ def compose(req_id, content):
         '  literal the requirement names.',
         '- When the Acceptance item states a condition (anything but "Not applicable"), base the criterion on it.',
         '- Name no test framework, no file and no programming language.',
+        '- The requirement was recovered from code in one language and will be implemented in another. Word the',
+        '  criterion so it holds in ANY implementation language: when the requirement is about a construct of the',
+        '  source language - a class or method declaration, an access modifier, a parameter list or a return type,',
+        '  compiling, a particular printing call - state the observable behaviour it implies (a named unit exists',
+        '  and can be called; calling it produces the stated output or result), never the construct itself.',
         '- The Rationale\'s "source:" line says where the requirement was recovered from; it is not part of the',
         '  criterion.',
         '',
