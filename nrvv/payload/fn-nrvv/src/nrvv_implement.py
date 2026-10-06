@@ -35,6 +35,13 @@
 #
 # It verifies nothing: the guard checks where the session wrote, the verification run checks what it wrote. ONE system
 # call (DAHF 0.8).
+#
+# DESIGN MODE (plan 043, Phase 11) - one more OPTIONAL input:
+#   design   the design mhdg-nrvv.list-scope wrote, {"interface": [{"reqId", "content"}], "environment": [...]}
+# With a design that has Interface items, the prompt names `app` as the module to deliver, carries the Interface's texts
+# and every file of <test-suite dir>/tests/nrvv_env/ - the simulated environment the test author wrote - as fixed parts
+# of the tests. Without one, the prompt is byte-identical to the v1 prompt. The guard is unchanged: tests/nrvv_env/ lies
+# in the test-suite checkout, outside the target dir, so the implementer cannot change the world it is tested in.
 
 import json
 import os
@@ -43,7 +50,9 @@ import sys
 
 import mh_task_io as io
 import nrvv_paths
+import nrvv_requirement_text as rt
 from nrvv_checkout import parse_location
+from nrvv_test_prompt import interface_items, read_env_files
 
 FUNCTION_CODE = 'mh.asset.nrvv-implement'
 
@@ -136,9 +145,21 @@ def read_test_files(test_suite_dir, files):
     return texts
 
 
-def compose_prompt(target_dir, test_suite_dir, suites, texts, others=()):
+def compose_prompt(target_dir, test_suite_dir, suites, texts, others=(), interface=None, env_files=None):
     target = posix(target_dir)
     ts = posix(test_suite_dir)
+    deliver = [
+        'What to deliver: the Python module or modules the tests import, written in the current directory - it is on',
+        'PYTHONPATH when the tests run. Nothing else: no tests, no copies of tests, no build or packaging files.',
+    ] if not interface else [
+        'What to deliver: the Python module `app`, written in the current directory - it is on PYTHONPATH when the',
+        'tests run. It provides the Interface below, bound to Python: every operation a snake_case function or method',
+        'of `app`, every type a CapWords class of `app`. Nothing else: no tests, no copies of tests, no build or',
+        'packaging files.',
+        '',
+        'The tests drive `app` through the simulated environment `nrvv_env` (tests/nrvv_env/ of the test-suite',
+        'directory, given in full below). It is a fixed part of the tests: do not change, copy or imitate it.',
+    ]
     lines = [
         'You implement a program in Python so that the test suites below pass.',
         '',
@@ -146,8 +167,7 @@ def compose_prompt(target_dir, test_suite_dir, suites, texts, others=()):
         'write anywhere but the current directory, which is the target directory:',
         '    ' + target,
         '',
-        'What to deliver: the Python module or modules the tests import, written in the current directory - it is on',
-        'PYTHONPATH when the tests run. Nothing else: no tests, no copies of tests, no build or packaging files.',
+        *deliver,
         '',
         'Check your work with exactly this command, as often as you need (single files: append tests/<file>.py):',
         '    python -m pytest ' + ts + ' -q',
@@ -173,6 +193,19 @@ def compose_prompt(target_dir, test_suite_dir, suites, texts, others=()):
         lines.append('=== ' + rel + ' ===')
         lines.append(content.rstrip('\n'))
         lines.append('=== end of ' + rel + ' ===')
+    if interface:
+        lines.append('')
+        lines.append('The Interface of `app`:')
+        for item in interface:
+            lines.append('=== ' + str(item.get('reqId')) + ' ===')
+            lines.append(rt.plain_text(item.get('content')))
+            lines.append('=== end of ' + str(item.get('reqId')) + ' ===')
+        lines.append('')
+        lines.append('The simulated environment, fixed - tests/nrvv_env/:')
+        for name, source in (env_files or {}).items():
+            lines.append('=== tests/nrvv_env/' + name + ' ===')
+            lines.append(source.rstrip('\n'))
+            lines.append('=== end of tests/nrvv_env/' + name + ' ===')
     return '\n'.join(lines) + '\n'
 
 
@@ -258,6 +291,7 @@ def run(task, claude=None):
     model = optional_role(task, 'model')
     effort = optional_role(task, 'effort')
     names = parse_suite_names(optional_role(task, 'suites'))
+    interface = interface_items(optional_role(task, 'design'))
     summary_path = io.output_role(task, 'summary')   # resolved before the paid session
 
     test_suite_dir = nrvv_paths.dir_path(workspace, 'test-suite', test_suite['dir'])
@@ -269,7 +303,8 @@ def run(task, claude=None):
 
     suites, others = select_suites(read_suites(test_suite_dir), names)
     texts = read_test_files(test_suite_dir, test_files(suites))
-    prompt = compose_prompt(target_dir, test_suite_dir, suites, texts, others)
+    env_files = read_env_files(test_suite_dir) if interface else None
+    prompt = compose_prompt(target_dir, test_suite_dir, suites, texts, others, interface, env_files)
 
     work_dir = task['workingPath']
     os.makedirs(work_dir, exist_ok=True)
