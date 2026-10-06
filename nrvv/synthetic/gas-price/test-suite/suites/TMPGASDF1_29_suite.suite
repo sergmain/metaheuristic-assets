@@ -1,0 +1,6 @@
+# TMPGASDF1_29_suite - written by nrvv-test-author
+tests/test_TMPGASDF1_29_suite.py::test_single_fixed_desired_converges_and_is_stable
+tests/test_TMPGASDF1_29_suite.py::test_coalesced_burst_converges_to_latest_desired_in_cycles
+tests/test_TMPGASDF1_29_suite.py::test_each_acknowledgement_sets_known_displayed_to_acked_price
+tests/test_TMPGASDF1_29_suite.py::test_convergence_under_reordering_across_seeds
+tests/test_TMPGASDF1_29_suite.py::test_no_further_update_sent_once_displayed

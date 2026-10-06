@@ -1,0 +1,10 @@
+# TMPGASDF1_28_suite - written by nrvv-test-author
+tests/test_TMPGASDF1_28_suite.py::test_first_set_sends_and_sets_outstanding
+tests/test_TMPGASDF1_28_suite.py::test_outstanding_blocks_further_send
+tests/test_TMPGASDF1_28_suite.py::test_delivery_alone_does_not_trigger_send
+tests/test_TMPGASDF1_28_suite.py::test_equal_to_known_displayed_no_send
+tests/test_TMPGASDF1_28_suite.py::test_differing_after_convergence_sends_again
+tests/test_TMPGASDF1_28_suite.py::test_ack_triggers_send_of_latest_coalesced_value
+tests/test_TMPGASDF1_28_suite.py::test_ack_with_latest_equal_known_sends_nothing_more
+tests/test_TMPGASDF1_28_suite.py::test_no_input_no_send
+tests/test_TMPGASDF1_28_suite.py::test_seeded_runs_converge_under_the_rule

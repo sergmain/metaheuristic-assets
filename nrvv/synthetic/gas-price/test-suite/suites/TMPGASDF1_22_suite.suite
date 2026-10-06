@@ -1,0 +1,5 @@
+# TMPGASDF1_22_suite - written by nrvv-test-author
+tests/test_TMPGASDF1_22_suite.py::test_newer_price_set_after_delivery_before_ack_coalesces
+tests/test_TMPGASDF1_22_suite.py::test_newer_prices_set_before_delivery_coalesce
+tests/test_TMPGASDF1_22_suite.py::test_many_intermediate_prices_all_coalesced_to_latest
+tests/test_TMPGASDF1_22_suite.py::test_two_coalescing_cycles_in_a_row_each_sends_only_latest

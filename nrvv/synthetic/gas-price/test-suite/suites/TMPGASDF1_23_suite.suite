@@ -1,0 +1,7 @@
+# TMPGASDF1_23_suite - written by nrvv-test-author
+tests/test_TMPGASDF1_23_suite.py::test_no_send_while_outstanding
+tests/test_TMPGASDF1_23_suite.py::test_ack_transmits_exactly_the_second_value
+tests/test_TMPGASDF1_23_suite.py::test_superseded_first_value_never_transmitted
+tests/test_TMPGASDF1_23_suite.py::test_coalesce_many_supersessions_keeps_only_latest
+tests/test_TMPGASDF1_23_suite.py::test_convergence_after_coalescing
+tests/test_TMPGASDF1_23_suite.py::test_only_second_value_delivered_and_acknowledged_as_latest
