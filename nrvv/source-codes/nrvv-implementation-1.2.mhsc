@@ -1,0 +1,147 @@
+// NRVV implementation 1.2 (plan 043, Phase 12): nrvv-implementation-1.1 plus the design of a definition snapshot. The
+// target-language implementation - Python - written by ONE Claude Code session to make the NRVV project's test suites
+// pass, checked to have written only inside the target dir, and pushed as one commit to the target repository. Started
+// by the Dispatcher (POST /rest/v1/nrvv/projects/{id}/implementation, or the chain after TEST_AUTHOR ->
+// NrvvRunService), never by hand: the run record NRVV_RUN #runId exists before this ExecContext does, and
+// mhdg-nrvv.finish-run closes it.
+//
+//   scope          internal mhdg-nrvv.list-scope       the requirements in scope and scopeSuites - the suites
+//                                                       verifying them at the run's snapshot; design and hasDesign
+//                                                       (1.2); refuses a run with nothing in scope or no suite, before
+//                                                       anything is spent
+//   targetCheckout mh.asset.nrvv-checkout_1.0          the target repository at its branch; targetBase = where the
+//                                                       guard measures changes from
+//   suiteCheckout  mh.asset.nrvv-checkout_1.0          the test-suite repository at its branch - read only from here on
+//   implement      mh.asset.nrvv-implement_1.1         ONE CC session, cwd = the target dir, given the suites of
+//                                                       scopeSuites and the text of their test files, the other
+//                                                       suites named as ones that must keep passing; with a design
+//                                                       (1.2): `app` to deliver, the Interface and tests/nrvv_env/ in
+//                                                       full as fixed parts of the tests; confined to the file tools
+//                                                       and `python -m pytest`, no MCP server, no other dir
+//   guard          mh.asset.nrvv-guard_1.0             fails the Task when any change in the target checkout lies
+//                                                       outside the target dir (decision 17: a check, not trust) -
+//                                                       tests/nrvv_env/ lies outside it: the implementer cannot change
+//                                                       the world it is tested in
+//   message        internal mh.string-as-variable      the commit message, lifted out of `inline`
+//   commit         mh.asset.nrvv-commit-push_1.0       one commit of the target checkout, pushed: targetCommit
+//   finish         internal mhdg-nrvv.finish-run       the run record FINISHED or ERROR; TARGET_COMMIT
+//
+// No RG write and no STAGE: nothing terminal but finish, which reads targetCommit only when it was written. A failed
+// implement or guard SKIPs everything after it - they are top-level processes - so nothing is pushed then.
+//
+// Inputs: exactly NrvvRunUtils.projectRunVariables for IMPLEMENTATION (MH refuses a missing or an undeclared name).
+// `model` is declared without '?' (DAHF 0.5): an IMPLEMENTATION run always carries one - NrvvRunService refuses a blank
+// model (06.004.070). Credentials: NRVV_GIT_AUTH (commit-push) for the push; both repositories are cloned anonymously.
+//
+// 1.1 against 1.0 (Phase 13): the session aims at the suites verifying the run's scope - every suite of the RG
+// project's TEST_CASEs for a run on every requirement, the affected ones for a re-run - instead of every suite file
+// of the checkout. A suite the scope names but the test-suite commit lacks refuses the run before the session.
+//
+// 1.2 against 1.1 (plan 043, Phase 12): scope declares design and hasDesign; implement takes design. A snapshot without
+// the Interface and Environment sections gives an empty design and exactly 1.1's session prompt. Needs the Dispatcher
+// build of plan 043 Phase 5 (list-scope writes design / hasDesign).
+// ORDER is declaration order: each process is chained to the one declared before it.
+source "nrvv-implementation-1.2" {
+
+    variables {
+        <- production?
+        <- runId, workspace, projectCode, nrvvCode, snapshotId, testSuite, target
+        <- model
+        <- effort?
+        inline nrvvImplementation {
+            commitMessage = "nrvv implementation: the target written to pass the suites"
+        }
+    }
+
+    scope := internal mhdg-nrvv.list-scope {
+        name "The requirements in scope and the suites verifying them; the design; refuse a run with nothing to aim at"
+        <- runId
+        -> scope: ext=".txt",
+           scopeSuites: ext=".json",
+           design: ext=".json",
+           hasDesign: type=boolean, ext=".txt"
+        timeout 60
+    }
+
+    targetCheckout := mh.asset.nrvv-checkout_1.0 {
+        name "Check the target repository out at its branch, under the run workspace"
+        meta nrvv-role = "target",
+             variable-for-workspace = "workspace",
+             variable-for-location = "target",
+             variable-for-commit = "targetBase",
+             variable-for-dir-path = "targetDirPath"
+        <- workspace, target
+        -> targetBase: ext=".txt",
+           targetDirPath: ext=".txt"
+        timeout 1800
+    }
+
+    suiteCheckout := mh.asset.nrvv-checkout_1.0 {
+        name "Check the test-suite repository out at its branch - read only from here on"
+        meta nrvv-role = "test-suite",
+             variable-for-workspace = "workspace",
+             variable-for-location = "testSuite",
+             variable-for-commit = "testSuiteBase",
+             variable-for-dir-path = "testSuiteDirPath"
+        <- workspace, testSuite
+        -> testSuiteBase: ext=".txt",
+           testSuiteDirPath: ext=".txt"
+        timeout 1800
+    }
+
+    implement := mh.asset.nrvv-implement_1.1 {
+        name "ONE Claude Code session writes the implementation in the target dir, against the scope's suites and the design"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-workspace = "workspace",
+             variable-for-test-suite = "testSuite",
+             variable-for-target = "target",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             variable-for-suites = "scopeSuites",
+             variable-for-design = "design",
+             variable-for-summary = "implementSummary",
+             timeout-sec = "1800"
+        <- workspace, testSuite, target, model, effort?, scopeSuites, design
+        -> implementSummary: ext=".txt"
+        timeout 2100
+    }
+
+    guard := mh.asset.nrvv-guard_1.0 {
+        name "Fail when any change in the target checkout lies outside the target dir"
+        meta nrvv-role = "target",
+             variable-for-workspace = "workspace",
+             variable-for-location = "target",
+             variable-for-base-commit = "targetBase",
+             variable-for-guard-report = "guardReport"
+        <- workspace, target, targetBase
+        -> guardReport: ext=".txt"
+        timeout 300
+    }
+
+    message := internal mh.string-as-variable {
+        name "The commit message, lifted out of inline"
+        meta mapping = "mapping: [{key: nrvvImplementation, name: commitMessage, output: commitMessage}]"
+        -> commitMessage: ext=".txt"
+        timeout 60
+    }
+
+    commit := mh.asset.nrvv-commit-push_1.0 {
+        name "Commit the implementation and push it to the target branch"
+        meta nrvv-role = "target",
+             variable-for-workspace = "workspace",
+             variable-for-location = "target",
+             variable-for-commit-message = "commitMessage",
+             variable-for-commit = "targetCommit"
+        <- workspace, target, commitMessage
+        -> targetCommit: ext=".txt"
+        timeout 600
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed; record the target commit"
+        // reads targetCommit only when it was written: it runs after failures too
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
