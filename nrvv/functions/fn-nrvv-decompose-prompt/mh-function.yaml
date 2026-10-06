@@ -1,0 +1,22 @@
+version: 3
+function:
+  # the CC prompt restating a DEFINITION run's NEEDs as obligations (plan 043, Phase 8)
+  code: mh.asset.nrvv-decompose-prompt_1.0
+  type: mh.asset.nrvv-decompose-prompt
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
+  # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
+  # Every Function of this capability shares the payload directory; each names its own script.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: nrvv/payload/fn-nrvv
+  targets:
+    mh-default:
+      src: src
+      file: nrvv_decompose_prompt.py
+  metas:
+    # 2: every variable is named by a process meta
+    - mh.task-params-version: 2
