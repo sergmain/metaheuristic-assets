@@ -203,3 +203,90 @@ def test_basic_auth_header():
     assert cp.basic_auth_header('user:tok') == 'Authorization: Basic dXNlcjp0b2s='
     with pytest.raises(ValueError):
         cp.basic_auth_header('no-colon')
+
+
+# ---------------------------------------------------------------------------------------------------
+# commit-push onto a branch that moved after the checkout (plan 043, Phase 7)
+
+def test_commit_and_push_lands_on_a_branch_that_moved_in_another_directory(world, tmp_path):
+    world.init(FILES)
+    ws = str(tmp_path / 'ws')
+    co.checkout(ws, 'target', loc(world, d='nrvv/target'))
+    root = os.path.join(ws, 'target')
+    write(root, {'nrvv/target/app.py': 'X = 42\n'})
+    # another run (or the executor) pushes to the same branch meanwhile, in another directory
+    other = world.push_change({'nrvv/test-suite/tests/test_b.py': 'def test_b():\n    assert True\n'})
+
+    # CT Green-1 (043 Phase 7): the push is refused - the branch moved after the checkout - and the Task fails
+    # (git's refusal: '! [rejected]        HEAD -> main (fetch first)')
+    # CT Red (043 Phase 7): the run's commit is cherry-picked onto the moved tip and pushed again - both commits are
+    # on the branch and the output is the new tip
+    sha = cp.commit_and_push(root, loc(world), 'nrvv: implementation')
+
+    assert world.tip('main') == sha
+    git(world.bare, 'merge-base', '--is-ancestor', other, sha)
+    assert git(world.bare, 'show', sha + ':nrvv/target/app.py') == 'X = 42'
+    assert git(world.bare, 'show', sha + ':nrvv/test-suite/tests/test_b.py').startswith('def test_b():')
+    assert git(world.bare, 'log', '-1', '--format=%s', sha) == 'nrvv: implementation'
+
+
+def test_commit_and_push_fails_with_gits_conflict_when_the_branch_moved_in_the_same_file(world, tmp_path):
+    world.init(FILES)
+    ws = str(tmp_path / 'ws')
+    co.checkout(ws, 'target', loc(world, d='nrvv/target'))
+    root = os.path.join(ws, 'target')
+    write(root, {'nrvv/target/app.py': 'X = 42\n'})
+    other = world.push_change({'nrvv/target/app.py': 'X = 7\n'})
+
+    with pytest.raises(nrvv_git.GitError) as e:
+        cp.commit_and_push(root, loc(world), 'nrvv: implementation')
+
+    assert 'CONFLICT' in str(e.value) and 'nrvv/target/app.py' in str(e.value), str(e.value)
+    assert world.tip('main') == other, 'nothing of the run landed'
+
+
+def test_commit_and_push_lands_every_commit_of_the_run_when_the_branch_moved(world, tmp_path):
+    world.init(FILES)
+    ws = str(tmp_path / 'ws')
+    co.checkout(ws, 'target', loc(world, d='nrvv/target'))
+    root = os.path.join(ws, 'target')
+    # the implementer committed once by itself; commit-push commits what is left
+    write(root, {'nrvv/target/app.py': 'X = 42\n'})
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'implementer commit')
+    write(root, {'nrvv/target/util.py': 'Y = 1\n'})
+    other = world.push_change({'README.md': 'moved\n'})
+
+    sha = cp.commit_and_push(root, loc(world), 'nrvv: implementation')
+
+    assert world.tip('main') == sha
+    assert git(world.bare, 'log', '--format=%s', '-3', sha).splitlines() == ['nrvv: implementation', 'implementer commit', 'change']
+    git(world.bare, 'merge-base', '--is-ancestor', other, sha)
+    assert git(world.bare, 'show', sha + ':nrvv/target/app.py') == 'X = 42'
+    assert git(world.bare, 'show', sha + ':README.md') == 'moved'
+
+
+def test_commit_and_push_with_nothing_committed_leaves_a_moved_branch_alone(world, tmp_path):
+    first = world.init(FILES)
+    ws = str(tmp_path / 'ws')
+    co.checkout(ws, 'target', loc(world))
+    other = world.push_change({'README.md': 'moved\n'})
+
+    sha = cp.commit_and_push(os.path.join(ws, 'target'), loc(world), 'nrvv: nothing')
+
+    assert sha == first, 'the checkout commit: nothing of the run to land'
+    assert world.tip('main') == other
+
+
+def test_commit_and_push_refused_for_another_reason_fails_at_once(world, tmp_path):
+    world.init(FILES)
+    ws = str(tmp_path / 'ws')
+    co.checkout(ws, 'target', loc(world))
+    root = os.path.join(ws, 'target')
+    write(root, {'nrvv/target/app.py': 'X = 42\n'})
+    nowhere = {'url': str(tmp_path / 'nowhere.git'), 'branchOrRef': 'main', 'dir': ''}
+
+    with pytest.raises(nrvv_git.GitError) as e:
+        cp.commit_and_push(root, nowhere, 'nrvv: implementation')
+
+    assert 'git push' in str(e.value) and '[rejected]' not in str(e.value), str(e.value)

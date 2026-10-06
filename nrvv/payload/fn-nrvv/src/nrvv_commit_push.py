@@ -12,6 +12,11 @@
 # Credential: api.keyCode NRVV_GIT_AUTH. The Vault entry holds `user:token`; it arrives over the Processor's loopback
 # secret channel and is sent as an HTTP Basic header through the git child's environment - never argv, never disk.
 # Without a handoff (no api key declared, a local remote) the push goes out with no header.
+#
+# Plan 043, Phase 7: runs and the executor push to the same branch, so it can move between a run's checkout and its
+# push. A push refused for that reason lands the run's commits on the moved tip (nrvv_git.push_onto_moving_branch:
+# fetch, cherry-pick, push again - at most three pushes); a conflict fails with git's message. `commit` is then the new
+# tip. A run that committed nothing pushes nothing; `commit` is its checkout's commit.
 
 import base64
 import sys
@@ -36,8 +41,11 @@ def basic_auth_header(user_colon_token):
 def commit_and_push(repo_root, location, message, auth_header=None):
     """The sha at the branch tip after committing every change and pushing it."""
     sha = nrvv_git.commit_all(repo_root, message, AUTHOR_NAME, AUTHOR_EMAIL)
-    nrvv_git.push(repo_root, location['url'], location['branchOrRef'], auth_header)
-    return sha
+    if not nrvv_git.run_commits(repo_root):
+        # nothing committed since the checkout: nothing of this run to land, the remote is left alone
+        return sha
+    return nrvv_git.push_onto_moving_branch(repo_root, location['url'], location['branchOrRef'],
+                                            AUTHOR_NAME, AUTHOR_EMAIL, auth_header)
 
 
 def main(argv):

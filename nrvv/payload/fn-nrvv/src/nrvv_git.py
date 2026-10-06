@@ -6,6 +6,8 @@ import re
 import subprocess
 
 SHA = re.compile(r'^[0-9a-f]{40}$')
+# git's refusal of a push whose branch moved since the checkout: the remote holds commits this checkout does not have
+REJECTED_BEHIND = re.compile(r'\[rejected\][^\n]*\((?:fetch first|non-fast-forward)\)')
 
 
 class GitError(RuntimeError):
@@ -116,3 +118,44 @@ def push(repo_root, url, branch, auth_header=None):
     git child through its environment (env_config), never through argv and never through a file."""
     env_config = [('http.extraHeader', auth_header)] if auth_header else None
     git(['push', '-q', url, 'HEAD:refs/heads/' + branch], cwd=repo_root, env_config=env_config)
+
+
+def run_commits(repo_root):
+    """The commits made on top of the checkout, oldest first. checkout() fetches its commit one commit deep, so HEAD's
+    history ends at that commit; it is excluded. Empty when nothing was committed since the checkout."""
+    return git(['rev-list', '--reverse', 'HEAD'], cwd=repo_root).split()[1:]
+
+
+def push_onto_moving_branch(repo_root, url, branch, committer_name, committer_email, auth_header=None, attempts=3):
+    """Push the run's commits (run_commits) to refs/heads/<branch> on url, on top of whatever the branch holds by then;
+    return the sha pushed (plan 043, Phase 7).
+
+    Runs and the executor push to the same branch, so the branch can move between a run's checkout and its push. A
+    push git refuses for that reason ('[rejected] ... (fetch first)' / '(non-fast-forward)') fetches the branch tip one
+    commit deep, cherry-picks the run's commits onto it and pushes again - at most `attempts` pushes. A cherry-pick
+    that conflicts fails with git's own message, and so does a push refused for any other reason, at once."""
+    commits = run_commits(repo_root)
+    env_config = [('http.extraHeader', auth_header)] if auth_header else None
+    for attempt in range(1, attempts + 1):
+        try:
+            git(['push', '-q', url, 'HEAD:refs/heads/' + branch], cwd=repo_root, env_config=env_config)
+            return head(repo_root)
+        except GitError as e:
+            if attempt == attempts or not commits or not REJECTED_BEHIND.search(str(e)):
+                raise
+        git(['fetch', '-q', '--depth', '1', url, 'refs/heads/' + branch], cwd=repo_root, env_config=env_config)
+        git(['checkout', '-q', '-f', '--detach', 'FETCH_HEAD'], cwd=repo_root)
+        _cherry_pick(repo_root, commits, branch, committer_name, committer_email)
+    raise GitError('push to ' + branch + ' did not land after ' + str(attempts) + ' attempts')
+
+
+def _cherry_pick(repo_root, commits, branch, committer_name, committer_email):
+    """Replay `commits` onto HEAD. On failure the cherry-pick is aborted and git's own report is raised - stdout too,
+    where git writes the CONFLICT lines."""
+    r = subprocess.run(['git', '-c', 'user.name=' + committer_name, '-c', 'user.email=' + committer_email,
+                        'cherry-pick', *commits],
+                       cwd=repo_root, capture_output=True, text=True, encoding='utf-8', check=False)
+    if r.returncode != 0:
+        subprocess.run(['git', 'cherry-pick', '--abort'], cwd=repo_root, capture_output=True, check=False)
+        raise GitError('git cherry-pick of ' + str(len(commits)) + ' commit(s) onto the tip of ' + branch
+                       + ' failed with exit ' + str(r.returncode) + ': ' + (r.stdout + '\n' + r.stderr).strip())
