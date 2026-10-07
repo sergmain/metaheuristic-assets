@@ -1,0 +1,7 @@
+# GASV3ACC2_27_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_27_suite.py::test_single_station_last_applied_equals_latest_desired
+tests/test_GASV3ACC2_27_suite.py::test_each_station_settles_on_its_own_latest_desired
+tests/test_GASV3ACC2_27_suite.py::test_latest_wins_over_earlier_intermediate_applied_values
+tests/test_GASV3ACC2_27_suite.py::test_repeated_final_price_still_settles_on_latest
+tests/test_GASV3ACC2_27_suite.py::test_generated_sequences_settle_on_latest_desired
+tests/test_GASV3ACC2_27_suite.py::test_server_state_reports_settled_latest

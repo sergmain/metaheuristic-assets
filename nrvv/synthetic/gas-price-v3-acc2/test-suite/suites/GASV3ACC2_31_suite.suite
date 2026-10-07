@@ -1,0 +1,7 @@
+# GASV3ACC2_31_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_31_suite.py::test_no_new_price_while_prior_update_unacknowledged
+tests/test_GASV3ACC2_31_suite.py::test_latest_price_sent_immediately_when_idle_and_diverged
+tests/test_GASV3ACC2_31_suite.py::test_transmitted_price_equals_latest_desired
+tests/test_GASV3ACC2_31_suite.py::test_equal_price_is_not_transmitted
+tests/test_GASV3ACC2_31_suite.py::test_change_then_noop_resubmit_sends_only_the_change
+tests/test_GASV3ACC2_31_suite.py::test_converges_to_latest_desired

@@ -1,0 +1,6 @@
+# GASV3ACC2_32_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_32_suite.py::test_resubmitting_equal_price_emits_a_single_update
+tests/test_GASV3ACC2_32_suite.py::test_divergence_emits_exactly_one_update_with_latest_desired
+tests/test_GASV3ACC2_32_suite.py::test_resubmitting_a_settled_changed_price_is_suppressed
+tests/test_GASV3ACC2_32_suite.py::test_equal_then_new_value_resumes_emission
+tests/test_GASV3ACC2_32_suite.py::test_no_station_ever_receives_two_consecutive_equal_prices

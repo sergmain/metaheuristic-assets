@@ -1,0 +1,6 @@
+# GASV3ACC2_34_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_34_suite.py::test_seeded_runs_settle_each_station_on_latest_desired
+tests/test_GASV3ACC2_34_suite.py::test_settles_despite_duplicate_and_decreasing_desired_prices
+tests/test_GASV3ACC2_34_suite.py::test_single_station_high_churn_ends_on_last_value
+tests/test_GASV3ACC2_34_suite.py::test_station_blindly_applies_every_update_none_discarded
+tests/test_GASV3ACC2_34_suite.py::test_last_emitted_per_station_equals_latest_desired

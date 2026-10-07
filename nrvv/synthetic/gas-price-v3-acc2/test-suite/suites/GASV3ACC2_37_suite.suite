@@ -1,0 +1,6 @@
+# GASV3ACC2_37_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_37_suite.py::test_each_registered_station_receives_its_update
+tests/test_GASV3ACC2_37_suite.py::test_same_price_reaches_every_station
+tests/test_GASV3ACC2_37_suite.py::test_every_transmitted_update_is_delivered
+tests/test_GASV3ACC2_37_suite.py::test_no_registered_station_is_skipped
+tests/test_GASV3ACC2_37_suite.py::test_all_stations_converge_to_latest_desired

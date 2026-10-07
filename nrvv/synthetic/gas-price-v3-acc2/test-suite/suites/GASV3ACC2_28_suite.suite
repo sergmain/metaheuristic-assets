@@ -1,0 +1,5 @@
+# GASV3ACC2_28_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_28_suite.py::test_no_update_when_acknowledged_equals_latest_desired
+tests/test_GASV3ACC2_28_suite.py::test_update_sent_when_acknowledged_differs_from_latest_desired
+tests/test_GASV3ACC2_28_suite.py::test_repeated_identical_submissions_emit_only_once
+tests/test_GASV3ACC2_28_suite.py::test_suppression_is_per_station

@@ -1,0 +1,6 @@
+# GASV3ACC2_40_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_40_suite.py::test_next_send_carries_only_the_final_superseded_price
+tests/test_GASV3ACC2_40_suite.py::test_many_intermediate_prices_collapse_to_single_latest_send
+tests/test_GASV3ACC2_40_suite.py::test_coalescing_holds_until_ack_even_after_delivery
+tests/test_GASV3ACC2_40_suite.py::test_coalescing_is_independent_per_station
+tests/test_GASV3ACC2_40_suite.py::test_coalesced_run_converges_and_station_never_sees_intermediates
