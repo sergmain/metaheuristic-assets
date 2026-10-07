@@ -1,0 +1,5 @@
+# GASV3DEV3_27_suite - written by nrvv-test-author
+tests/test_GASV3DEV3_27_suite.py::test_ack_with_empty_pending_confirms_display_and_sends_nothing
+tests/test_GASV3DEV3_27_suite.py::test_ack_with_pending_equal_to_display_is_suppressed
+tests/test_GASV3DEV3_27_suite.py::test_ack_with_differing_pending_flushes_single_update
+tests/test_GASV3DEV3_27_suite.py::test_repeated_ack_branches_converge_to_latest_desired

@@ -1,0 +1,4 @@
+# GASV3DEV3_23_suite - written by nrvv-test-author
+tests/test_GASV3DEV3_23_suite.py::test_coalesced_pending_retains_last_and_is_sent_once_when_free
+tests/test_GASV3DEV3_23_suite.py::test_many_coalesced_prices_only_the_most_recent_transmitted
+tests/test_GASV3DEV3_23_suite.py::test_pending_price_is_last_arrived_not_an_earlier_one

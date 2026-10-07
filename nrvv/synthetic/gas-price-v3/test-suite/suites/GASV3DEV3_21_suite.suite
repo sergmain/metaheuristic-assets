@@ -1,0 +1,5 @@
+# GASV3DEV3_21_suite - written by nrvv-test-author
+tests/test_GASV3DEV3_21_suite.py::test_burst_during_inflight_emits_no_additional_sends
+tests/test_GASV3DEV3_21_suite.py::test_only_last_price_survives_and_is_flushed_on_ack
+tests/test_GASV3DEV3_21_suite.py::test_pending_slot_holds_only_most_recent_value
+tests/test_GASV3DEV3_21_suite.py::test_each_arrival_overwrites_previous_pending_value

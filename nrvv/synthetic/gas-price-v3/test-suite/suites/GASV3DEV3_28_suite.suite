@@ -1,0 +1,6 @@
+# GASV3DEV3_28_suite - written by nrvv-test-author
+tests/test_GASV3DEV3_28_suite.py::test_single_station_handdriven_displays_latest
+tests/test_GASV3DEV3_28_suite.py::test_single_station_seeded_run_displays_latest
+tests/test_GASV3DEV3_28_suite.py::test_bursts_before_any_ack_display_latest
+tests/test_GASV3DEV3_28_suite.py::test_multi_station_random_scripts_each_converges
+tests/test_GASV3DEV3_28_suite.py::test_multi_station_handdriven_each_converges
