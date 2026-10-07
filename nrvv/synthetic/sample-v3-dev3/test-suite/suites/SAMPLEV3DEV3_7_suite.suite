@@ -1,0 +1,7 @@
+# SAMPLEV3DEV3_7_suite - written by nrvv-test-author
+tests/test_SAMPLEV3DEV3_7_suite.py::test_entry_point_is_present_and_callable
+tests/test_SAMPLEV3DEV3_7_suite.py::test_launch_without_arguments_runs_to_completion
+tests/test_SAMPLEV3DEV3_7_suite.py::test_launch_takes_no_command_line_arguments
+tests/test_SAMPLEV3DEV3_7_suite.py::test_launch_does_not_prompt_or_wait_for_input
+tests/test_SAMPLEV3DEV3_7_suite.py::test_second_invocation_behaves_identically
+tests/test_SAMPLEV3DEV3_7_suite.py::test_repeated_invocations_never_error

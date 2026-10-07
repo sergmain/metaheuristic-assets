@@ -1,0 +1,5 @@
+# SAMPLEV3DEV3_5_suite - written by nrvv-test-author
+tests/test_SAMPLEV3DEV3_5_suite.py::test_output_ends_with_newline
+tests/test_SAMPLEV3DEV3_5_suite.py::test_output_has_a_non_empty_message_before_the_separator
+tests/test_SAMPLEV3DEV3_5_suite.py::test_message_stands_as_a_single_terminated_line
+tests/test_SAMPLEV3DEV3_5_suite.py::test_no_characters_trail_after_the_final_separator
