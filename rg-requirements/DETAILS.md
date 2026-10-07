@@ -618,6 +618,13 @@ comments and blank lines aside: `gather` and the top-level `store` are gone, so 
 | 5.5.1 | `store` | internal `mhdg-rg.store-req` | the requirement written into the STAGE, which it reads by the name `stageSnapshotId`; `requirementId` |
 | 6 | `close` | internal `mhdg-rg.post-processing`, `tag terminal` | the STAGE committed - or marked FAILED if any Task of the ExecContext ended in `ERROR` (fail-closed: every file or nothing). Its `triggerEventId` is optional and absent here |
 
+**A production copy of `open`'s Function (2026-10-07).** The production NRVV flows (`nrvv-definition-1.1`,
+`nrvv-recovery-1.4`, doc-processing-angular's RG bundle) do not call `mh.asset.rg-open-stage_1.0`: they call
+`mhdg-rg.open-genesis-stage-1.0`, a packaged copy in doc-processing-angular `java/call-cc-func/function-pkg/fn-open-genesis-stage`
+- `mh_rg_open_stage.py` and the five payload modules it imports (`mh_rg_mcp_client`, `mh_rg_req_store`,
+`mh_rg_req_store_batch`, `mh_secret_client`, `mh_task_io`), copied at `aef5021` with only `FUNCTION_CODE` changed. A change
+to any of those six files that production needs is copied there too, under a new Function code.
+
 **Why `open` comes second.** It is the step the whole flow depends on and the only one that can fail on the deployed
 RG itself (an RG that cannot commit an empty genesis gives up after its own bound). Placed before `select`, it stops a
 run before any CC call is made.
