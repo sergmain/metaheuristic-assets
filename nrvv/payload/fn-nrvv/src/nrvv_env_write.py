@@ -32,9 +32,13 @@ def run(task):
     workspace = nrvv_paths.require_workspace((io.read_role(task, 'workspace') or '').strip())
     location = parse_location(io.read_role(task, 'location'))
     files = ne.parse_env_answer(io.read_role(task, 'cc-result'))
+    # plan 044, Phase 16: a fresh base directory is not in the repository yet - the checkout must exist, the dir is
+    # created inside it (as nrvv_implement does for the target)
+    root = nrvv_paths.checkout_root(workspace, 'test-suite')
+    if not os.path.isdir(root):
+        raise ValueError('the test-suite checkout does not exist - was it checked out? ' + root)
     base = nrvv_paths.dir_path(workspace, 'test-suite', location['dir'])
-    if not os.path.isdir(base):
-        raise ValueError('the test-suite dir does not exist - was it checked out? ' + base)
+    os.makedirs(base, exist_ok=True)
     written = ne.write_env(base, nrvv_paths.rel_posix(location['dir']), files)
     io.write_text(io.output_role(task, 'files'), json.dumps(written, ensure_ascii=True))
     print(FUNCTION_CODE + ': ' + ', '.join(written))

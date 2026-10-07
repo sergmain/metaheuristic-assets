@@ -110,9 +110,13 @@ def suite_text(suite, ids):
 
 def write_suite(workspace, location, suite, source, ids):
     """Writes both files under the test-suite dir; returns the suite-files report."""
+    # plan 044, Phase 16: a fresh base directory is not in the repository yet - the checkout must exist, the dir is
+    # created inside it (as nrvv_implement does for the target)
+    root = nrvv_paths.checkout_root(workspace, 'test-suite')
+    if not os.path.isdir(root):
+        raise ValueError('the test-suite checkout does not exist - was it checked out? ' + root)
     base = nrvv_paths.dir_path(workspace, 'test-suite', location['dir'])
-    if not os.path.isdir(base):
-        raise ValueError('the test-suite dir does not exist - was it checked out? ' + base)
+    os.makedirs(base, exist_ok=True)
     files = {test_file(suite): source if source.endswith('\n') else source + '\n',
              suite_file(suite): suite_text(suite, ids)}
     for rel, content in files.items():

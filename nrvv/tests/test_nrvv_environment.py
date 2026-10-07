@@ -196,3 +196,22 @@ def test_the_two_functions_through_their_roles(tmp_path):
                             {'workspace': workspace, 'testSuite': location, 'envResult': json.dumps(ANSWER)}, ['envFiles']))
     assert json.loads(artifact(w2, 101)) == ['nrvv/synthetic/gas-price/test-suite/tests/nrvv_env/__init__.py',
                                              'nrvv/synthetic/gas-price/test-suite/tests/nrvv_env/world.py']
+
+
+def test_ewrite_into_a_fresh_dir_of_the_checkout(tmp_path):
+    # plan 044, Phase 16: a fresh base directory, as the wizard names it - the checkout exists, its test-suite dir not yet
+    workspace = str(tmp_path / 'ws')
+    os.makedirs(os.path.join(workspace, 'test-suite'))
+    location = json.dumps({'url': 'https://example.com/a.git', 'branchOrRef': 'master',
+                           'dir': 'nrvv/synthetic/fresh/test-suite'})
+    w = str(tmp_path / 'ewrite')
+    task = task_with_inputs(w, [{'variable-for-workspace': 'workspace'}, {'variable-for-location': 'testSuite'},
+                                {'variable-for-cc-result': 'envResult'}, {'variable-for-files': 'envFiles'}],
+                            {'workspace': workspace, 'testSuite': location, 'envResult': json.dumps(ANSWER)}, ['envFiles'])
+
+    ew.run(task)
+
+    assert json.loads(artifact(w, 101)) == ['nrvv/synthetic/fresh/test-suite/tests/nrvv_env/__init__.py',
+                                            'nrvv/synthetic/fresh/test-suite/tests/nrvv_env/world.py']
+    assert os.path.isfile(os.path.join(workspace, 'test-suite', 'nrvv', 'synthetic', 'fresh', 'test-suite', 'tests',
+                                       'nrvv_env', 'world.py'))

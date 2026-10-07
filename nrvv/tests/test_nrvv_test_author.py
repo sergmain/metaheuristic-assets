@@ -278,6 +278,20 @@ def test_write_suite_refuses_a_missing_checkout(tmp_path):
                        [PATH + '::test_main_prints_hello'])
 
 
+def test_write_suite_into_a_fresh_dir_of_the_checkout(tmp_path):
+    # plan 044, Phase 16: a fresh base directory, as the wizard names it - the checkout exists, its test-suite dir not yet
+    workspace = str(tmp_path / 'ws')
+    os.makedirs(os.path.join(workspace, 'test-suite'))
+    location = {'url': URL, 'branchOrRef': 'b', 'dir': 'nrvv/synthetic/fresh/test-suite'}
+
+    report = tw.write_suite(workspace, location, SUITE, GOOD_TESTS, [PATH + '::test_main_prints_hello'])
+
+    base = os.path.join(workspace, 'test-suite', 'nrvv', 'synthetic', 'fresh', 'test-suite')
+    assert report['suiteFile'] == 'nrvv/synthetic/fresh/test-suite/suites/' + SUITE + '.suite'
+    assert os.path.isfile(os.path.join(base, 'suites', SUITE + '.suite'))
+    assert os.path.isfile(os.path.join(base, *PATH.split('/')))
+
+
 # ---------------------------------------------------------------------------------------------------
 # the writer's suite, run by the real launcher (nrvv-suite-run, decision 14)
 
