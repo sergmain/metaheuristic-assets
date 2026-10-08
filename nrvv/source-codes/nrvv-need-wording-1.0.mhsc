@@ -1,0 +1,85 @@
+// NRVV need-wording 1.0 (plan 045, Phase 8): CC words ONE amendment of an agreed NEED as a person's instruction says,
+// in the stakeholder's voice, for a proposal that is to be RESOLVED_BY_AMENDMENT. CC only words: the decision to change
+// the NEED is a person's, and so is the final text - the person submits it, edited or not, in a CC_WORDING decision
+// naming this run, and that submitted text is what is written to RG. This run writes nothing to RG: its answer is a
+// suggestion recorded on the run. Started by the Dispatcher (POST /rest/v1/nrvv/proposals/{pid}/wording ->
+// NrvvRunService.startNeedWording), never by hand: the run record NRVV_RUN #runId exists before this ExecContext does,
+// names the baseline's snapshot and carries the proposal, the target NEED and the instruction, and mhdg-nrvv.finish-run
+// closes it.
+//
+//   agreed   internal mhdg-nrvv.read-agreed-needs  the agreed NEEDs at the run's snapshot; the target is one of them
+//   wprompt  mh.asset.nrvv-wording-prompt_1.0      the prompt: the target NEED verbatim, the proposal, the instruction,
+//                                                   the other agreed NEEDs
+//   cword    mh.asset.call-cc_1.1                  CC answers {"title", "statement"}
+//   wcheck   mh.asset.nrvv-wording-check_1.0       the answer checked - both present, a title of one line, no extra
+//                                                   field - and handed on in canonical form as `wording`
+//   finish   internal mhdg-nrvv.finish-run         the run record FINISHED with `wording` as its suggestion (checked
+//                                                   again), or ERROR when any Task failed
+//
+// No STAGE: the run reads RG and writes NRVV only. No checkout, no workspace, no credential.
+//
+// Inputs: exactly NrvvRunUtils.needWordingVariables (MH refuses a missing or an undeclared name). `model` is declared
+// without '?': NrvvRunService refuses a blank model (06.004.550).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; finish runs last, after failures
+// too (tag terminal), and reads `wording` only when it was written - it declares runId only, so a failed check does not
+// leave it uninitialised. No cache on cword: a wording asked for again is asked again.
+
+source "nrvv-need-wording-1.0" {
+
+    variables {
+        <- production?
+        <- runId, proposal, wordingRequest
+        <- model
+        <- effort?
+    }
+
+    agreed := internal mhdg-nrvv.read-agreed-needs {
+        name "Read the agreed NEEDs at the run's snapshot - the baseline's when the run started"
+        <- runId
+        -> agreedNeeds: ext=".json"
+        timeout 60
+    }
+
+    wprompt := mh.asset.nrvv-wording-prompt_1.0 {
+        name "Build the prompt: amend the target NEED as the instruction says, in the stakeholder's voice"
+        meta variable-for-proposal = "proposal",
+             variable-for-wording-request = "wordingRequest",
+             variable-for-agreed-needs = "agreedNeeds",
+             variable-for-prompt = "wordingPrompt"
+        <- proposal, wordingRequest, agreedNeeds
+        -> wordingPrompt: ext=".txt"
+        timeout 60
+    }
+
+    cword := mh.asset.call-cc_1.1 {
+        name "Ask CC to word the amended NEED"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-prompt = "wordingPrompt",
+             variable-for-output = "wordingResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "600"
+        <- wordingPrompt, model, effort?
+        -> wordingResult: ext=".txt"
+        timeout 900
+        tries 2
+    }
+
+    wcheck := mh.asset.nrvv-wording-check_1.0 {
+        name "Check CC's wording and hand it on in canonical form"
+        meta variable-for-cc-result = "wordingResult",
+             variable-for-wording = "wording"
+        <- wordingResult
+        -> wording: ext=".json"
+        timeout 60
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED with the suggestion, or ERROR when any Task failed"
+        // reads wording only when it was written: it runs after failures too
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
