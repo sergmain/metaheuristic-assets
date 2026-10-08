@@ -1,0 +1,88 @@
+// NRVV need-assessment 1.0 (plan 045, Phase 7): CC assesses ONE proposed NEED against the project's agreed NEEDs at
+// the baseline and reports findings - CONTRADICTION and REDUNDANCY naming the agreed NEED concerned, VAGUE_TERM,
+// SOLUTION_STATEMENT, SYSTEM_VOICE, NOT_SINGULAR. CC never decides: a person decides the proposal in NRVV's UI, and a
+// decision needs this run FINISHED on the proposal's current text at the current baseline. Started by the Dispatcher
+// (POST /rest/v1/nrvv/proposals/{pid}/assessment -> NrvvRunService.startNeedAssessment), never by hand: the run record
+// NRVV_RUN #runId exists before this ExecContext does, names the baseline's snapshot and pins the proposal's digest, and
+// mhdg-nrvv.finish-run closes it.
+//
+//   agreed   internal mhdg-nrvv.read-agreed-needs  the agreed NEEDs at the run's snapshot ([] with no line)
+//   aprompt  mh.asset.nrvv-assessment-prompt_1.0   the prompt: the proposal as frozen into the run, every agreed NEED
+//                                                   verbatim
+//   cassess  mh.asset.call-cc_1.1                  CC answers {"findings": [...]}
+//   acheck   mh.asset.nrvv-assessment-check_1.0    the answer checked - known kinds, no extra field, a counterpart
+//                                                   that is one of the agreed NEEDs - and handed on in canonical form
+//   store    internal mhdg-nrvv.store-findings     the findings into NRVV_FINDING, subject P-<id>; checked again
+//   finish   internal mhdg-nrvv.finish-run         the run record FINISHED, or ERROR when any Task failed
+//
+// No STAGE: the run reads RG and writes NRVV only. No checkout, no workspace, no credential.
+//
+// Inputs: exactly NrvvRunUtils.needAssessmentVariables (MH refuses a missing or an undeclared name). `model` is
+// declared without '?': NrvvRunService refuses a blank model (06.004.500).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; finish runs last, after failures
+// too (tag terminal). No cache on cassess: an assessment asked for again is asked again.
+
+source "nrvv-need-assessment-1.0" {
+
+    variables {
+        <- production?
+        <- runId, proposal
+        <- model
+        <- effort?
+    }
+
+    agreed := internal mhdg-nrvv.read-agreed-needs {
+        name "Read the agreed NEEDs at the run's snapshot - the baseline's when the run started"
+        <- runId
+        -> agreedNeeds: ext=".json"
+        timeout 60
+    }
+
+    aprompt := mh.asset.nrvv-assessment-prompt_1.0 {
+        name "Build the prompt: the proposal as frozen into the run, against every agreed NEED"
+        meta variable-for-proposal = "proposal",
+             variable-for-agreed-needs = "agreedNeeds",
+             variable-for-prompt = "assessmentPrompt"
+        <- proposal, agreedNeeds
+        -> assessmentPrompt: ext=".txt"
+        timeout 60
+    }
+
+    cassess := mh.asset.call-cc_1.1 {
+        name "Ask CC for the findings on the proposal"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-prompt = "assessmentPrompt",
+             variable-for-output = "assessmentResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "600"
+        <- assessmentPrompt, model, effort?
+        -> assessmentResult: ext=".txt"
+        timeout 900
+        tries 2
+    }
+
+    acheck := mh.asset.nrvv-assessment-check_1.0 {
+        name "Check CC's findings and hand them on in canonical form"
+        meta variable-for-cc-result = "assessmentResult",
+             variable-for-agreed-needs = "agreedNeeds",
+             variable-for-findings = "findings"
+        <- assessmentResult, agreedNeeds
+        -> findings: ext=".json"
+        timeout 60
+    }
+
+    store := internal mhdg-nrvv.store-findings {
+        name "Store the findings in NRVV_FINDING - checked again by the Dispatcher"
+        <- runId, findings
+        timeout 60
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
