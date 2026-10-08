@@ -1,0 +1,90 @@
+// NRVV needs-cv 1.0 (plan 045, Phase 9): CC judges a project's agreed NEEDs at the baseline as a set - CONTRADICTION,
+// REDUNDANCY, GAP, VAGUE_TERM, SOLUTION_STATEMENT, SYSTEM_VOICE, NOT_SINGULAR - and across the trace to the
+// requirements that answer them - INCOHERENT_TRACE. NRVV adds one ASSUMPTION finding per unratified `assumed: ...` item
+// of a traced requirement's Rationale. CC never decides: a person disposes of every finding in NRVV's UI, and
+// DEFINITION / REDEFINITION start only when this run is FINISHED at the baseline with no open CONTRADICTION. Started by
+// the Dispatcher (POST /rest/v1/nrvv/projects/{id}/needs-cv -> NrvvRunService.startNeedsCv), never by hand: the run
+// record NRVV_RUN #runId exists before this ExecContext does and names the baseline's snapshot, and
+// mhdg-nrvv.finish-run closes it.
+//
+//   trace    internal mhdg-nrvv.read-trace         the agreed NEEDs at the run's snapshot, each with the requirements it
+//                                                   traces to (text and Rationale of the live member of each lineage)
+//   cprompt  mh.asset.nrvv-needs-cv-prompt_1.0     the prompt: every NEED and its trace verbatim
+//   ccv      mh.asset.call-cc_1.1                  CC answers {"findings": [...]}
+//   ccheck   mh.asset.nrvv-needs-cv-check_1.0      the answer checked - known kinds, no extra field, a subject that is an
+//                                                   agreed NEED, a counterpart its kind allows - in canonical form
+//   store    internal mhdg-nrvv.store-findings     CC's findings and the ASSUMPTION items into NRVV_FINDING; checked
+//                                                   again against the trace the Dispatcher reads itself
+//   finish   internal mhdg-nrvv.finish-run         the run record FINISHED, or ERROR when any Task failed
+//
+// No STAGE: the run reads RG and writes NRVV only. No checkout, no workspace, no credential. read-trace carries the
+// agreed NEEDs themselves, so the run has no separate read-agreed-needs step.
+//
+// Inputs: exactly NrvvRunUtils.needsCvVariables (MH refuses a missing or an undeclared name). `model` is declared
+// without '?': NrvvRunService refuses a blank model (06.004.620).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; finish runs last, after failures
+// too (tag terminal). No cache on ccv: a review asked for again is asked again.
+
+source "nrvv-needs-cv-1.0" {
+
+    variables {
+        <- production?
+        <- runId
+        <- model
+        <- effort?
+    }
+
+    trace := internal mhdg-nrvv.read-trace {
+        name "Read the agreed NEEDs and their trace at the run's snapshot - the baseline's when the run started"
+        <- runId
+        -> trace: ext=".json"
+        timeout 60
+    }
+
+    cprompt := mh.asset.nrvv-needs-cv-prompt_1.0 {
+        name "Build the prompt: every agreed NEED and the requirements it traces to"
+        meta variable-for-trace = "trace",
+             variable-for-prompt = "needsCvPrompt"
+        <- trace
+        -> needsCvPrompt: ext=".txt"
+        timeout 60
+    }
+
+    ccv := mh.asset.call-cc_1.1 {
+        name "Ask CC for the findings on the agreed NEEDs"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-prompt = "needsCvPrompt",
+             variable-for-output = "needsCvResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "900"
+        <- needsCvPrompt, model, effort?
+        -> needsCvResult: ext=".txt"
+        timeout 1200
+        tries 2
+    }
+
+    ccheck := mh.asset.nrvv-needs-cv-check_1.0 {
+        name "Check CC's findings and hand them on in canonical form"
+        meta variable-for-cc-result = "needsCvResult",
+             variable-for-trace = "trace",
+             variable-for-findings = "findings"
+        <- needsCvResult, trace
+        -> findings: ext=".json"
+        timeout 60
+    }
+
+    store := internal mhdg-nrvv.store-findings {
+        name "Store the findings and the unratified assumptions in NRVV_FINDING - checked again by the Dispatcher"
+        <- runId, findings
+        timeout 60
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
