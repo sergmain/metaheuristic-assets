@@ -171,3 +171,74 @@ def test_the_four_functions_through_their_roles(tmp_path):
                                  {'variable-for-design': 'design'}],
                             {'designResult': json.dumps(DESIGN), 'decomposition': decomposition}, ['design']))
     assert json.loads(artifact(w4, 101))['interface'][0]['key'] == 'I1'
+
+
+# ---------------------------------------------------------------------------------------------------------- agreed NEEDs
+# plan 045 Phase 10: the NEEDs of a definition on a baseline, as mhdg-nrvv.read-agreed-needs writes them
+
+AGREED = [{'reqId': 'GAS-1', 'revision': 2, 'title': 'Gas stations settle on the latest price', 'statement': N1,
+           'parentReqId': None},
+          {'reqId': 'GAS-4', 'revision': 1, 'title': 'Audit', 'statement': 'Every price sent is recorded.',
+           'parentReqId': 'GAS-1'}]
+AGREED_JSON = json.dumps(AGREED)
+
+
+def test_agreed_needs_are_named_by_their_reqId():
+    needs = nd.parse_needs(AGREED_JSON)
+    assert [nd.need_id(n) for n in needs] == ['GAS-1', 'GAS-4']
+    text = nd.needs_text(needs)
+    assert text.startswith('GAS-1 (revision 2) - Gas stations settle on the latest price\n' + N1)
+    assert 'GAS-4 (revision 1) - Audit\nEvery price sent is recorded.' in text
+
+
+def test_need_id_prefers_the_reqId():
+    assert nd.need_id({'reqId': 'GAS-1', 'code': 'N-1'}) == 'GAS-1'
+    assert nd.need_id({'code': 'N-1'}) == 'N-1'
+    assert nd.need_id({'reqId': ' ', 'code': 'N-1'}) == 'N-1'
+    assert nd.need_id({}) is None
+
+
+@pytest.mark.parametrize('bad', ['[{"reqId": "GAS-1"}]', '[{"reqId": " ", "statement": "s"}]'])
+def test_parse_agreed_needs_refuses(bad):
+    with pytest.raises(ValueError):
+        nd.parse_needs(bad)
+
+
+def test_decompose_prompt_of_agreed_needs_asks_for_their_reqIds():
+    prompt = nd.compose_decompose_prompt(AGREED)
+    assert '"needs": ["GAS-1"]' in prompt
+    assert 'N-1' not in prompt
+
+
+def test_decompose_prompt_of_v3_needs_keeps_its_example():
+    assert '"needs": ["N-1"]' in nd.compose_decompose_prompt(NEEDS)
+
+
+def test_check_decomposition_of_agreed_needs():
+    answer = {'requirements': [r_item('R1', ['GAS-1']), r_item('R2', ['GAS-1', 'GAS-4'])]}
+    checked = nd.check_decomposition(json.dumps(answer), AGREED)
+    assert [r['needs'] for r in checked['requirements']] == [['GAS-1'], ['GAS-1', 'GAS-4']]
+
+
+@pytest.mark.parametrize('answer, rule', [
+    ({'requirements': [r_item('R1', ['N-1'])]}, "names NEED 'N-1', which is not one of the NEEDs"),
+    ({'requirements': [r_item('R1', ['GAS-1'])]}, "no obligation restates NEED(s) ['GAS-4']"),
+])
+def test_check_decomposition_of_agreed_needs_refuses(answer, rule):
+    with pytest.raises(ValueError) as e:
+        nd.check_decomposition(json.dumps(answer), AGREED)
+    assert rule in str(e.value), str(e.value)
+
+
+def test_the_decompose_functions_read_agreed_needs_under_their_role(tmp_path):
+    w1 = str(tmp_path / 'dprompt')
+    dp.run(task_with_inputs(w1, [{'variable-for-needs': 'agreedNeeds'}, {'variable-for-prompt': 'decomposePrompt'}],
+                            {'agreedNeeds': AGREED_JSON}, ['decomposePrompt']))
+    assert 'GAS-4 (revision 1) - Audit' in artifact(w1, 101)
+
+    w2 = str(tmp_path / 'dcheck')
+    answer = {'requirements': [r_item('R1', ['GAS-1', 'GAS-4'])]}
+    dc.run(task_with_inputs(w2, [{'variable-for-cc-result': 'decomposeResult'}, {'variable-for-needs': 'agreedNeeds'},
+                                 {'variable-for-decomposition': 'decomposition'}],
+                            {'decomposeResult': json.dumps(answer), 'agreedNeeds': AGREED_JSON}, ['decomposition']))
+    assert json.loads(artifact(w2, 101))['requirements'][0]['needs'] == ['GAS-1', 'GAS-4']

@@ -21,6 +21,11 @@
 #
 # LANGUAGE-NEUTRAL (decision 8): one definition feeds several implementations, so no item names a programming
 # language, a module, a file or a framework; the Python binding lives in the test and implementation prompts.
+#
+# Plan 045 Phase 10: the NEEDs may also be the agreed NEEDs mhdg-nrvv.read-agreed-needs writes - {reqId, revision,
+# title, statement, parentReqId} - and a NEED is then named by its reqId wherever it was named by its code: in the
+# prompts, in an obligation's "needs" and in the check. A NEED with a reqId is named by it; one without, by its code
+# (the v3 shape of mhdg-nrvv.read-needs, until plan 045 Phase 15).
 
 import json
 import re
@@ -41,7 +46,9 @@ def excerpt(text):
 
 def parse_needs(needs_json):
     """The NEEDs of the run, as mhdg-nrvv.read-needs wrote them: a list of {code, revision, title, statement}, in code
-    order. A ValueError when the text is not such a list or names no NEED."""
+    order. A ValueError when the text is not such a list or names no NEED.
+
+    Plan 045 Phase 10: or as mhdg-nrvv.read-agreed-needs wrote them, each NEED named by its reqId (need_id)."""
     try:
         needs = json.loads(needs_json or '')
     except ValueError:
@@ -49,16 +56,22 @@ def parse_needs(needs_json):
     if not isinstance(needs, list) or not needs:
         raise ValueError('needs is not a non-empty JSON array: ' + excerpt(needs_json))
     for n in needs:
-        if not isinstance(n, dict) or not _text(n.get('code')) or not _text(n.get('statement')):
+        if not isinstance(n, dict) or not need_id(n) or not _text(n.get('statement')):
             raise ValueError('a NEED of needs has no code or no statement: ' + excerpt(json.dumps(n)))
     return needs
+
+
+def need_id(need):
+    """The name a NEED goes by: its reqId when it has one (an agreed NEED, plan 045), else its code (v3); None when it
+    has neither."""
+    return _text(need.get('reqId')) or _text(need.get('code'))
 
 
 def needs_text(needs):
     """The NEEDs as a prompt shows them: code, revision and title, then the statement."""
     blocks = []
     for n in needs:
-        blocks.append(str(n['code']).strip() + ' (revision ' + str(n.get('revision')) + ') - '
+        blocks.append(need_id(n) + ' (revision ' + str(n.get('revision')) + ') - '
                       + (_text(n.get('title')) or '') + '\n' + _text(n.get('statement')))
     return '\n\n'.join(blocks)
 
@@ -89,7 +102,7 @@ def compose_decompose_prompt(needs):
         '- Keys R1, R2, R3, ... in order.',
         '',
         'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"requirements": [{"key": "R1", "needs": ["N-1"], "title": "<title>", "statement": "<the obligation>",'
+        '{"requirements": [{"key": "R1", "needs": ["' + need_id(needs[0]) + '"], "title": "<title>", "statement": "<the obligation>",'
         ' "rationale": "<rationale>"}]}',
         '',
         'The NEEDs:',
@@ -153,7 +166,7 @@ def check_decomposition(cc_result, needs):
     if not requirements:
         raise ValueError('no obligation: "requirements" is empty')
     _unique_keys(requirements)
-    codes = [str(n['code']).strip() for n in needs]
+    codes = [need_id(n) for n in needs]
     named = set()
     for r in requirements:
         if not r['needs']:
