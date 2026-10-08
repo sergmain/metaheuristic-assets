@@ -1,0 +1,162 @@
+// NRVV definition on the baseline 1.0 (plan 045, Phase 10): the agreed NEEDs at the baseline of an NRVV project in, a
+// COMMITTED definition snapshot out - a CHILD of the baseline - holding what nrvv-definition-1.1 writes (the top-level
+// requirements restating the NEEDs, DECOMPOSED; the design, the Interface and the Environment, DERIVED under ONE of
+// them; the Interface and Environment SECTIONs) plus one TRACE edge from every NEED to every top-level requirement that
+// restates it. Started by the Dispatcher (NrvvRunService.startDefinition on a project with a line,
+// POST /rest/v1/nrvv/projects/{id}/definition), never by hand: the run record NRVV_RUN #runId, with the baseline it
+// forks from (BASELINE_ID), exists before this ExecContext does, and mhdg-nrvv.finish-run closes it and extends the
+// project line from that baseline (cause DEFINITION). A FINISHED run that names an implementation starts its chain.
+//
+// A new flow name beside nrvv-definition (a changed flow is a new name). nrvv-definition-1.1 with three changes:
+//   - open is internal mhdg-nrvv.open-stage: the STAGE is forked inside the Dispatcher from the snapshot of the run's
+//     own BASELINE_ID, through RG's RgStageService, with RG's clone of the baseline's ExecContext - which RG's
+//     manual-requirement path writes every requirement's line into. NOT mhdg-rg.open-stage: that one records THIS
+//     running ExecContext as the STAGE's and clones nothing. Nothing here calls RG over HTTP: no rgBaseUrl, no
+//     RG_API_AUTH.
+//   - agreed is internal mhdg-nrvv.read-agreed-needs in place of read-needs: the RG NEED items ACTIVE at the baseline,
+//     each named by its reqId; the prompt and check Functions take them under their `needs` role.
+//   - store declares no needLinks: mhdg-nrvv.store-definition writes the TRACE edges into the STAGE, before the seal,
+//     and one NRVV_TRACE_REVIEW record per (NEED, top-level requirement) - no NRVV_NEED_LINK record.
+//
+//   open      internal mhdg-nrvv.open-stage        ONE STAGE on the run's baseline: stageSnapshotId. FIRST, so a later
+//                                                  failure can still close the STAGE
+//   agreed    internal mhdg-nrvv.read-agreed-needs the agreed NEEDs at the baseline: agreedNeeds
+//   dprompt   mh.asset.nrvv-decompose-prompt_1.0   the top-level requirements prompt
+//   cdecomp   mh.asset.call-cc_1.1                 CC's top-level requirements
+//   dcheck    mh.asset.nrvv-decompose-check_1.0    the top-level requirements, checked: decomposition
+//   gprompt   mh.asset.nrvv-design-prompt_1.0      the design / Interface / Environment prompt
+//   cdesign   mh.asset.call-cc_1.1                 CC's design
+//   gcheck    mh.asset.nrvv-design-check_1.0       the design, checked against the top-level requirements: design
+//   store     internal mhdg-nrvv.store-definition  writes the definition into the STAGE through RG's manual-requirement
+//                                                  path (objection-ready, edition-ready), the TRACE edges and the
+//                                                  trace-review records
+//   close     internal mhdg-rg.post-processing     commits the STAGE - marked FAILED instead if any Task failed
+//   finish    internal mhdg-nrvv.finish-run        the run record FINISHED (SNAPSHOT_ID = the definition snapshot, the
+//                                                  line extended) or ERROR
+//
+// Inputs: exactly NrvvRunUtils.definitionBaselineVariables (MH refuses a missing or an undeclared name). The start
+// refuses a project with no line (it keeps nrvv-definition until plan 045 Phase 15), a project that already has a
+// FINISHED DEFINITION, a baseline without a FINISHED NEEDS_CV run or with an open CONTRADICTION, and a blank model. A run
+// that fails after `open` leaves its STAGE FAILED, off the line.
+//
+// Production readiness: not production ready - NRVV requests carry no production mode, so every run is synthetic. It
+// becomes production ready when its development run is recorded (plan 045 Phase 10), the acceptance run of plan 045
+// Phase 36 has passed through it, and its production copy is in the RG bundle (plan 045 Phase 35).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; close and finish run last,
+// after failures too (tag terminal).
+source "nrvv-definition-baseline-1.0" {
+
+    variables {
+        <- production?
+        <- runId, projectCode
+        // model and effort are ExecContext-level inputs - a property of the RUN, not of this SourceCode. A null model is
+        // refused (01.562.124); effort is nullable - null for a model that takes no effort. Omitting either is refused
+        // (562.120).
+        <- model
+        <- effort?
+    }
+
+    open := internal mhdg-nrvv.open-stage {
+        name "Open ONE STAGE on the run's baseline - the definition is written into it"
+        <- runId
+        -> stageSnapshotId: ext=".txt"
+        timeout 300
+    }
+
+    agreed := internal mhdg-nrvv.read-agreed-needs {
+        name "The agreed NEEDs at the run's baseline"
+        <- runId
+        -> agreedNeeds: ext=".json"
+        timeout 60
+    }
+
+    dprompt := mh.asset.nrvv-decompose-prompt_1.0 {
+        name "Build the prompt that restates the NEEDs as top-level requirements"
+        meta variable-for-needs = "agreedNeeds",
+             variable-for-prompt = "decomposePrompt"
+        <- agreedNeeds
+        -> decomposePrompt: ext=".txt"
+        timeout 60
+    }
+
+    cdecomp := mh.asset.call-cc_1.1 {
+        name "Ask CC for the top-level requirements"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-prompt = "decomposePrompt",
+             variable-for-output = "decomposeResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "900"
+        <- decomposePrompt, model, effort?
+        -> decomposeResult: ext=".txt"
+        timeout 1200
+        tries 2
+        cache on, cacheMeta
+    }
+
+    dcheck := mh.asset.nrvv-decompose-check_1.0 {
+        name "Check the top-level requirements against the NEEDs"
+        meta variable-for-cc-result = "decomposeResult",
+             variable-for-needs = "agreedNeeds",
+             variable-for-decomposition = "decomposition"
+        <- decomposeResult, agreedNeeds
+        -> decomposition: ext=".json"
+        timeout 60
+    }
+
+    gprompt := mh.asset.nrvv-design-prompt_1.0 {
+        name "Build the prompt for the design, the Interface and the Environment"
+        meta variable-for-needs = "agreedNeeds",
+             variable-for-decomposition = "decomposition",
+             variable-for-prompt = "designPrompt"
+        <- agreedNeeds, decomposition
+        -> designPrompt: ext=".txt"
+        timeout 60
+    }
+
+    cdesign := mh.asset.call-cc_1.1 {
+        name "Ask CC for the design, the Interface and the Environment"
+        meta variable-for-prompt = "designPrompt",
+             variable-for-output = "designResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "900"
+        <- designPrompt, model, effort?
+        -> designResult: ext=".txt"
+        timeout 1200
+        tries 2
+        cache on, cacheMeta
+    }
+
+    gcheck := mh.asset.nrvv-design-check_1.0 {
+        name "Check the design against the top-level requirements"
+        meta variable-for-cc-result = "designResult",
+             variable-for-decomposition = "decomposition",
+             variable-for-design = "design"
+        <- designResult, decomposition
+        -> design: ext=".json"
+        timeout 60
+    }
+
+    store := internal mhdg-nrvv.store-definition {
+        name "Write the definition, its TRACE edges and its trace reviews into the STAGE"
+        <- runId, stageSnapshotId, agreedNeeds, decomposition, design
+        timeout 1800
+    }
+
+    close := internal mhdg-rg.post-processing {
+        name "Commit the STAGE - marked FAILED instead if any Task of this ExecContext failed"
+        <- projectCode, stageSnapshotId
+        timeout 60
+        tag terminal
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED with the definition snapshot and the line extended, or ERROR"
+        // reads stageSnapshotId only when it was written: it runs after failures too
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
