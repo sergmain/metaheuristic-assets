@@ -1,0 +1,105 @@
+// NRVV trace-proposal 1.0 (plan 045, Phase 17): CC proposes, per orphan at the baseline - a requirement the
+// traceability rule does not reach - how it is justified: TRACE_PROPOSAL (an agreed NEED it serves),
+// COMPLIANCE_PROPOSAL (an imposed held requirement it answers) or NOT_TO_PORT (nothing justifies it). CC never decides:
+// a person confirms or dismisses the proposals in batches (POST /rest/v1/nrvv/projects/{id}/trace-decisions), which
+// writes the edges or obsoletes in one STAGE on the baseline. Started by the Dispatcher
+// (POST /rest/v1/nrvv/projects/{id}/trace-proposals -> NrvvRunService.startTraceProposal), never by hand: the run record
+// NRVV_RUN #runId exists before this ExecContext does and names the baseline's snapshot, and mhdg-nrvv.finish-run
+// closes it.
+//
+//   drift    internal mhdg-nrvv.read-drift          the orphans at the run's snapshot, one per line, and the trace
+//                                                    context: agreed NEEDs (gaps flagged), imposed held requirements,
+//                                                    every orphan with its text and whether it is top-level
+//   split    internal mh.batch-line-splitter        one branch per chunk of at most 50 orphans
+//     tprompt  mh.asset.nrvv-trace-prompt_1.0       the prompt for the chunk
+//     ctrace   mh.asset.call-cc_1.1                 CC answers {"findings": [...]}, one per orphan of the chunk
+//     tcheck   mh.asset.nrvv-trace-check_1.0        the answer checked - every orphan of the chunk once, known kinds,
+//                                                    a counterpart its kind allows, a link only on a top-level orphan
+//     store    internal mhdg-nrvv.store-findings     the chunk's proposals into NRVV_FINDING; checked again against the
+//                                                    drift the Dispatcher reads itself; a chunk is written once
+//   finish   internal mhdg-nrvv.finish-run          the run record FINISHED, or ERROR when any Task failed
+//
+// No STAGE: the run reads RG and writes NRVV only. No checkout, no workspace, no credential.
+//
+// Inputs: exactly NrvvRunUtils.traceProposalVariables (MH refuses a missing or an undeclared name). `model` is declared
+// without '?': NrvvRunService refuses a blank model (06.004.870).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; inside a branch the steps run in
+// order; finish runs last, after failures too (tag terminal). No cache on ctrace: a proposal asked for again is asked
+// again.
+
+source "nrvv-trace-proposal-1.0" {
+
+    variables {
+        <- production?
+        <- runId
+        <- model
+        <- effort?
+    }
+
+    drift := internal mhdg-nrvv.read-drift {
+        name "Read the orphans at the run's snapshot - the baseline's when the run started - and the trace context"
+        <- runId
+        -> orphans: ext=".txt",
+           traceContext: ext=".json"
+        timeout 120
+    }
+
+    split := internal mh.batch-line-splitter {
+        name "One branch per chunk of at most 50 orphans"
+        meta number-of-lines-per-task = "50",
+             variable-for-splitting = "orphans",
+             output-is-dynamic = "true",
+             output-variable = "orphanChunk",
+             is-array = "false"
+        sequential {
+            tprompt := mh.asset.nrvv-trace-prompt_1.0 {
+                name "Build the prompt for the chunk: the agreed NEEDs, the imposed held requirements, the chunk's orphans"
+                meta variable-for-trace-context = "traceContext",
+                     variable-for-orphans = "orphanChunk",
+                     variable-for-prompt = "tracePrompt"
+                <- traceContext, orphanChunk
+                -> tracePrompt: ext=".txt"
+                timeout 60
+            }
+
+            ctrace := mh.asset.call-cc_1.1 {
+                name "Ask CC for one proposal per orphan of the chunk"
+                // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+                meta variable-for-prompt = "tracePrompt",
+                     variable-for-output = "traceResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
+                     timeout-sec = "900"
+                <- tracePrompt, model, effort?
+                -> traceResult: ext=".txt"
+                timeout 1200
+                tries 2
+            }
+
+            tcheck := mh.asset.nrvv-trace-check_1.0 {
+                name "Check CC's proposals and hand them on in canonical form"
+                meta variable-for-cc-result = "traceResult",
+                     variable-for-trace-context = "traceContext",
+                     variable-for-orphans = "orphanChunk",
+                     variable-for-findings = "findings"
+                <- traceResult, traceContext, orphanChunk
+                -> findings: ext=".json"
+                timeout 60
+            }
+
+            store := internal mhdg-nrvv.store-findings {
+                name "Store the chunk's proposals in NRVV_FINDING - checked again by the Dispatcher"
+                <- runId, findings
+                timeout 120
+            }
+        }
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
