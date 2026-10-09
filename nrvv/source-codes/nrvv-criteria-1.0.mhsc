@@ -29,10 +29,6 @@
 // Inputs: exactly NrvvRunUtils.criteriaVariables (MH refuses a missing or an undeclared name). Nothing here calls RG
 // over HTTP: no rgBaseUrl, no RG_API_AUTH.
 //
-// Production readiness: not production ready - NRVV requests carry no production mode, so every run is synthetic. It
-// becomes production ready when its development run is recorded (plan 045 Phase 12), the acceptance run of plan 045
-// Phase 36 has passed through it, and its production copy is in the RG bundle (plan 045 Phase 35).
-//
 // ORDER is declaration order: each process is chained to the one declared before it; inside a branch the steps run in
 // order; close waits for every branch; finish runs last, after failures too (tag terminal).
 source "nrvv-criteria-1.0" {

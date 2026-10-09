@@ -39,10 +39,6 @@
 // FINISHED DEFINITION, a baseline without a FINISHED NEEDS_CV run or with an open CONTRADICTION, and a blank model. A run
 // that fails after `open` leaves its STAGE FAILED, off the line.
 //
-// Production readiness: not production ready - NRVV requests carry no production mode, so every run is synthetic. It
-// becomes production ready when its development run is recorded (plan 045 Phase 10), the acceptance run of plan 045
-// Phase 36 has passed through it, and its production copy is in the RG bundle (plan 045 Phase 35).
-//
 // ORDER is declaration order: each process is chained to the one declared before it; close and finish run last,
 // after failures too (tag terminal).
 source "nrvv-definition-baseline-1.0" {
