@@ -1,0 +1,5 @@
+# GASV4CRT1_46_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_46_suite.py::test_second_price_accepted_while_first_update_in_transit
+tests/test_GASV4CRT1_46_suite.py::test_second_price_accepted_after_first_delivered_but_unacknowledged
+tests/test_GASV4CRT1_46_suite.py::test_second_price_stored_as_desired_immediately
+tests/test_GASV4CRT1_46_suite.py::test_second_price_reaches_station_once_first_is_acknowledged

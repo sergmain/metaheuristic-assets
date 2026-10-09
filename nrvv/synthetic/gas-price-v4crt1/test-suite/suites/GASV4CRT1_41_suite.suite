@@ -1,0 +1,6 @@
+# GASV4CRT1_41_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_41_suite.py::test_new_station_reads_all_three_values_none
+tests/test_GASV4CRT1_41_suite.py::test_desired_1459_leaves_confirmed_and_in_flight_none
+tests/test_GASV4CRT1_41_suite.py::test_desired_1479_replaces_desired_and_keeps_others_none
+tests/test_GASV4CRT1_41_suite.py::test_second_station_starts_with_none_values
+tests/test_GASV4CRT1_41_suite.py::test_criterion_sequence_holds_for_several_seeds

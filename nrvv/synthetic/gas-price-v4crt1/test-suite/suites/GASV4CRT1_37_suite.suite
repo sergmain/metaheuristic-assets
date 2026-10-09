@@ -1,0 +1,5 @@
+# GASV4CRT1_37_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_37_suite.py::test_newest_price_only_after_in_flight_update
+tests/test_GASV4CRT1_37_suite.py::test_intermediate_skipped_when_ack_still_in_transit
+tests/test_GASV4CRT1_37_suite.py::test_sent_price_is_desired_price_at_send_time
+tests/test_GASV4CRT1_37_suite.py::test_station_converges_to_latest_desired_price

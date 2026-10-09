@@ -1,0 +1,4 @@
+# GASV4CRT1_40_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_40_suite.py::test_superseded_price_is_never_sent
+tests/test_GASV4CRT1_40_suite.py::test_newer_price_is_the_one_sent_after_in_flight_clears
+tests/test_GASV4CRT1_40_suite.py::test_chain_of_superseded_prices_is_never_sent
