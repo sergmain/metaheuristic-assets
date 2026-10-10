@@ -1,0 +1,152 @@
+// NRVV re-definition 1.0 (plan 045, Phase 18): carries a change of the agreed NEEDs into the existing definition of an
+// NRVV project. The baseline's definition and NEEDs in, a COMMITTED re-definition snapshot out - a CHILD of the
+// baseline. Started by the Dispatcher (POST /rest/v1/nrvv/projects/{id}/redefinition -> NrvvRunService.startRedefinition,
+// a person's request naming the baseline it was taken against), never by hand: the run record NRVV_RUN #runId, with the
+// baseline it forks from (BASELINE_ID) and that baseline's snapshot (SNAPSHOT_ID), exists before this ExecContext does;
+// mhdg-nrvv.finish-run closes it and extends the project line from that baseline (cause REDEFINITION). A FINISHED run
+// continues into CRITERIA on the affected scope, naming every implementation the request named.
+//
+// CC decides each top-level requirement - KEEP, CHANGE (a new statement and the NEED revisions it cites), OBSOLETE (a
+// reason) - plus the ADDs, then the design, Interface and Environment items under the changed and added ones; it never
+// decides a NEED. The NEED delta - the NEEDs whose current revision no top-level requirement cites - must all be cited
+// by a CHANGE or an ADD. The store writes through RG's own services into ONE STAGE: a CHANGE as an amendment and EDITION
+// of the requirement (its content and Rationale replaced), an OBSOLETE through RG's obsolete cascade, an ADD through RG's
+// manual-requirement path with its TRACE edges, a KEEP as a trace review record.
+//
+//   open      internal mhdg-nrvv.open-stage           ONE STAGE on the run's baseline: stageSnapshotId. FIRST, so a later
+//                                                     failure can still close the STAGE
+//   definition internal mhdg-nrvv.read-definition    the agreed NEEDs, the top-level requirements with their texts and
+//                                                     citations, their design items, the NEED delta: definition
+//   tprompt   mh.asset.nrvv-redefine-prompt_1.0      the top-level requirements prompt
+//   ctop      mh.asset.call-cc_1.1                   CC's top-level answer
+//   tcheck    mh.asset.nrvv-redefine-check_1.0       the answer checked - every top-level requirement once, current
+//                                                     citations, the delta cited: topLevelAnswer
+//   gprompt   mh.asset.nrvv-redesign-prompt_1.0      the design prompt: the items under the changed requirements
+//   cdesign   mh.asset.call-cc_1.1                   CC's design answer
+//   gcheck    mh.asset.nrvv-redesign-check_1.0       the answer checked - every item to answer once, adds under a changed
+//                                                     or added requirement, an Interface and an Environment left:
+//                                                     designAnswer
+//   store     internal mhdg-nrvv.store-redefinition  both answers checked again against the definition the Dispatcher
+//                                                     reads itself, then written into the STAGE
+//   close     internal mhdg-rg.post-processing       commits the STAGE - marked FAILED instead if any Task failed
+//   finish    internal mhdg-nrvv.finish-run          the run record FINISHED (RESULT_SNAPSHOT_ID = the re-definition
+//                                                     snapshot, the line extended) or ERROR
+//
+// Inputs: exactly NrvvRunUtils.redefinitionVariables (MH refuses a missing or an undeclared name). The start refuses a
+// project without the DEFINITION capability or a FINISHED DEFINITION, a stale baseline, a running line writer, the
+// needs-CV gate and a blank model (06.004.900-990). No cache on the CC steps: a re-definition asked for again is asked
+// again.
+//
+// ORDER is declaration order: each process is chained to the one declared before it; close and finish run last,
+// after failures too (tag terminal).
+source "nrvv-redefinition-1.0" {
+
+    variables {
+        <- production?
+        <- runId, projectCode
+        // model and effort are ExecContext-level inputs - a property of the RUN, not of this SourceCode
+        <- model
+        <- effort?
+    }
+
+    open := internal mhdg-nrvv.open-stage {
+        name "Open ONE STAGE on the run's baseline - the re-definition is written into it"
+        <- runId
+        -> stageSnapshotId: ext=".txt"
+        timeout 300
+    }
+
+    definition := internal mhdg-nrvv.read-definition {
+        name "The definition at the run's snapshot: NEEDs, top-level requirements, design items, the NEED delta"
+        <- runId
+        -> definition: ext=".json"
+        timeout 120
+    }
+
+    tprompt := mh.asset.nrvv-redefine-prompt_1.0 {
+        name "Build the prompt for the top-level requirements"
+        meta variable-for-definition = "definition",
+             variable-for-prompt = "topLevelPrompt"
+        <- definition
+        -> topLevelPrompt: ext=".txt"
+        timeout 60
+    }
+
+    ctop := mh.asset.call-cc_1.1 {
+        name "Ask CC what becomes of every top-level requirement"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-prompt = "topLevelPrompt",
+             variable-for-output = "topLevelResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "900"
+        <- topLevelPrompt, model, effort?
+        -> topLevelResult: ext=".txt"
+        timeout 1200
+        tries 2
+    }
+
+    tcheck := mh.asset.nrvv-redefine-check_1.0 {
+        name "Check the top-level answer against the definition"
+        meta variable-for-cc-result = "topLevelResult",
+             variable-for-definition = "definition",
+             variable-for-top-level-answer = "topLevelAnswer"
+        <- topLevelResult, definition
+        -> topLevelAnswer: ext=".json"
+        timeout 60
+    }
+
+    gprompt := mh.asset.nrvv-redesign-prompt_1.0 {
+        name "Build the prompt for the design under the changed and added requirements"
+        meta variable-for-definition = "definition",
+             variable-for-top-level-answer = "topLevelAnswer",
+             variable-for-prompt = "designPrompt"
+        <- definition, topLevelAnswer
+        -> designPrompt: ext=".txt"
+        timeout 60
+    }
+
+    cdesign := mh.asset.call-cc_1.1 {
+        name "Ask CC what becomes of the design"
+        meta variable-for-prompt = "designPrompt",
+             variable-for-output = "designResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "900"
+        <- designPrompt, model, effort?
+        -> designResult: ext=".txt"
+        timeout 1200
+        tries 2
+    }
+
+    gcheck := mh.asset.nrvv-redesign-check_1.0 {
+        name "Check the design answer against the definition and the top-level answer"
+        meta variable-for-cc-result = "designResult",
+             variable-for-definition = "definition",
+             variable-for-top-level-answer = "topLevelAnswer",
+             variable-for-design-answer = "designAnswer"
+        <- designResult, definition, topLevelAnswer
+        -> designAnswer: ext=".json"
+        timeout 60
+    }
+
+    store := internal mhdg-nrvv.store-redefinition {
+        name "Write the re-definition into the STAGE - checked again by the Dispatcher first"
+        <- runId, stageSnapshotId, topLevelAnswer, designAnswer
+        timeout 1800
+    }
+
+    close := internal mhdg-rg.post-processing {
+        name "Commit the STAGE - marked FAILED instead if any Task of this ExecContext failed"
+        <- projectCode, stageSnapshotId
+        timeout 60
+        tag terminal
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED with the re-definition snapshot and the line extended, or ERROR"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
