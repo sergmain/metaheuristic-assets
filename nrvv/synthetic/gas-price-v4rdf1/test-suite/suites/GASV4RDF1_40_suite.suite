@@ -1,0 +1,5 @@
+# GASV4RDF1_40_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_40_suite.py::test_second_price_replaces_first_while_update_unacknowledged
+tests/test_GASV4RDF1_40_suite.py::test_set_calls_return_without_waiting_for_acknowledgements
+tests/test_GASV4RDF1_40_suite.py::test_intermediate_unsent_price_is_dropped
+tests/test_GASV4RDF1_40_suite.py::test_scheduled_client_calls_end_with_newest_price

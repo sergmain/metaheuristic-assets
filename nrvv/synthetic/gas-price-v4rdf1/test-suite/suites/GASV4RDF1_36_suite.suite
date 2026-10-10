@@ -1,0 +1,4 @@
+# GASV4RDF1_36_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_36_suite.py::test_no_update_sent_when_confirmed_equals_desired_at_setup
+tests/test_GASV4RDF1_36_suite.py::test_no_update_sent_when_desired_changed_and_restored_to_confirmed
+tests/test_GASV4RDF1_36_suite.py::test_confirmed_station_gets_no_update_while_other_station_is_updated

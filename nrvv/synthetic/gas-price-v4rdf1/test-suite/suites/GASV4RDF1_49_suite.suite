@@ -1,0 +1,4 @@
+# GASV4RDF1_49_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_49_suite.py::test_no_update_sent_to_station_whose_acknowledged_price_equals_desired_price
+tests/test_GASV4RDF1_49_suite.py::test_no_update_sent_to_settled_station_while_other_station_is_updated
+tests/test_GASV4RDF1_49_suite.py::test_update_is_sent_when_desired_price_differs_from_acknowledged_price

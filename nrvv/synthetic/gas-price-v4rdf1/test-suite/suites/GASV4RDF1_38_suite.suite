@@ -1,0 +1,4 @@
+# GASV4RDF1_38_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_38_suite.py::test_superseded_price_is_not_sent_when_newer_price_arrives_before_send
+tests/test_GASV4RDF1_38_suite.py::test_superseded_price_is_not_sent_while_other_station_traffic_runs
+tests/test_GASV4RDF1_38_suite.py::test_superseded_price_is_not_sent_while_earlier_update_is_outstanding

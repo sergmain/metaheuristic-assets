@@ -1,0 +1,2 @@
+# GASV4RDF1_52_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_52_suite.py::test_acks_retire_oldest_update_and_set_confirmed_price_in_arrival_order

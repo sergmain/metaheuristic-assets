@@ -1,0 +1,4 @@
+# GASV4RDF1_42_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_42_suite.py::test_latest_desired_displayed_when_older_price_is_delivered_last
+tests/test_GASV4RDF1_42_suite.py::test_latest_desired_displayed_across_random_workloads
+tests/test_GASV4RDF1_42_suite.py::test_other_station_traffic_does_not_change_latest_desired_display

@@ -1,0 +1,4 @@
+# GASV4RDF1_44_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_44_suite.py::test_first_four_attempts_each_carry_latest_price
+tests/test_GASV4RDF1_44_suite.py::test_sending_continues_until_fourth_attempt_is_acknowledged
+tests/test_GASV4RDF1_44_suite.py::test_no_update_sent_after_fourth_acknowledgement

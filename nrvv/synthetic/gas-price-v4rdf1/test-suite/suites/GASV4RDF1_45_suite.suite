@@ -1,0 +1,6 @@
+# GASV4RDF1_45_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_45_suite.py::test_run_reaches_quiet_with_no_further_resends
+tests/test_GASV4RDF1_45_suite.py::test_each_mismatched_ack_causes_at_most_one_resend
+tests/test_GASV4RDF1_45_suite.py::test_confirmed_price_equals_desired_price_at_end_of_run
+tests/test_GASV4RDF1_45_suite.py::test_scripted_repeated_changes_converge
+tests/test_GASV4RDF1_45_suite.py::test_confirmed_price_equals_final_desired_once_last_final_update_acked
