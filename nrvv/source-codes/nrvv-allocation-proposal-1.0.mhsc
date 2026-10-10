@@ -1,0 +1,88 @@
+// NRVV allocation-proposal 1.0 (plan 045, Phase 25): CC proposes, per top-level requirement unallocated at the
+// baseline, the architecture element that must meet it - one element, or a split into per-element shares. CC never
+// decides: a person confirms or dismisses the proposals in batches (POST /rest/v1/nrvv/projects/{id}/allocation-decisions),
+// which writes the allocations and - for a split - the shares as DERIVED requirements in one STAGE on the baseline.
+// Started by the Dispatcher (POST /rest/v1/nrvv/projects/{id}/allocation-proposals ->
+// NrvvRunService.startAllocationProposal), never by hand: the run record NRVV_RUN #runId exists before this ExecContext
+// does and names the baseline's snapshot, and mhdg-nrvv.finish-run closes it.
+//
+//   input    internal mhdg-nrvv.read-allocation-input   the elements, the unallocated top-level requirements with their
+//                                                       design items, the design, the allocations in force
+//   aprompt  mh.asset.nrvv-allocation-prompt_1.0        the prompt
+//   calloc   mh.asset.call-cc_1.1                       CC answers {"findings": [...]}, one per requirement to allocate
+//   acheck   mh.asset.nrvv-allocation-check_1.0         the answer checked - every requirement once, known elements,
+//                                                       exactly one of element and shares, at least two shares
+//   store    internal mhdg-nrvv.store-findings           the proposals into NRVV_FINDING; checked again against the
+//                                                       context; written once
+//   finish   internal mhdg-nrvv.finish-run              the run record FINISHED, or ERROR when any Task failed
+//
+// No STAGE: the run reads RG and writes NRVV only. No checkout, no workspace, no credential.
+//
+// Inputs: exactly NrvvRunUtils.allocationProposalVariables (MH refuses a missing or an undeclared name). `model` is
+// declared without '?': NrvvRunService refuses a blank model (06.004.993).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; finish runs last, after failures
+// too (tag terminal). No cache on calloc: a proposal asked for again is asked again.
+
+source "nrvv-allocation-proposal-1.0" {
+
+    variables {
+        <- production?
+        <- runId
+        <- model
+        <- effort?
+    }
+
+    input := internal mhdg-nrvv.read-allocation-input {
+        name "Read the elements, the unallocated top-level requirements and the design at the run's snapshot"
+        <- runId
+        -> allocationContext: ext=".json"
+        timeout 120
+    }
+
+    aprompt := mh.asset.nrvv-allocation-prompt_1.0 {
+        name "Build the prompt: the elements, the design, the requirements to allocate"
+        meta variable-for-allocation-context = "allocationContext",
+             variable-for-prompt = "allocationPrompt"
+        <- allocationContext
+        -> allocationPrompt: ext=".txt"
+        timeout 60
+    }
+
+    calloc := mh.asset.call-cc_1.1 {
+        name "Ask CC for one allocation proposal per requirement"
+        // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+        meta variable-for-prompt = "allocationPrompt",
+             variable-for-output = "allocationResult",
+             variable-for-model = "model",
+             variable-for-effort = "effort",
+             timeout-sec = "900"
+        <- allocationPrompt, model, effort?
+        -> allocationResult: ext=".txt"
+        timeout 1200
+        tries 2
+    }
+
+    acheck := mh.asset.nrvv-allocation-check_1.0 {
+        name "Check CC's proposals and hand them on in canonical form"
+        meta variable-for-cc-result = "allocationResult",
+             variable-for-allocation-context = "allocationContext",
+             variable-for-findings = "findings"
+        <- allocationResult, allocationContext
+        -> findings: ext=".json"
+        timeout 60
+    }
+
+    store := internal mhdg-nrvv.store-findings {
+        name "Store the proposals in NRVV_FINDING - checked again by the Dispatcher against the same context"
+        <- runId, findings, allocationContext
+        timeout 120
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
