@@ -1,60 +1,63 @@
-'''Tests for GASV4RDF1-6: price convergence uses only existing update and acknowledgement exchanges.'''
-
 import app
 from nrvv_env import Simulation
 
-
-STATIONS = ['S1', 'S2']
-MAX_STEPS = 10000
-
-
-def _make_server(send_update, send_pricing_notice):
-    server_classes = [value for value in vars(app).values()
-                      if isinstance(value, type) and hasattr(value, 'set_desired_price')]
-    if not server_classes:
-        raise AssertionError('app defines no server class with set_desired_price')
-    return server_classes[0](send_update, send_pricing_notice)
+OLD_PRICE = 100
+NEW_PRICE = 500
+SEEDS = range(10)
+MAX_STEPS = 20000
 
 
-def test_station_displays_new_price_after_older_price():
-    for seed in range(8):
-        sim = Simulation(seed, _make_server, ['S1'], script=[[]])
-        sim.server.set_desired_price('S1', 10)
-        sim.run(max_steps=MAX_STEPS)
-        assert sim.displayed('S1') == 10, 'seed %d: older price not displayed' % seed
-        sim.server.set_desired_price('S1', 20)
-        sim.run(max_steps=MAX_STEPS)
-        shown = sim.displayed('S1')
-        assert shown == 20, 'seed %d: station displays %r, expected 20' % (seed, shown)
+def _drive_to_quiet(sim):
+    sim.run(max_steps=MAX_STEPS)
+    assert sim.is_quiet(), 'service and station did not finish their exchanges within %d steps' % MAX_STEPS
 
 
-def test_only_supported_exchanges_reach_station():
-    for seed in range(8):
-        sim = Simulation(seed, _make_server, STATIONS, script=[[('S1', 10), ('S1', 20)]])
-        sim.run(max_steps=MAX_STEPS)
-        set_prices = {(call.station, call.price) for call in sim.client_calls}
-        for sent in sim.sent:
-            assert sent.station in STATIONS
-            assert (sent.station, sent.price) in set_prices
-        sent_by_id = {sent.update_id: sent for sent in sim.sent}
-        delivered_by_id = {}
-        for delivered in sim.delivered_updates:
-            assert delivered.update_id in sent_by_id
-            delivered_by_id[delivered.update_id] = delivered
-        for ack in sim.delivered_acks:
-            assert ack.update_id in delivered_by_id
-            delivered = delivered_by_id[ack.update_id]
-            assert ack.station == delivered.station
-            assert ack.price == delivered.price
+def test_station_holding_older_price_displays_new_price():
+    for seed in SEEDS:
+        sim = Simulation(app, seed, stations=('S1',), script=[('S1', OLD_PRICE), ('S1', NEW_PRICE)])
+        # advance until the station shows the older price, then let the new price be set
+        while sim.displayed('S1') != OLD_PRICE and len(sim.call_log) < 2 and sim.step():
+            pass
+        _drive_to_quiet(sim)
+        assert sim.displayed('S1') == NEW_PRICE, 'seed %d: station shows %r' % (seed, sim.displayed('S1'))
 
 
-def test_station_converges_to_latest_desired_price_with_many_clients():
-    for seed in range(8):
-        sim = Simulation(seed, _make_server, STATIONS, clients=3, calls=6)
-        sim.run(max_steps=MAX_STEPS)
-        for station in STATIONS:
-            latest = sim.latest_desired(station)
-            if latest is None:
-                continue
-            shown = sim.displayed(station)
-            assert shown == latest, 'seed %d: %s displays %r, expected %r' % (seed, station, shown, latest)
+def test_last_acknowledgement_carries_new_price():
+    for seed in SEEDS:
+        sim = Simulation(app, seed, stations=('S1',), script=[('S1', OLD_PRICE), ('S1', NEW_PRICE)])
+        _drive_to_quiet(sim)
+        assert sim.last_ack_price('S1') == NEW_PRICE, 'seed %d: last ack %r' % (seed, sim.last_ack_price('S1'))
+        assert sim.displayed('S1') == NEW_PRICE, 'seed %d: station shows %r' % (seed, sim.displayed('S1'))
+
+
+def test_sent_updates_are_price_only_updates_to_the_station():
+    for seed in SEEDS:
+        sim = Simulation(app, seed, stations=('S1',), script=[('S1', OLD_PRICE), ('S1', NEW_PRICE)])
+        _drive_to_quiet(sim)
+        assert sim.sent_log, 'seed %d: no update was sent to the station' % seed
+        assert not sim.in_flight(), 'seed %d: sent updates were not all delivered' % seed
+        for sent in sim.sent_log:
+            assert sent.station == 'S1', 'seed %d: update sent to %r' % (seed, sent.station)
+            assert sent.price in (OLD_PRICE, NEW_PRICE), 'seed %d: update carries price %r' % (seed, sent.price)
+        assert any(sent.price == NEW_PRICE for sent in sim.sent_log), 'seed %d: new price never sent' % seed
+
+
+def test_newest_price_wins_after_several_changes():
+    prices = (100, 300, 700, 900)
+    for seed in SEEDS:
+        sim = Simulation(app, seed, stations=('S1',), script=[('S1', p) for p in prices])
+        _drive_to_quiet(sim)
+        assert sim.displayed('S1') == prices[-1], 'seed %d: station shows %r' % (seed, sim.displayed('S1'))
+        assert sim.last_ack_price('S1') == prices[-1], 'seed %d: last ack %r' % (seed, sim.last_ack_price('S1'))
+
+
+def test_convergence_holds_with_traffic_to_another_station():
+    for seed in SEEDS:
+        script = [('S1', OLD_PRICE), ('S2', OLD_PRICE), ('S1', NEW_PRICE), ('S2', NEW_PRICE)]
+        sim = Simulation(app, seed, stations=('S1', 'S2'), script=script)
+        _drive_to_quiet(sim)
+        assert sim.displayed('S1') == NEW_PRICE, 'seed %d: S1 shows %r' % (seed, sim.displayed('S1'))
+        assert sim.displayed('S2') == NEW_PRICE, 'seed %d: S2 shows %r' % (seed, sim.displayed('S2'))
+        for sent in sim.sent_log:
+            assert sent.station in ('S1', 'S2'), 'seed %d: update sent to %r' % (seed, sent.station)
+            assert sent.price in (OLD_PRICE, NEW_PRICE), 'seed %d: update carries price %r' % (seed, sent.price)

@@ -1,83 +1,62 @@
-'''Checks GASV4RDF1-9: a station's confirmed price comes from its acknowledgements in arrival order.'''
+'''Verification of GASV4RDF1-9: a station's confirmed price is derived from its
+acknowledgements processed in the order they are received.
 
-import random
+Acknowledgements are produced by the simulated stations (Station.receive),
+and delivered to app by the simulation, one per step, in receipt order.
+'''
 
 import app
 from nrvv_env import Simulation
 
-
 SEEDS = (0, 1, 2, 3, 4)
 
 
-def _server_factory():
-    for name in ('make_server', 'Server', 'create_server'):
-        factory = getattr(app, name, None)
-        if factory is not None:
-            return factory
-    raise AssertionError('app provides no server factory')
-
-
-def _simulation(seed, stations):
-    return Simulation(seed, _server_factory(), stations, script=[])
-
-
-def _ack(sim, station, price, update_id):
-    sim.stations[station].receive(update_id, price)
-
-
-def _confirmed_price(state):
+def _confirmed(state):
+    '''Extract the confirmed price from the result of query_station_state.'''
     if isinstance(state, dict):
-        matches = [value for key, value in state.items() if 'confirmed' in str(key).lower()]
-        assert matches, f'no confirmed price in {state!r}'
-        return matches[0]
-    for name in ('confirmed_price', 'confirmed'):
-        if hasattr(state, name):
-            return getattr(state, name)
-    if hasattr(state, '_fields'):
-        matches = [field for field in state._fields if 'confirmed' in field.lower()]
-        if matches:
-            return getattr(state, matches[0])
-    if isinstance(state, (tuple, list)):
-        return state[0]
-    raise AssertionError(f'cannot read confirmed price from {state!r}')
+        for key, value in state.items():
+            if 'confirm' in str(key).lower():
+                return value
+        raise AssertionError('no confirmed price in query result: %r' % (state,))
+    if hasattr(state, 'confirmed'):
+        return state.confirmed
+    return state[0]
 
 
-def test_confirmed_price_is_last_in_order_ack_not_first():
+def test_confirmed_price_is_last_ack_not_first():
     for seed in SEEDS:
-        sim = _simulation(seed, ['S1'])
-        _ack(sim, 'S1', '1.00', 1)
-        _ack(sim, 'S1', '2.00', 2)
-        sim.run(max_steps=100)
-        assert [ack.price for ack in sim.delivered_acks] == ['1.00', '2.00']
-        assert str(_confirmed_price(sim.query('S1'))) == '2.00'
+        sim = Simulation(app, seed, stations=('S1',), script=[])
+        sim.stations['S1'].receive('1.00')
+        sim.stations['S1'].receive('2.00')
+        sim.run()
+        assert [a.price for a in sim.ack_log] == ['1.00', '2.00']
+        assert str(_confirmed(sim.query('S1'))) == '2.00'
 
 
-def test_third_ack_moves_confirmed_price_to_1_50():
+def test_third_ack_updates_confirmed_price():
     for seed in SEEDS:
-        sim = _simulation(seed, ['S1'])
-        _ack(sim, 'S1', '1.00', 1)
-        _ack(sim, 'S1', '2.00', 2)
-        sim.run(max_steps=100)
-        assert str(_confirmed_price(sim.query('S1'))) == '2.00'
-        _ack(sim, 'S1', '1.50', 3)
-        sim.run(max_steps=100)
-        assert [ack.price for ack in sim.delivered_acks] == ['1.00', '2.00', '1.50']
-        assert str(_confirmed_price(sim.query('S1'))) == '1.50'
+        sim = Simulation(app, seed, stations=('S1',), script=[])
+        sim.stations['S1'].receive('1.00')
+        sim.stations['S1'].receive('2.00')
+        sim.run()
+        assert str(_confirmed(sim.query('S1'))) == '2.00'
+        sim.stations['S1'].receive('1.50')
+        sim.run()
+        assert [a.price for a in sim.ack_log] == ['1.00', '2.00', '1.50']
+        assert str(_confirmed(sim.query('S1'))) == '1.50'
 
 
-def test_other_station_acks_do_not_change_confirmed_price():
+def test_confirmed_price_tracks_last_ack_per_station():
     for seed in SEEDS:
-        sim = _simulation(seed, ['S1', 'S2'])
-        rng = random.Random(seed)
-        other_prices = ['9.00', '8.00', '7.00']
-        rng.shuffle(other_prices)
-        _ack(sim, 'S1', '1.00', 1)
-        _ack(sim, 'S2', other_prices[0], 2)
-        _ack(sim, 'S1', '2.00', 3)
-        _ack(sim, 'S2', other_prices[1], 4)
-        _ack(sim, 'S2', other_prices[2], 5)
-        sim.run(max_steps=100)
-        s1_acks = [ack.price for ack in sim.delivered_acks if ack.station == 'S1']
-        assert s1_acks == ['1.00', '2.00']
-        assert str(_confirmed_price(sim.query('S1'))) == '2.00'
-        assert str(_confirmed_price(sim.query('S2'))) == other_prices[2]
+        sim = Simulation(app, seed, stations=('S1', 'S2'), script=[])
+        sim.stations['S1'].receive('1.00')
+        sim.stations['S1'].receive('2.00')
+        sim.stations['S2'].receive('3.00')
+        sim.stations['S2'].receive('4.00')
+        sim.run()
+        assert str(_confirmed(sim.query('S1'))) == '2.00'
+        assert str(_confirmed(sim.query('S2'))) == '4.00'
+        sim.stations['S2'].receive('3.50')
+        sim.run()
+        assert str(_confirmed(sim.query('S1'))) == '2.00'
+        assert str(_confirmed(sim.query('S2'))) == '3.50'

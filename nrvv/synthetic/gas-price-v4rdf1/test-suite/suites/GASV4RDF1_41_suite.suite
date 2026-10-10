@@ -1,4 +1,3 @@
 # GASV4RDF1_41_suite - written by nrvv-test-author
-tests/test_GASV4RDF1_41_suite.py::test_two_updates_sent_in_order_before_any_ack
-tests/test_GASV4RDF1_41_suite.py::test_first_ack_sets_confirmed_price_and_keeps_p2_outstanding
-tests/test_GASV4RDF1_41_suite.py::test_second_ack_confirms_a2_and_empties_outstanding
+tests/test_GASV4RDF1_41_suite.py::test_two_updates_then_two_acks_track_confirmed_desired_and_outstanding
+tests/test_GASV4RDF1_41_suite.py::test_station_state_consists_of_exactly_three_items

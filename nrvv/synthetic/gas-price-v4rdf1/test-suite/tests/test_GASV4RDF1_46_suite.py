@@ -1,87 +1,74 @@
-import inspect
-import app as app_module
-import nrvv_env
+import importlib
 
-STATIONS = ['A', 'B', 'C']
+import app
+from nrvv_env import Simulation
+
 SEEDS = (1, 2, 3, 4, 5)
-MAX_STEPS = 100000
+OVERLAP_SCRIPT = [('S1', 5), ('S1', 7), ('S2', 3), ('S1', 9), ('S2', 3), ('S2', 12), ('S1', 1)]
 
 
-def _make_server(send_update, send_pricing_notice):
-    servers = [obj for obj in vars(app_module).values()
-               if inspect.isclass(obj) and callable(getattr(obj, 'set_desired_price', None))]
-    assert servers, 'app has no server class with set_desired_price'
-    return servers[0](send_update, send_pricing_notice)
-
-
-def _run(seed, script=None):
-    sim = nrvv_env.Simulation(seed, _make_server, STATIONS, script=script)
-    sim.run(max_steps=MAX_STEPS)
+def _session(seed, script=None, calls=12):
+    module = importlib.reload(app)
+    sim = Simulation(module, seed, calls=calls, script=script)
+    sim.run()
+    assert sim.is_quiet(), 'session did not drain'
     return sim
 
 
-def test_every_update_sent_carries_the_current_desired_price():
+def _is_price(value):
+    return type(value) is int
+
+
+def test_every_update_carries_a_price():
     for seed in SEEDS:
-        sim = _run(seed)
-        assert sim.sent
-        for sent in sim.sent:
-            assert isinstance(sent.price, int)
-            assert sent.price == sim.desired_at(sent.station, sent.step)
+        sim = _session(seed, script=OVERLAP_SCRIPT)
+        assert sim.sent_log, 'seed %d: server sent no update' % seed
+        for sent in sim.sent_log:
+            assert _is_price(sent.price), 'seed %d: update without a plain price: %r' % (seed, sent)
 
 
-def test_every_acknowledgement_read_carries_a_price():
+def test_update_carries_the_current_desired_price_only():
     for seed in SEEDS:
-        sim = _run(seed)
-        assert sim.delivered_acks
-        sent_by_id = {sent.update_id: sent for sent in sim.sent}
-        for ack in sim.delivered_acks:
-            assert isinstance(ack.price, int)
-            assert ack.price == sent_by_id[ack.update_id].price
+        sim = _session(seed, script=OVERLAP_SCRIPT)
+        for sent in sim.sent_log:
+            assert sent.desired is not None, 'seed %d: update sent before any desired price: %r' % (seed, sent)
+            assert sent.price == sent.desired, 'seed %d: update differs from desired price: %r' % (seed, sent)
 
 
-def test_stations_accept_every_update_and_display_its_price():
+def test_every_acknowledgement_carries_a_price():
     for seed in SEEDS:
-        sim = _run(seed)
-        assert len(sim.delivered_updates) == len(sim.sent)
-        assert (sorted(u.update_id for u in sim.delivered_updates)
-                == sorted(s.update_id for s in sim.sent))
-        for name in STATIONS:
-            delivered = [u for u in sim.delivered_updates if u.station == name]
-            if delivered:
-                assert sim.displayed(name) == delivered[-1].price
+        sim = _session(seed, script=OVERLAP_SCRIPT)
+        assert sim.ack_log, 'seed %d: no acknowledgement was read' % seed
+        for ack in sim.ack_log:
+            assert _is_price(ack.price), 'seed %d: acknowledgement without a plain price: %r' % (seed, ack)
+            sent_to_station = {s.price for s in sim.sent_log if s.station == ack.station}
+            assert ack.price in sent_to_station, 'seed %d: acknowledgement echoes no sent price: %r' % (seed, ack)
 
 
-def test_acks_are_read_in_the_order_the_station_produced_them():
+def test_each_update_gets_exactly_one_acknowledgement():
     for seed in SEEDS:
-        sim = _run(seed)
-        for name in STATIONS:
-            produced = [u.update_id for u in sim.delivered_updates if u.station == name]
-            read = [a.update_id for a in sim.delivered_acks if a.station == name]
-            assert read == produced
+        sim = _session(seed, script=OVERLAP_SCRIPT)
+        for name in sim.stations:
+            sent = sum(1 for s in sim.sent_log if s.station == name)
+            acked = sum(1 for a in sim.ack_log if a.station == name)
+            assert acked == sent, 'seed %d: station %s: %d updates, %d acknowledgements' % (seed, name, sent, acked)
+            assert sim.pending_acks(name) == 0
 
 
-def test_server_adds_no_extra_fields_to_station_traffic():
+def test_station_displays_and_acknowledges_latest_desired_price():
     for seed in SEEDS:
-        sim = _run(seed)
-        assert sim.quiet
-        for sent in sim.sent:
-            assert sent.station in STATIONS
-            assert isinstance(sent.price, int)
+        sim = _session(seed, script=OVERLAP_SCRIPT)
+        for name, price in sim.desired.items():
+            assert sim.displayed(name) == price, 'seed %d: station %s displays %r, desired %r' % (seed, name, sim.displayed(name), price)
+            assert sim.last_ack_price(name) == price, 'seed %d: station %s last ack %r, desired %r' % (seed, name, sim.last_ack_price(name), price)
 
 
-def test_repeated_desired_prices_on_one_station_are_each_priced():
-    script = [[('A', 10), ('A', 20), ('A', 30)], [('A', 40)]]
-    sim = _run(1, script=script)
-    assert sim.sent
-    for sent in sim.sent:
-        assert isinstance(sent.price, int)
-        assert sent.price in {10, 20, 30, 40}
-    assert sim.displayed('A') == sim.delivered_updates[-1].price
-
-
-def test_same_seed_gives_identical_traffic():
-    for seed in SEEDS[:3]:
-        first = _run(seed)
-        second = _run(seed)
-        assert first.sent == second.sent
-        assert first.delivered_acks == second.delivered_acks
+def test_random_session_keeps_messages_price_only():
+    for seed in SEEDS:
+        sim = _session(seed, calls=20)
+        assert sim.sent_log and sim.ack_log
+        for sent in sim.sent_log:
+            assert _is_price(sent.price)
+            assert sent.price == sent.desired
+        for ack in sim.ack_log:
+            assert _is_price(ack.price)

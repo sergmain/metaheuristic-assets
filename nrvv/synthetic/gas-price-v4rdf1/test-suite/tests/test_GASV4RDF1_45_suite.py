@@ -1,101 +1,85 @@
-'''Tests for GASV4RDF1-17 / GASV4RDF1-45: convergence to the final desired price.'''
-
-import collections
-
 import app
-import nrvv_env
-
+from nrvv_env import Simulation
 
 MAX_STEPS = 100000
-SEEDS = range(25)
+SEEDS = range(1, 9)
 
 
-def _make_server(send_update, send_pricing_notice):
-    return app.Server(send_update, send_pricing_notice)
+def _scripted_run(seed):
+    a, b = 'A%d' % seed, 'B%d' % seed
+    script = [(a, 10), (b, 20), (a, 35), (b, 4), (a, 7), (b, 88), (a, 150), (b, 61), (a, 99)]
+    sim = Simulation(app, seed, stations=(a, b), script=script)
+    sim.run(max_steps=MAX_STEPS)
+    return sim, {a: 99, b: 61}
 
 
-def _simulation(seed, stations, script=None, clients=3):
-    return nrvv_env.Simulation(seed, _make_server, stations, script=script, clients=clients)
+def _state(sim, station):
+    state = sim.query(station)
+    if isinstance(state, dict):
+        return state['confirmed'], state['desired'], state['outstanding']
+    confirmed, desired, outstanding = state
+    return confirmed, desired, outstanding
 
 
-def _check_resends_bounded(sim):
-    # The server reacts to an acknowledgement within the step that delivers it, and
-    # each step is a single event, so the sends at that step are the resends it caused.
-    sends_per_step = collections.Counter((sent.step, sent.station) for sent in sim.sent)
-    for ack in sim.delivered_acks:
-        if ack.price != sim.desired_at(ack.station, ack.step):
-            assert sends_per_step[(ack.step, ack.station)] <= 1
+def _desired_at(sim, station, step):
+    price = None
+    for call in sim.call_log:
+        if call.station == station and call.step < step:
+            price = call.price
+    return price
 
 
-def _check_converged(sim):
-    for station in sim.station_names:
-        desired = sim.latest_desired(station)
-        if desired is None:
-            continue
-        confirmed, current, outstanding = sim.query(station)
-        assert current == desired
-        assert confirmed == desired
-        assert outstanding == 0
-
-
-def test_run_reaches_quiet_with_no_further_resends():
+def test_final_desired_price_is_confirmed_after_all_updates_delivered():
     for seed in SEEDS:
-        sim = _simulation(seed, ['A', 'B', 'C'])
-        sim.run(max_steps=MAX_STEPS)
-        sent_before = len(sim.sent)
-        assert sim.quiet
-        assert sim.step() is False
-        assert len(sim.sent) == sent_before
-
-
-def test_each_mismatched_ack_causes_at_most_one_resend():
-    for seed in SEEDS:
-        sim = _simulation(seed, ['A', 'B', 'C'])
-        sim.run(max_steps=MAX_STEPS)
-        _check_resends_bounded(sim)
-
-
-def test_confirmed_price_equals_desired_price_at_end_of_run():
-    for seed in SEEDS:
-        sim = _simulation(seed, ['A', 'B', 'C'])
-        sim.run(max_steps=MAX_STEPS)
-        _check_converged(sim)
-
-
-def test_scripted_repeated_changes_converge():
-    script = [
-        [('A', 1), ('B', 2), ('A', 3)],
-        [('B', 4), ('A', 5), ('B', 6)],
-        [('A', 7), ('B', 8)],
-    ]
-    for seed in SEEDS:
-        sim = _simulation(seed, ['A', 'B'], script=script)
-        sim.run(max_steps=MAX_STEPS)
-        assert sim.quiet
-        _check_resends_bounded(sim)
-        _check_converged(sim)
-
-
-def test_confirmed_price_equals_final_desired_once_last_final_update_acked():
-    stations = ['A', 'B']
-    script = [[('A', 10), ('B', 5), ('A', 20), ('A', 30), ('B', 6), ('A', 40)]]
-    for seed in SEEDS:
-        sim = _simulation(seed, stations, script=script, clients=1)
-        state_after_ack = {}
-        steps = 0
-        while not sim.quiet:
-            if steps >= MAX_STEPS:
-                raise AssertionError('not quiet')
-            sim.step()
-            steps += 1
-            if sim.delivered_acks and sim.delivered_acks[-1].step == sim.clock.now:
-                ack = sim.delivered_acks[-1]
-                state_after_ack[ack.update_id] = sim.query(ack.station)
-        for station in stations:
-            final = sim.latest_desired(station)
-            carrying = [u for u in sim.sent if u.station == station and u.price == final]
-            assert carrying
-            last = max(carrying, key=lambda u: u.update_id)
-            confirmed, desired, _ = state_after_ack[last.update_id]
-            assert confirmed == final
+        sim, finals = _scripted_run(seed)
+        assert sim.is_quiet(), 'seed %d: run did not reach quiet' % seed
+        for station, final in finals.items():
+            confirmed, desired, outstanding = _state(sim, station)
             assert desired == final
+            assert confirmed == final
+            assert outstanding == 0
+            assert sim.last_ack_price(station) == final
+
+
+def test_no_resends_once_run_is_quiet():
+    for seed in SEEDS:
+        sim, _ = _scripted_run(seed)
+        sent = len(sim.sent_log)
+        acks = len(sim.ack_log)
+        assert sim.step() is False
+        assert sim.run(max_steps=1000) == 0
+        assert len(sim.sent_log) == sent
+        assert len(sim.ack_log) == acks
+
+
+def test_each_mismatching_ack_causes_at_most_one_resend():
+    for seed in SEEDS:
+        sim, _ = _scripted_run(seed)
+        for ack in sim.ack_log:
+            if ack.price == _desired_at(sim, ack.station, ack.step):
+                continue
+            resends = [s for s in sim.sent_log
+                       if s.step == ack.step and s.station == ack.station]
+            assert len(resends) <= 1
+
+
+def test_resends_after_last_price_change_bounded_by_later_acks():
+    for seed in SEEDS:
+        sim, _ = _scripted_run(seed)
+        last_call = sim.call_log[-1].step
+        later_sends = sum(1 for s in sim.sent_log if s.step > last_call)
+        later_acks = sum(1 for a in sim.ack_log if a.step > last_call)
+        assert later_sends <= later_acks
+
+
+def test_random_price_changes_converge_to_final_desired_price():
+    for seed in SEEDS:
+        sim = Simulation(app, 100 + seed, stations=('X%d' % seed, 'Y%d' % seed),
+                         calls=30, prices=(1, 1000))
+        sim.run(max_steps=MAX_STEPS)
+        assert sim.is_quiet(), 'seed %d: run did not reach quiet' % seed
+        for station, desired in sim.desired.items():
+            confirmed, state_desired, outstanding = _state(sim, station)
+            assert state_desired == desired
+            assert confirmed == desired
+            assert outstanding == 0

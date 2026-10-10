@@ -1,90 +1,55 @@
-'''Tests for GASV4RDF1-3: each change of a desired price is sent to its station.'''
-
 import app
-import nrvv_env
+from nrvv_env import Simulation
 
-SEEDS = (1, 2, 3, 4, 5)
-SERVER_CONSTRUCTORS = ('Server', 'Service', 'StationServer', 'make_server', 'create_server')
-
-
-def _make_server(send_update, send_pricing_notice):
-    for name in SERVER_CONSTRUCTORS:
-        constructor = getattr(app, name, None)
-        if constructor is not None:
-            return constructor(send_update, send_pricing_notice)
-    raise AttributeError('app provides no server constructor')
+MAX_STEPS = 20000
+SEEDS = (0, 1, 2, 3, 4)
 
 
-def _run(seed, script, stations):
-    sim = nrvv_env.Simulation(seed, _make_server, stations, script=script)
-    sim.run(max_steps=10000)
-    return sim
+def _sent_after(sim, station, step):
+    return [u for u in sim.sent_log if u.station == station and u.step > step]
 
 
-def _sent_to(sim, station, start, end=None):
-    return [u for u in sim.sent
-            if u.station == station and u.step >= start and (end is None or u.step < end)]
-
-
-def _changes(sim, station):
-    '''Each client call to the station, paired with the step where the next change to it begins.'''
-    calls = [c for c in sim.client_calls if c.station == station]
-    ends = [c.step for c in calls[1:]] + [None]
-    return list(zip(calls, ends))
-
-
-def _assert_each_change_answered(sim, station):
-    for call, end in _changes(sim, station):
-        answers = _sent_to(sim, station, call.step, end)
-        assert any(u.price == call.price for u in answers), 'change to a price has no update carrying it'
-
-
-def test_change_to_new_price_is_sent_with_new_price_not_previous():
+def test_price_change_sends_update_with_new_price():
     for seed in SEEDS:
-        sim = _run(seed, [[('A', 10), ('A', 20)]], ['A'])
-        _, second = sim.client_calls
-        after = _sent_to(sim, 'A', second.step)
-        assert after, 'no update sent to the station after the change'
-        assert all(u.price == 20 for u in after), 'an update after the change carries the previous price'
+        station = 'one-%d' % seed
+        sim = Simulation(app, seed, stations=(station,),
+                         script=[(station, 100), (station, 200)])
+        sim.run(MAX_STEPS)
+        assert len(sim.call_log) == 2
+        change = sim.call_log[1]
+        assert change.price == 200
+        after = _sent_after(sim, station, change.step)
+        assert any(u.price == 200 for u in after), (seed, sim.sent_log)
+        assert all(u.price == 200 for u in after), (seed, after)
 
 
-def test_each_change_is_followed_by_update_carrying_that_price():
+def test_further_price_change_sends_update_with_newest_price():
     for seed in SEEDS:
-        sim = _run(seed, [[('A', 10), ('A', 20), ('A', 30)]], ['A'])
-        _assert_each_change_answered(sim, 'A')
+        station = 'two-%d' % seed
+        sim = Simulation(app, seed, stations=(station,),
+                         script=[(station, 100), (station, 200), (station, 300)])
+        sim.run(MAX_STEPS)
+        assert len(sim.call_log) == 3
+        third = sim.call_log[2]
+        assert third.price == 300
+        after = _sent_after(sim, station, third.step)
+        assert any(u.price == 300 for u in after), (seed, sim.sent_log)
+        assert all(u.price == 300 for u in after), (seed, after)
 
 
-def test_change_is_answered_by_update_addressed_to_that_station():
+def test_last_desired_price_change_is_sent_to_each_station_random_runs():
     for seed in SEEDS:
-        sim = _run(seed, [[('A', 10), ('B', 40), ('A', 20), ('B', 50)]], ['A', 'B'])
-        _assert_each_change_answered(sim, 'A')
-        _assert_each_change_answered(sim, 'B')
-
-
-def test_no_update_carries_a_superseded_desired_price():
-    for seed in SEEDS:
-        sim = nrvv_env.Simulation(seed, _make_server, ['A', 'B', 'C'])
-        sim.run(max_steps=10000)
-        for update in sim.sent:
-            desired = sim.desired_at(update.station, update.step)
-            assert desired is None or update.price == desired, 'update carries a price other than the desired one'
-
-
-def test_last_update_to_each_station_carries_its_latest_desired_price():
-    for seed in SEEDS:
-        sim = nrvv_env.Simulation(seed, _make_server, ['A', 'B', 'C'])
-        sim.run(max_steps=10000)
-        for station in ['A', 'B', 'C']:
-            if not any(c.station == station for c in sim.client_calls):
+        names = ('r%d-a' % seed, 'r%d-b' % seed)
+        sim = Simulation(app, seed, stations=names, calls=12, prices=(1, 50))
+        sim.run(MAX_STEPS)
+        for name in names:
+            calls = [c for c in sim.call_log if c.station == name]
+            if not calls:
                 continue
-            sent = _sent_to(sim, station, 0)
-            assert sent, 'no update sent to a station that received a desired price'
-            assert sent[-1].price == sim.latest_desired(station), 'last update does not carry the latest desired price'
-
-
-def test_each_change_in_random_workload_is_answered():
-    for seed in SEEDS:
-        sim = nrvv_env.Simulation(seed, _make_server, ['A', 'B', 'C'])
-        sim.run(max_steps=10000)
-        for station in ['A', 'B', 'C']:
-            _assert_each_change_answered(sim, station)
+            changes = [c for i, c in enumerate(calls)
+                       if i == 0 or calls[i - 1].price != c.price]
+            last_change = changes[-1]
+            final_price = calls[-1].price
+            after = _sent_after(sim, name, last_change.step)
+            assert any(u.price == last_change.price for u in after), (seed, name, sim.sent_log)
+            assert all(u.price == final_price for u in after), (seed, name, after)

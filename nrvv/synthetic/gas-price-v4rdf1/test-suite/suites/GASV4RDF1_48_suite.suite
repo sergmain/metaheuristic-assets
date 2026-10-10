@@ -1,4 +1,4 @@
 # GASV4RDF1_48_suite - written by nrvv-test-author
-tests/test_GASV4RDF1_48_suite.py::test_confirmed_price_is_last_in_order_ack_not_first
-tests/test_GASV4RDF1_48_suite.py::test_third_ack_moves_confirmed_price_to_1_50
-tests/test_GASV4RDF1_48_suite.py::test_other_station_acks_do_not_change_confirmed_price
+tests/test_GASV4RDF1_48_suite.py::test_confirmed_price_is_last_ack_not_first
+tests/test_GASV4RDF1_48_suite.py::test_third_ack_updates_confirmed_price
+tests/test_GASV4RDF1_48_suite.py::test_confirmed_price_tracks_last_ack_per_station

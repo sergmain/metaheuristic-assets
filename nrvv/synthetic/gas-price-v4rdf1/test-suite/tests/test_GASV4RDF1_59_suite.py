@@ -1,127 +1,96 @@
-"""Tests for GASV4RDF1-55: show the pricing team the stations not yet acknowledging their latest price."""
+'''Verifies GASV4RDF1-55: the listing operation shows the stations not yet acknowledging their latest price.'''
+
 import app
 from nrvv_env import Simulation
 
-SEEDS = (1, 7, 42)
-DELAYS = ((0, 0), (0, 5), (1, 30))
+KNOWN_OPS = {'set_desired_price', 'receive_acknowledgement', 'query_station_state',
+             'send_update', 'send_notice', 'bind_ports'}
+MAX_STEPS = 10000
 
 
-def _sim(seed, delays=(0, 5)):
-    return Simulation(seed, app, min_delay=delays[0], max_delay=delays[1])
+def _list_op():
+    names = sorted(
+        n for n in dir(app)
+        if 'acknowledg' in n and callable(getattr(app, n))
+        and n not in KNOWN_OPS and not n.startswith('receive')
+    )
+    assert names, 'app has no operation listing stations not acknowledging their latest price'
+    listing = [n for n in names if n.startswith('list')]
+    return getattr(app, (listing or names)[0])
 
 
-def _ids(result):
-    ids = set()
-    for item in result:
+def _station_names(result):
+    items = list(result.keys()) if isinstance(result, dict) else list(result)
+    names = set()
+    for item in items:
         if isinstance(item, str):
-            ids.add(item)
+            names.add(item)
         elif isinstance(item, dict):
-            ids.add(item["station_id"])
+            names.add(item['station'])
+        elif hasattr(item, 'station'):
+            names.add(item.station)
         else:
-            ids.add(item.station_id)
-    return ids
+            names.add(item[0])
+    return names
 
 
-def test_station_without_acknowledgement_is_listed():
-    for seed in SEEDS:
-        sim = _sim(seed)
-        sid = f"noack-{seed}"
-        sim.add_station(sid)
-        sim.set_desired_price(sid, 100)
-        sim.run_until_idle()
-        assert sid in _ids(sim.list_unacknowledged())
+def _listed():
+    return _station_names(_list_op()())
 
 
-def test_station_acknowledging_same_price_is_omitted():
-    for seed in SEEDS:
-        sim = _sim(seed)
-        sid = f"same-{seed}"
-        sim.add_station(sid)
-        sim.set_desired_price(sid, 100)
-        sim.acknowledge(sid)
-        sim.run_until_idle()
-        assert sid not in _ids(sim.list_unacknowledged())
+def _expected(sim):
+    unacknowledged = set()
+    for station, price in sim.desired.items():
+        last = sim.last_ack_price(station)
+        if last is None or last != price:
+            unacknowledged.add(station)
+    return unacknowledged
 
 
-def test_station_acknowledging_older_price_is_listed():
-    for seed in SEEDS:
-        sim = _sim(seed)
-        sid = f"older-{seed}"
-        sim.add_station(sid)
-        sim.set_desired_price(sid, 10)
-        sim.acknowledge(sid)
-        sim.run_until_idle()
-        sim.set_desired_price(sid, 12)
-        sim.run_until_idle()
-        assert sid in _ids(sim.list_unacknowledged())
+def _assert_listing_matches(sim):
+    assert _listed() & set(sim.desired) == _expected(sim)
 
 
-def test_acknowledging_latest_price_removes_station():
-    for seed in SEEDS:
-        sim = _sim(seed)
-        sid = f"removed-{seed}"
-        sim.add_station(sid)
-        sim.set_desired_price(sid, 10)
-        sim.acknowledge(sid)
-        sim.run_until_idle()
-        sim.set_desired_price(sid, 12)
-        sim.run_until_idle()
-        assert sid in _ids(sim.list_unacknowledged())
-        sim.acknowledge(sid)
-        sim.run_until_idle()
-        assert sid not in _ids(sim.list_unacknowledged())
+def _run_checking_every_step(sim):
+    _assert_listing_matches(sim)
+    steps = 0
+    while sim.step():
+        _assert_listing_matches(sim)
+        steps += 1
+        assert steps < MAX_STEPS
+    assert sim.is_quiet()
 
 
-def test_most_recent_acknowledgement_decides():
-    for seed in SEEDS:
-        sim = _sim(seed)
-        sid = f"recent-{seed}"
-        sim.add_station(sid)
-        sim.set_desired_price(sid, 10)
-        sim.acknowledge(sid)
-        sim.run_until_idle()
-        sim.set_desired_price(sid, 12)
-        sim.acknowledge(sid)
-        sim.run_until_idle()
-        assert sid not in _ids(sim.list_unacknowledged())
-        sim.set_desired_price(sid, 13)
-        sim.run_until_idle()
-        assert sid in _ids(sim.list_unacknowledged())
+def test_listing_matches_acknowledgement_evidence_at_every_step():
+    for seed in range(15):
+        names = (f'p{seed}a', f'p{seed}b', f'p{seed}c')
+        _run_checking_every_step(Simulation(app, seed, stations=names, calls=12))
 
 
-def test_listing_is_exactly_the_unacknowledged_stations():
-    for seed in SEEDS:
-        for delays in DELAYS:
-            sim = _sim(seed, delays)
-            p = f"mix-{seed}-{delays[1]}-"
-            for name in ("never", "same", "stale", "fresh"):
-                sim.add_station(p + name)
-            sim.set_desired_price(p + "never", 10)
-            sim.set_desired_price(p + "same", 20)
-            sim.set_desired_price(p + "stale", 30)
-            sim.set_desired_price(p + "fresh", 40)
-            sim.acknowledge(p + "same")
-            sim.acknowledge(p + "stale")
-            sim.acknowledge(p + "fresh")
-            sim.run_until_idle()
-            sim.set_desired_price(p + "stale", 31)
-            sim.run_until_idle()
-            own = {s for s in _ids(sim.list_unacknowledged()) if s.startswith(p)}
-            assert own == {p + "never", p + "stale"}
+def test_station_whose_latest_ack_matches_desired_price_is_omitted():
+    for seed in range(15):
+        names = (f'q{seed}a', f'q{seed}b')
+        _run_checking_every_step(Simulation(app, 100 + seed, stations=names, calls=20, prices=(1, 2)))
+
+
+def test_station_with_no_acknowledgement_is_listed_until_it_acknowledges_latest_price():
+    a, b = 'n_a', 'n_b'
+    sim = Simulation(app, 1, stations=(a, b), script=[(a, 5)])
+    while a not in sim.desired:
+        assert sim.step()
+    assert a in _listed()
+    while sim.last_ack_price(a) != 5:
+        assert sim.step()
+    assert a not in _listed()
 
 
 def test_listing_changes_no_state():
-    for seed in SEEDS:
-        sim = _sim(seed)
-        sid = f"ro-{seed}"
-        sim.add_station(sid)
-        sim.set_desired_price(sid, 5)
-        sim.run_until_idle()
-        traffic_before = len(sim.traffic)
-        first = _ids(sim.list_unacknowledged())
-        second = _ids(sim.list_unacknowledged())
-        assert first == second
-        assert sid in first
-        assert len(sim.traffic) == traffic_before
-        assert sim.in_flight() == []
-        assert sim.notices == []
+    names = ('r_a', 'r_b', 'r_c')
+    sim = Simulation(app, 7, stations=names, calls=6)
+    sim.run(max_steps=8)
+    before = {n: sim.query(n) for n in names}
+    first = _listed()
+    second = _listed()
+    assert first == second
+    assert first & set(sim.desired) == _expected(sim)
+    assert {n: sim.query(n) for n in names} == before

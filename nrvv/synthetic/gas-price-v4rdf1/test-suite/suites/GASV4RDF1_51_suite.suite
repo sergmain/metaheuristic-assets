@@ -1,4 +1,3 @@
 # GASV4RDF1_51_suite - written by nrvv-test-author
-tests/test_GASV4RDF1_51_suite.py::test_superseded_price_is_never_resent_after_newer_is_set
-tests/test_GASV4RDF1_51_suite.py::test_superseded_ack_clears_only_its_entry
-tests/test_GASV4RDF1_51_suite.py::test_newer_price_confirmed_only_by_its_own_ack
+tests/test_GASV4RDF1_51_suite.py::test_superseded_price_not_resent_and_ack_matches_superseded_entry
+tests/test_GASV4RDF1_51_suite.py::test_only_current_desired_price_is_ever_sent_under_random_calls

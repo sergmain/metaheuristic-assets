@@ -1,233 +1,139 @@
-"""Deterministic simulation of the clients and transport around the server side ``app``.
+'''Simulated environment for the nrvv system under test.
 
-Nothing here implements the server side. The server side is reached only through the
-operations and ports the Interface names; the clients and the transport are simulated.
-Logical time is an integer that moves only when a test advances it. The only randomness
-is the delivery delay, drawn from random.Random(seed).
-"""
+Simulates the clients (central clients, stations, pricing team) and the transport between them and the server side. The server side is the module app, handed in by the test; this module never imports it.
+
+Ports: the outbound ports send_update and send_notice are attached to app when the simulation is built. If app has bind_ports, it is called with send_update=... and send_notice=...; otherwise both are set as attributes on app.
+'''
+
 import random
+from collections import deque, namedtuple
 
-NOTICE_BOUND = 60  # one minute of logical time (GASV4RDF1-32)
-
-ACK_CHANNEL = "ack"        # station -> server side
-NOTICE_CHANNEL = "notice"  # server side -> pricing team
-
-
-class Message:
-    """A message handed to the transport."""
-
-    def __init__(self, seq, channel, payload, sent_at, deliver_at):
-        self.seq = seq
-        self.channel = channel
-        self.payload = payload
-        self.sent_at = sent_at
-        self.deliver_at = deliver_at
-
-    def __repr__(self):
-        return (f"Message(seq={self.seq}, channel={self.channel!r}, sent_at={self.sent_at}, "
-                f"deliver_at={self.deliver_at}, payload={self.payload!r})")
-
-
-class Transport:
-    """Ordered, lossless, non-duplicating delivery in logical time.
-
-    Each message is delivered after a delay drawn from the seeded generator. Delivery
-    times never decrease within a channel, so messages on one channel arrive in the order
-    they were sent. Messages due at the same instant are handed over in send order.
-    """
-
-    def __init__(self, rng, min_delay, max_delay):
-        if not 0 <= min_delay <= max_delay:
-            raise ValueError("need 0 <= min_delay <= max_delay")
-        self._rng = rng
-        self._min_delay = min_delay
-        self._max_delay = max_delay
-        self.now = 0
-        self._seq = 0
-        self._in_flight = []
-        self._last_deliver_at = {}
-
-    def send(self, channel, payload):
-        delay = self._rng.randint(self._min_delay, self._max_delay)
-        deliver_at = max(self.now + delay, self._last_deliver_at.get(channel, 0))
-        self._last_deliver_at[channel] = deliver_at
-        msg = Message(self._seq, channel, payload, self.now, deliver_at)
-        self._seq += 1
-        self._in_flight.append(msg)
-        return msg
-
-    def in_flight(self):
-        return sorted(self._in_flight, key=lambda m: (m.deliver_at, m.seq))
-
-    def next_delivery_time(self):
-        return min((m.deliver_at for m in self._in_flight), default=None)
-
-    def deliver_next(self, handler):
-        """Move time to the next delivery and hand every message due then to handler.
-
-        Returns False when nothing is in flight.
-        """
-        t = self.next_delivery_time()
-        if t is None:
-            return False
-        self.now = max(self.now, t)
-        due = [m for m in self.in_flight() if m.deliver_at <= self.now]
-        self._in_flight = [m for m in self._in_flight if m.deliver_at > self.now]
-        for msg in due:
-            handler(msg)
-        return True
-
-    def advance(self, dt, handler):
-        """Advance logical time by dt, delivering everything due on the way."""
-        if dt < 0:
-            raise ValueError("cannot move logical time backwards")
-        target = self.now + dt
-        while True:
-            t = self.next_delivery_time()
-            if t is None or t > target:
-                break
-            self.deliver_next(handler)
-        self.now = target
+SentUpdate = namedtuple('SentUpdate', 'step station price desired')
+Ack = namedtuple('Ack', 'step station price')
+Call = namedtuple('Call', 'step station price')
+Notice = namedtuple('Notice', 'arrival station price')
 
 
 class Station:
-    """Station client: the price set for it, and the price it currently displays."""
+    '''Simulated station: one displayed price; one acknowledgement per received update, in receipt order.'''
 
-    def __init__(self, station_id):
-        self.station_id = station_id
-        self.desired_price = None
-        self.displayed_price = None
+    def __init__(self, name):
+        self.name = name
+        self.displayed = None
+        self.acks = deque()
 
-    def __repr__(self):
-        return (f"Station({self.station_id!r}, desired_price={self.desired_price!r}, "
-                f"displayed_price={self.displayed_price!r})")
-
-
-class PricingTeam:
-    """Pricing-team client: a recorder of notices with their logical arrival time."""
-
-    def __init__(self):
-        self.received = []
-
-    def receive(self, arrival_time, notice):
-        notice["arrived_at"] = arrival_time
-        self.received.append(notice)
+    def receive(self, price):
+        self.displayed = price
+        self.acks.append(price)
 
 
 class Simulation:
-    """Wires the simulated clients and transport to the server side ``app``.
-
-    The simulation installs the pricing-notice port on ``app`` as the attribute
-    ``send_pricing_team_notice``, and delivers each acknowledgement to ``app`` by calling
-    ``app.receive_acknowledgement(station_id, price)`` when the transport delivers it.
-    The pricing team reads through ``app.list_stations_not_acknowledging_latest_price()``.
-    """
-
-    def __init__(self, seed, app, min_delay=0, max_delay=5):
-        self.seed = seed
+    def __init__(self, app, seed, stations=('S1', 'S2'), calls=10, script=None, prices=(1, 1000)):
         self.app = app
-        self._rng = random.Random(seed)
-        self.transport = Transport(self._rng, min_delay, max_delay)
-        self.stations = {}
-        self.pricing = PricingTeam()
-        self.traffic = []   # every send and delivery, in the order they happened
-        self.notices = []   # every notice sent through the notice port
-        self._handling_ack = None
-        app.send_pricing_team_notice = self._notice_port
+        self.seed = seed
+        self.rng = random.Random(seed)
+        self.stations = {name: Station(name) for name in stations}
+        self.prices = prices
+        self._script = deque(script) if script is not None else None
+        self._remaining_calls = len(script) if script is not None else calls
+        self.step_no = 0
+        self.desired = {}
+        self.call_log = []
+        self.sent_log = []
+        self.ack_log = []
+        self.notices = []
+        self._in_flight = []
+        bind = getattr(app, 'bind_ports', None)
+        if callable(bind):
+            bind(send_update=self.send_update, send_notice=self.send_notice)
+        else:
+            app.send_update = self.send_update
+            app.send_notice = self.send_notice
 
-    @property
-    def now(self):
-        return self.transport.now
+    def _require_station(self, station):
+        if station not in self.stations:
+            raise ValueError('unknown station: %r' % (station,))
 
-    def add_station(self, station_id):
-        if station_id in self.stations:
-            raise ValueError(f"station {station_id!r} already exists")
-        station = Station(station_id)
-        self.stations[station_id] = station
-        return station
+    # outbound port of the server side
+    def send_update(self, station, price):
+        self._require_station(station)
+        self._in_flight.append((station, price))
+        self.sent_log.append(SentUpdate(self.step_no, station, price, self.desired.get(station)))
 
-    def set_desired_price(self, station_id, price):
-        self.stations[station_id].desired_price = price
-
-    def acknowledge(self, station_id):
-        """Station displays its desired price and sends the acknowledgement over the transport."""
-        station = self.stations[station_id]
-        if station.desired_price is None:
-            raise ValueError(f"station {station_id!r} has no desired price to acknowledge")
-        station.displayed_price = station.desired_price
-        payload = {"station_id": station_id, "price": station.displayed_price}
-        msg = self.transport.send(ACK_CHANNEL, payload)
-        self._record("sent", msg)
-        return msg
-
-    def list_unacknowledged(self):
-        """Pricing team's read-only query. Changes no state and sends nothing."""
-        return self.app.list_stations_not_acknowledging_latest_price()
-
-    def in_flight(self):
-        return self.transport.in_flight()
+    # outbound port to the pricing team (recorder; arrival is the logical step of the call)
+    def send_notice(self, station, price):
+        self.notices.append(Notice(self.step_no, station, price))
 
     def step(self):
-        """Deliver the next due batch of messages. Returns False when nothing is in flight."""
-        return self.transport.deliver_next(self._deliver)
+        kinds = []
+        if self._remaining_calls > 0:
+            kinds.append('call')
+        if self._in_flight:
+            kinds.append('update')
+        if any(s.acks for s in self.stations.values()):
+            kinds.append('ack')
+        if not kinds:
+            return False
+        self.step_no += 1
+        kind = self.rng.choice(kinds)
+        if kind == 'call':
+            self._issue_call()
+        elif kind == 'update':
+            self._deliver_update()
+        else:
+            self._deliver_ack()
+        return True
 
-    def run_until_idle(self, max_steps=100000):
-        """Step until nothing is in flight. Returns the number of steps taken."""
-        steps = 0
-        while self.transport.in_flight():
-            if steps >= max_steps:
-                raise RuntimeError("transport still busy after max_steps steps")
-            self.step()
-            steps += 1
-        return steps
+    def _issue_call(self):
+        if self._script is not None:
+            station, price = self._script.popleft()
+        else:
+            station = self.rng.choice(list(self.stations))
+            price = self.rng.randint(*self.prices)
+        self._require_station(station)
+        self._remaining_calls -= 1
+        self.desired[station] = price
+        self.call_log.append(Call(self.step_no, station, price))
+        self.app.set_desired_price(station, price)
 
-    def advance_time(self, dt):
-        self.transport.advance(dt, self._deliver)
+    def _deliver_update(self):
+        i = self.rng.randrange(len(self._in_flight))
+        station, price = self._in_flight.pop(i)
+        self.stations[station].receive(price)
 
-    def late_notices(self):
-        """Notices not delivered within NOTICE_BOUND of the acknowledgement that caused them.
+    def _deliver_ack(self):
+        ready = [name for name, s in self.stations.items() if s.acks]
+        name = self.rng.choice(ready)
+        price = self.stations[name].acks.popleft()
+        self.ack_log.append(Ack(self.step_no, name, price))
+        self.app.receive_acknowledgement(name, price)
 
-        A notice still in flight counts as late once the bound has passed at the current time.
-        Notices sent outside handling of an acknowledgement have no cause and are not checked.
-        """
-        late = []
-        for notice in self.notices:
-            if notice["ack_sent_at"] is None:
-                continue
-            end = notice["arrived_at"] if notice["arrived_at"] is not None else self.now
-            if end - notice["ack_sent_at"] > NOTICE_BOUND:
-                late.append(notice)
-        return late
+    def run(self, max_steps=None):
+        n = 0
+        while (max_steps is None or n < max_steps) and self.step():
+            n += 1
+        return n
 
-    def _deliver(self, msg):
-        self._record("delivered", msg)
-        if msg.channel == ACK_CHANNEL:
-            self._handling_ack = msg
-            try:
-                self.app.receive_acknowledgement(msg.payload["station_id"], msg.payload["price"])
-            finally:
-                self._handling_ack = None
-        elif msg.channel == NOTICE_CHANNEL:
-            self.pricing.receive(self.now, msg.payload)
+    def is_quiet(self):
+        return (self._remaining_calls == 0 and not self._in_flight
+                and not any(s.acks for s in self.stations.values()))
 
-    def _notice_port(self, station_id, price):
-        ack = self._handling_ack
-        notice = {
-            "station_id": station_id,
-            "price": price,
-            "sent_at": self.now,
-            "ack_sent_at": ack.sent_at if ack is not None else None,
-            "arrived_at": None,
-        }
-        self.notices.append(notice)
-        msg = self.transport.send(NOTICE_CHANNEL, notice)
-        self._record("sent", msg)
+    def displayed(self, station):
+        return self.stations[station].displayed
 
-    def _record(self, event, msg):
-        self.traffic.append({
-            "t": self.now,
-            "event": event,
-            "channel": msg.channel,
-            "seq": msg.seq,
-            "payload": msg.payload,
-        })
+    def query(self, station):
+        return self.app.query_station_state(station)
+
+    def in_flight(self):
+        return list(self._in_flight)
+
+    def pending_acks(self, station=None):
+        if station is not None:
+            return len(self.stations[station].acks)
+        return sum(len(s.acks) for s in self.stations.values())
+
+    def last_ack_price(self, station):
+        for ack in reversed(self.ack_log):
+            if ack.station == station:
+                return ack.price
+        return None
