@@ -1,99 +1,127 @@
-'''Tests for GASV4RDF1-31: confirm the latest price on ack and send one notice.'''
-
-import inspect
-
+"""GASV4RDF1-47: an acknowledgement showing the latest desired price confirms it for the station and sends exactly one pricing-team notice within one minute of receipt; an acknowledgement showing an older price sends no notice."""
 import app
-import nrvv_env
+from nrvv_env import ACK_CHANNEL, NOTICE_BOUND, Simulation
+
+SEEDS = (1, 2, 3, 5, 8)
 
 
-STATION = 'S1'
-SEEDS = range(8)
-MAX_STEPS = 100000
+def _new_sim(seed, max_delay=5):
+    return Simulation(seed, app, min_delay=0, max_delay=max_delay)
 
 
-def _make_server(send_update, send_pricing_notice):
-    '''Builds the app's server object from its two outbound ports.'''
-    for name in dir(app):
-        candidate = getattr(app, name)
-        if not (inspect.isclass(candidate) and name[:1].isupper()):
-            continue
-        try:
-            server = candidate(send_update, send_pricing_notice)
-        except TypeError:
-            continue
-        if all(hasattr(server, method) for method in
-               ('set_desired_price', 'receive_acknowledgement', 'query_station_state')):
-            return server
-    raise AssertionError('app has no server class taking the outbound ports')
+def _read(entry, name):
+    if isinstance(entry, dict):
+        return entry[name]
+    return getattr(entry, name)
 
 
-def _state_field(state, name):
-    '''Reads the confirmed, desired or outstanding field of a QueryStationState result.'''
-    if isinstance(state, dict):
-        return next(value for key, value in state.items() if name in str(key).lower())
-    attrs = [attr for attr in dir(state) if name in attr.lower() and not attr.startswith('_')]
-    if attrs:
-        return getattr(state, attrs[0])
-    order = ('confirmed', 'desired', 'outstanding')
-    return tuple(state)[order.index(name)]
+def _unacknowledged_ids(sim):
+    return [_read(entry, "station_id") for entry in sim.list_unacknowledged()]
 
 
-def _notices(sim, station, price):
-    return [n for n in sim.pricing.notices if n.station == station and n.price == price]
+def _received_at(sim, station_id, price):
+    """Logical time at which the transport delivered the acknowledgement to app."""
+    for event in sim.traffic:
+        if (event["event"] == "delivered" and event["channel"] == ACK_CHANNEL
+                and event["payload"]["station_id"] == station_id
+                and event["payload"]["price"] == price):
+            return event["t"]
+    raise AssertionError(f"acknowledgement for {station_id!r} at {price!r} was never delivered")
 
 
-def _single_price_run(seed, price):
-    sim = nrvv_env.Simulation(seed, _make_server, [STATION],
-                              script=[[(STATION, price)]], clients=1)
-    sim.run(max_steps=MAX_STEPS)
-    return sim
+def _notices_for(sim, station_id):
+    return [n for n in sim.notices if n["station_id"] == station_id]
 
 
-def test_latest_price_confirmed_on_ack_and_notified_once():
+def test_latest_price_ack_confirms_price_and_sends_one_notice():
+    sim = _new_sim(seed=1)
+    station_id = "st-47-confirm"
+    sim.add_station(station_id)
+    sim.set_desired_price(station_id, 10)
+    sim.acknowledge(station_id)
+    sim.run_until_idle()
+
+    assert len(sim.notices) == 1
+    assert sim.notices[0]["station_id"] == station_id
+    assert sim.notices[0]["price"] == 10
+    assert len(sim.pricing.received) == 1
+    assert sim.pricing.received[0]["station_id"] == station_id
+    assert sim.pricing.received[0]["price"] == 10
+    assert station_id not in _unacknowledged_ids(sim)
+
+
+def test_notice_arrives_within_one_minute_of_ack_receipt():
     for seed in SEEDS:
-        price = 7 + seed
-        sim = _single_price_run(seed, price)
-        assert sim.latest_desired(STATION) == price
-        acks = [ack for ack in sim.delivered_acks if ack.station == STATION and ack.price == price]
-        assert acks, f'seed {seed}: no acknowledgement showing the latest price'
-        assert _state_field(sim.query(STATION), 'confirmed') == price
-        notices = _notices(sim, STATION, price)
-        assert len(notices) == 1, f'seed {seed}: {len(notices)} notices'
-        # Logical time is a step counter, so a notice sent in the step of the ack takes no elapsed time.
-        assert notices[0].step == acks[0].step
+        sim = _new_sim(seed=seed, max_delay=5)
+        station_id = f"st-47-bound-{seed}"
+        price = 100 + seed
+        sim.add_station(station_id)
+        sim.set_desired_price(station_id, price)
+        sim.advance_time(seed * 3)
+        sim.acknowledge(station_id)
+        sim.run_until_idle()
+
+        assert len(sim.pricing.received) == 1
+        received_at = _received_at(sim, station_id, price)
+        arrived_at = sim.pricing.received[0]["arrived_at"]
+        assert arrived_at is not None
+        assert arrived_at - received_at <= NOTICE_BOUND
+        assert sim.late_notices() == []
 
 
-def test_repeated_acknowledgement_sends_no_second_notice():
+def test_repeated_latest_ack_does_not_duplicate_notice():
     for seed in SEEDS:
-        price = 20 + seed
-        sim = _single_price_run(seed, price)
-        before = _notices(sim, STATION, price)
-        assert len(before) == 1, f'seed {seed}: {len(before)} notices before redelivery'
-        sim.server.receive_acknowledgement(STATION, price)
-        sim.server.receive_acknowledgement(STATION, price)
-        assert _notices(sim, STATION, price) == before
-        assert _state_field(sim.query(STATION), 'confirmed') == price
+        sim = _new_sim(seed=seed)
+        station_id = f"st-47-repeat-{seed}"
+        sim.add_station(station_id)
+        sim.set_desired_price(station_id, 20)
+        sim.acknowledge(station_id)
+        sim.run_until_idle()
+        sim.acknowledge(station_id)
+        sim.run_until_idle()
+        sim.acknowledge(station_id)
+        sim.run_until_idle()
+
+        notices = _notices_for(sim, station_id)
+        assert len(notices) == 1
+        assert notices[0]["price"] == 20
+        assert len(sim.pricing.received) == 1
 
 
-def test_older_price_ack_is_not_confirmed_and_sends_no_notice():
+def test_older_price_ack_after_latest_sends_no_notice():
     for seed in SEEDS:
-        older, latest = 10 + seed, 50 + seed
-        sim = nrvv_env.Simulation(seed, _make_server, [STATION],
-                                  script=[[(STATION, older), (STATION, latest)]], clients=1)
-        sim.run(max_steps=MAX_STEPS)
-        assert sim.latest_desired(STATION) == latest
-        assert _state_field(sim.query(STATION), 'confirmed') == latest
-        notices_before = list(sim.pricing.notices)
-        sim.server.receive_acknowledgement(STATION, older)
-        assert _state_field(sim.query(STATION), 'confirmed') == latest
-        assert sim.pricing.notices == notices_before
+        sim = _new_sim(seed=seed)
+        station_id = f"st-47-older-{seed}"
+        sim.add_station(station_id)
+        sim.set_desired_price(station_id, 30)
+        sim.acknowledge(station_id)
+        sim.run_until_idle()
+        sim.set_desired_price(station_id, 31)
+        sim.acknowledge(station_id)
+        sim.run_until_idle()
+
+        assert [n["price"] for n in _notices_for(sim, station_id)] == [30, 31]
+        notices_before = len(sim.notices)
+        received_before = len(sim.pricing.received)
+
+        sim.transport.send(ACK_CHANNEL, {"station_id": station_id, "price": 30})
+        sim.run_until_idle()
+
+        assert len(sim.notices) == notices_before
+        assert len(sim.pricing.received) == received_before
 
 
-def test_every_notice_matches_latest_price_ack_at_its_step():
-    for seed in SEEDS:
-        sim = nrvv_env.Simulation(seed, _make_server, ['S1', 'S2', 'S3'], clients=3, calls=8)
-        sim.run(max_steps=MAX_STEPS)
-        for notice in sim.pricing.notices:
-            assert sim.desired_at(notice.station, notice.step) == notice.price
-            assert any(ack.station == notice.station and ack.price == notice.price
-                       and ack.step == notice.step for ack in sim.delivered_acks)
+def test_each_station_latest_ack_gets_its_own_notice():
+    sim = _new_sim(seed=13)
+    first, second = "st-47-multi-a", "st-47-multi-b"
+    sim.add_station(first)
+    sim.add_station(second)
+    sim.set_desired_price(first, 40)
+    sim.set_desired_price(second, 41)
+    sim.acknowledge(first)
+    sim.acknowledge(second)
+    sim.run_until_idle()
+
+    assert sorted((n["station_id"], n["price"]) for n in sim.pricing.received) == [(first, 40), (second, 41)]
+    assert first not in _unacknowledged_ids(sim)
+    assert second not in _unacknowledged_ids(sim)

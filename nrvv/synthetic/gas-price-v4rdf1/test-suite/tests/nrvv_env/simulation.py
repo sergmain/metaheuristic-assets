@@ -1,206 +1,233 @@
-'''Deterministic simulated environment for the NRVV server side.
+"""Deterministic simulation of the clients and transport around the server side ``app``.
 
-Logical time is a step counter. Each step issues one client call, delivers one
-in-flight update, or delivers one acknowledgement, chosen by a seeded scheduler.
-A run is quiet when no client calls remain and no message is pending.
-'''
-
-import collections
+Nothing here implements the server side. The server side is reached only through the
+operations and ports the Interface names; the clients and the transport are simulated.
+Logical time is an integer that moves only when a test advances it. The only randomness
+is the delivery delay, drawn from random.Random(seed).
+"""
 import random
 
+NOTICE_BOUND = 60  # one minute of logical time (GASV4RDF1-32)
 
-SentUpdate = collections.namedtuple('SentUpdate', 'update_id step station price')
-DeliveredUpdate = collections.namedtuple('DeliveredUpdate', 'update_id step station price')
-DeliveredAck = collections.namedtuple('DeliveredAck', 'update_id step station price')
-ClientCall = collections.namedtuple('ClientCall', 'step client station price')
-Notice = collections.namedtuple('Notice', 'step station price')
-
-_InFlight = collections.namedtuple('_InFlight', 'update_id station price')
-_PendingAck = collections.namedtuple('_PendingAck', 'update_id price')
+ACK_CHANNEL = "ack"        # station -> server side
+NOTICE_CHANNEL = "notice"  # server side -> pricing team
 
 
-class Clock:
-    '''Logical time: a step counter advanced once per simulation step.'''
+class Message:
+    """A message handed to the transport."""
 
-    def __init__(self):
+    def __init__(self, seq, channel, payload, sent_at, deliver_at):
+        self.seq = seq
+        self.channel = channel
+        self.payload = payload
+        self.sent_at = sent_at
+        self.deliver_at = deliver_at
+
+    def __repr__(self):
+        return (f"Message(seq={self.seq}, channel={self.channel!r}, sent_at={self.sent_at}, "
+                f"deliver_at={self.deliver_at}, payload={self.payload!r})")
+
+
+class Transport:
+    """Ordered, lossless, non-duplicating delivery in logical time.
+
+    Each message is delivered after a delay drawn from the seeded generator. Delivery
+    times never decrease within a channel, so messages on one channel arrive in the order
+    they were sent. Messages due at the same instant are handed over in send order.
+    """
+
+    def __init__(self, rng, min_delay, max_delay):
+        if not 0 <= min_delay <= max_delay:
+            raise ValueError("need 0 <= min_delay <= max_delay")
+        self._rng = rng
+        self._min_delay = min_delay
+        self._max_delay = max_delay
         self.now = 0
+        self._seq = 0
+        self._in_flight = []
+        self._last_deliver_at = {}
+
+    def send(self, channel, payload):
+        delay = self._rng.randint(self._min_delay, self._max_delay)
+        deliver_at = max(self.now + delay, self._last_deliver_at.get(channel, 0))
+        self._last_deliver_at[channel] = deliver_at
+        msg = Message(self._seq, channel, payload, self.now, deliver_at)
+        self._seq += 1
+        self._in_flight.append(msg)
+        return msg
+
+    def in_flight(self):
+        return sorted(self._in_flight, key=lambda m: (m.deliver_at, m.seq))
+
+    def next_delivery_time(self):
+        return min((m.deliver_at for m in self._in_flight), default=None)
+
+    def deliver_next(self, handler):
+        """Move time to the next delivery and hand every message due then to handler.
+
+        Returns False when nothing is in flight.
+        """
+        t = self.next_delivery_time()
+        if t is None:
+            return False
+        self.now = max(self.now, t)
+        due = [m for m in self.in_flight() if m.deliver_at <= self.now]
+        self._in_flight = [m for m in self._in_flight if m.deliver_at > self.now]
+        for msg in due:
+            handler(msg)
+        return True
+
+    def advance(self, dt, handler):
+        """Advance logical time by dt, delivering everything due on the way."""
+        if dt < 0:
+            raise ValueError("cannot move logical time backwards")
+        target = self.now + dt
+        while True:
+            t = self.next_delivery_time()
+            if t is None or t > target:
+                break
+            self.deliver_next(handler)
+        self.now = target
 
 
 class Station:
-    '''Keeps one displayed price and a FIFO queue of acknowledgements.'''
+    """Station client: the price set for it, and the price it currently displays."""
 
-    def __init__(self, name):
-        self.name = name
-        self.displayed = None
-        self.acks = collections.deque()
+    def __init__(self, station_id):
+        self.station_id = station_id
+        self.desired_price = None
+        self.displayed_price = None
 
-    def receive(self, update_id, price):
-        self.displayed = price
-        self.acks.append(_PendingAck(update_id, price))
-
-
-class CentralClient:
-    '''A central client that issues its planned SetDesiredPrice calls in order.'''
-
-    def __init__(self, name, plan):
-        self.name = name
-        self.plan = collections.deque(plan)
+    def __repr__(self):
+        return (f"Station({self.station_id!r}, desired_price={self.desired_price!r}, "
+                f"displayed_price={self.displayed_price!r})")
 
 
 class PricingTeam:
-    '''Recipient of pricing notices; records each with its logical arrival time.'''
+    """Pricing-team client: a recorder of notices with their logical arrival time."""
 
-    def __init__(self, clock):
-        self._clock = clock
-        self.notices = []
+    def __init__(self):
+        self.received = []
 
-    def receive(self, station, price):
-        self.notices.append(Notice(self._clock.now, station, price))
+    def receive(self, arrival_time, notice):
+        notice["arrived_at"] = arrival_time
+        self.received.append(notice)
 
 
 class Simulation:
-    '''One seeded run of the simulated environment around a server.
+    """Wires the simulated clients and transport to the server side ``app``.
 
-    make_server(send_update, send_pricing_notice) must return an object with
-    set_desired_price(station, price), receive_acknowledgement(station, price)
-    and query_station_state(station). If make_server is not callable it is used
-    as the server object as it is.
+    The simulation installs the pricing-notice port on ``app`` as the attribute
+    ``send_pricing_team_notice``, and delivers each acknowledgement to ``app`` by calling
+    ``app.receive_acknowledgement(station_id, price)`` when the transport delivers it.
+    The pricing team reads through ``app.list_stations_not_acknowledging_latest_price()``.
+    """
 
-    script, if given, is a list with one plan per client; each plan is a list of
-    (station, price) pairs. Otherwise each client gets 'calls' random
-    (station, price) pairs drawn from the seed.
-    '''
-
-    def __init__(self, seed, make_server, stations, script=None, clients=3, calls=10,
-                 prices=tuple(range(1, 101))):
+    def __init__(self, seed, app, min_delay=0, max_delay=5):
         self.seed = seed
+        self.app = app
         self._rng = random.Random(seed)
-        self.clock = Clock()
-        self.station_names = list(stations)
-        if not self.station_names:
-            raise ValueError('at least one station is needed')
-        self.stations = {name: Station(name) for name in self.station_names}
-        self.pricing = PricingTeam(self.clock)
-        self.sent = []
-        self.delivered_updates = []
-        self.delivered_acks = []
-        self.client_calls = []
-        self._in_flight = []
-        self._last_update_id = 0
-
-        if script is None:
-            plans = []
-            for _ in range(clients):
-                plans.append([(self._rng.choice(self.station_names), self._rng.choice(prices))
-                              for _ in range(calls)])
-        else:
-            plans = [list(plan) for plan in script]
-        for plan in plans:
-            for station, _ in plan:
-                self._require_station(station)
-        self._clients = [CentralClient(i, plan) for i, plan in enumerate(plans)]
-
-        if callable(make_server):
-            self.server = make_server(self.send_update, self.send_pricing_notice)
-        else:
-            self.server = make_server
-
-    # Outbound ports, called by the server.
-
-    def send_update(self, station, price):
-        self._require_station(station)
-        self._last_update_id += 1
-        self.sent.append(SentUpdate(self._last_update_id, self.clock.now, station, price))
-        self._in_flight.append(_InFlight(self._last_update_id, station, price))
-
-    def send_pricing_notice(self, station, price):
-        self.pricing.receive(station, price)
-
-    # Logical time and scheduling.
+        self.transport = Transport(self._rng, min_delay, max_delay)
+        self.stations = {}
+        self.pricing = PricingTeam()
+        self.traffic = []   # every send and delivery, in the order they happened
+        self.notices = []   # every notice sent through the notice port
+        self._handling_ack = None
+        app.send_pricing_team_notice = self._notice_port
 
     @property
-    def quiet(self):
-        return not (self._in_flight
-                    or any(client.plan for client in self._clients)
-                    or any(station.acks for station in self.stations.values()))
+    def now(self):
+        return self.transport.now
+
+    def add_station(self, station_id):
+        if station_id in self.stations:
+            raise ValueError(f"station {station_id!r} already exists")
+        station = Station(station_id)
+        self.stations[station_id] = station
+        return station
+
+    def set_desired_price(self, station_id, price):
+        self.stations[station_id].desired_price = price
+
+    def acknowledge(self, station_id):
+        """Station displays its desired price and sends the acknowledgement over the transport."""
+        station = self.stations[station_id]
+        if station.desired_price is None:
+            raise ValueError(f"station {station_id!r} has no desired price to acknowledge")
+        station.displayed_price = station.desired_price
+        payload = {"station_id": station_id, "price": station.displayed_price}
+        msg = self.transport.send(ACK_CHANNEL, payload)
+        self._record("sent", msg)
+        return msg
+
+    def list_unacknowledged(self):
+        """Pricing team's read-only query. Changes no state and sends nothing."""
+        return self.app.list_stations_not_acknowledging_latest_price()
+
+    def in_flight(self):
+        return self.transport.in_flight()
 
     def step(self):
-        '''Runs one step; returns False (and does not advance time) if the run is quiet.'''
-        kinds = []
-        if any(client.plan for client in self._clients):
-            kinds.append('call')
-        if self._in_flight:
-            kinds.append('update')
-        if any(station.acks for station in self.stations.values()):
-            kinds.append('ack')
-        if not kinds:
-            return False
-        self.clock.now += 1
-        kind = self._rng.choice(kinds)
-        if kind == 'call':
-            self._issue_call()
-        elif kind == 'update':
-            self._deliver_update()
-        else:
-            self._deliver_ack()
-        return True
+        """Deliver the next due batch of messages. Returns False when nothing is in flight."""
+        return self.transport.deliver_next(self._deliver)
 
-    def run(self, max_steps=None):
-        '''Steps until quiet; returns the number of steps taken.'''
+    def run_until_idle(self, max_steps=100000):
+        """Step until nothing is in flight. Returns the number of steps taken."""
         steps = 0
-        while not self.quiet:
-            if max_steps is not None and steps >= max_steps:
-                raise RuntimeError(f'not quiet after {max_steps} steps')
+        while self.transport.in_flight():
+            if steps >= max_steps:
+                raise RuntimeError("transport still busy after max_steps steps")
             self.step()
             steps += 1
         return steps
 
-    def _issue_call(self):
-        client = self._rng.choice([c for c in self._clients if c.plan])
-        station, price = client.plan.popleft()
-        self.client_calls.append(ClientCall(self.clock.now, client.name, station, price))
-        self.server.set_desired_price(station, price)
+    def advance_time(self, dt):
+        self.transport.advance(dt, self._deliver)
 
-    def _deliver_update(self):
-        message = self._in_flight.pop(self._rng.randrange(len(self._in_flight)))
-        self.stations[message.station].receive(message.update_id, message.price)
-        self.delivered_updates.append(
-            DeliveredUpdate(message.update_id, self.clock.now, message.station, message.price))
+    def late_notices(self):
+        """Notices not delivered within NOTICE_BOUND of the acknowledgement that caused them.
 
-    def _deliver_ack(self):
-        station = self._rng.choice([s for s in self.stations.values() if s.acks])
-        ack = station.acks.popleft()
-        self.delivered_acks.append(DeliveredAck(ack.update_id, self.clock.now, station.name, ack.price))
-        self.server.receive_acknowledgement(station.name, ack.price)
+        A notice still in flight counts as late once the bound has passed at the current time.
+        Notices sent outside handling of an acknowledgement have no cause and are not checked.
+        """
+        late = []
+        for notice in self.notices:
+            if notice["ack_sent_at"] is None:
+                continue
+            end = notice["arrived_at"] if notice["arrived_at"] is not None else self.now
+            if end - notice["ack_sent_at"] > NOTICE_BOUND:
+                late.append(notice)
+        return late
 
-    # Observation. None of these changes simulated state.
+    def _deliver(self, msg):
+        self._record("delivered", msg)
+        if msg.channel == ACK_CHANNEL:
+            self._handling_ack = msg
+            try:
+                self.app.receive_acknowledgement(msg.payload["station_id"], msg.payload["price"])
+            finally:
+                self._handling_ack = None
+        elif msg.channel == NOTICE_CHANNEL:
+            self.pricing.receive(self.now, msg.payload)
 
-    def displayed(self, station):
-        return self.stations[station].displayed
+    def _notice_port(self, station_id, price):
+        ack = self._handling_ack
+        notice = {
+            "station_id": station_id,
+            "price": price,
+            "sent_at": self.now,
+            "ack_sent_at": ack.sent_at if ack is not None else None,
+            "arrived_at": None,
+        }
+        self.notices.append(notice)
+        msg = self.transport.send(NOTICE_CHANNEL, notice)
+        self._record("sent", msg)
 
-    def query(self, station):
-        return self.server.query_station_state(station)
-
-    def desired_at(self, station, step):
-        '''The desired price clients had set for the station by the given step, or None.'''
-        price = None
-        for call in self.client_calls:
-            if call.step > step:
-                break
-            if call.station == station:
-                price = call.price
-        return price
-
-    def latest_desired(self, station):
-        return self.desired_at(station, self.clock.now)
-
-    def last_ack(self, station):
-        '''The last acknowledgement delivered for the station, or None.'''
-        for ack in reversed(self.delivered_acks):
-            if ack.station == station:
-                return ack
-        return None
-
-    def _require_station(self, station):
-        if station not in self.stations:
-            raise KeyError(f'unknown station {station!r}')
+    def _record(self, event, msg):
+        self.traffic.append({
+            "t": self.now,
+            "event": event,
+            "channel": msg.channel,
+            "seq": msg.seq,
+            "payload": msg.payload,
+        })

@@ -1,27 +1,22 @@
-'''Simulated environment (nrvv_env) for the NRVV server side.'''
-
+"""Simulated environment (clients and transport) around the NRVV server side ``app``."""
 from .simulation import (
-    CentralClient,
-    Clock,
-    ClientCall,
-    DeliveredAck,
-    DeliveredUpdate,
-    Notice,
+    ACK_CHANNEL,
+    NOTICE_BOUND,
+    NOTICE_CHANNEL,
+    Message,
     PricingTeam,
-    SentUpdate,
     Simulation,
     Station,
+    Transport,
 )
 
 __all__ = [
-    'CentralClient',
-    'Clock',
-    'ClientCall',
-    'DeliveredAck',
-    'DeliveredUpdate',
-    'Notice',
-    'PricingTeam',
-    'SentUpdate',
-    'Simulation',
-    'Station',
+    "ACK_CHANNEL",
+    "NOTICE_BOUND",
+    "NOTICE_CHANNEL",
+    "Message",
+    "PricingTeam",
+    "Simulation",
+    "Station",
+    "Transport",
 ]

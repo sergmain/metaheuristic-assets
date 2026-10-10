@@ -1,77 +1,107 @@
-'''Suite for GASV4RDF1-30: notify the pricing team within one minute that a station holds a new price.'''
-
+'''GASV4RDF1-54 / GASV4RDF1-39: the service notifies the pricing team within one minute of
+receiving an acknowledgement that a station displays its latest desired price.'''
 import app
-import nrvv_env
+from nrvv_env import ACK_CHANNEL, NOTICE_BOUND, NOTICE_CHANNEL, Simulation
 
-ONE_MINUTE = 60
-STATIONS = ['S1', 'S2', 'S3']
-SEEDS = range(1, 21)
+SEEDS = [0, 1, 2, 3, 4]
 
 
-def _make_server(send_update, send_pricing_notice):
-    factories = [getattr(app, name) for name in ('create_server', 'make_server', 'build_server')
-                 if callable(getattr(app, name, None))]
-    factories += [value for name, value in vars(app).items()
-                  if name[:1].isupper() and isinstance(value, type) and value.__module__ == app.__name__]
-    for factory in factories:
-        try:
-            server = factory(send_update, send_pricing_notice)
-        except TypeError:
-            continue
-        if all(callable(getattr(server, op, None))
-               for op in ('set_desired_price', 'receive_acknowledgement', 'query_station_state')):
-            return server
-    raise AssertionError('app does not provide a server built from the two outbound ports')
+def _receipt_time(sim, station_id, price):
+    times = [
+        ev['t']
+        for ev in sim.traffic
+        if ev['event'] == 'delivered'
+        and ev['channel'] == ACK_CHANNEL
+        and ev['payload'] == {'station_id': station_id, 'price': price}
+    ]
+    assert times, f'no acknowledgement of {price} from {station_id} was received'
+    return times[0]
 
 
-def _acks_showing_latest_price(sim):
-    '''Delivered acknowledgements whose price is the latest desired price for the station at receipt.'''
-    return [ack for ack in sim.delivered_acks
-            if ack.price == sim.desired_at(ack.station, ack.step)]
+def _issued_within_bound(sim, station_id, price, receipt):
+    return [
+        n for n in sim.notices
+        if n['station_id'] == station_id
+        and n['price'] == price
+        and receipt <= n['sent_at'] <= receipt + NOTICE_BOUND
+    ]
 
 
-def _assert_pricing_notified_in_time(sim, seed):
-    acks = _acks_showing_latest_price(sim)
-    for ack in acks:
-        in_time = [n for n in sim.pricing.notices
-                   if n.station == ack.station and n.price == ack.price
-                   and ack.step <= n.step <= ack.step + ONE_MINUTE]
-        assert in_time, (f'seed {seed}: no pricing notice for {ack.station} at {ack.price} '
-                         f'within {ONE_MINUTE} steps after the ack at step {ack.step}')
-    return len(acks)
-
-
-def test_latest_price_ack_notifies_pricing_team_within_one_minute():
-    checked = 0
+def test_notice_issued_within_bound_after_ack_receipt():
     for seed in SEEDS:
-        sim = nrvv_env.Simulation(seed, _make_server, STATIONS)
-        sim.run(max_steps=20000)
-        checked += _assert_pricing_notified_in_time(sim, seed)
-    assert checked > 0
+        sim = Simulation(seed, app, min_delay=0, max_delay=5)
+        sid = f'A-{seed}'
+        price = 100 + seed
+        sim.add_station(sid)
+        sim.set_desired_price(sid, price)
+        sim.acknowledge(sid)
+        sim.run_until_idle()
+        receipt = _receipt_time(sim, sid, price)
+        assert _issued_within_bound(sim, sid, price, receipt), (
+            f'seed {seed}: no notice issued within {NOTICE_BOUND} of receipt at t={receipt}; '
+            f'notices={sim.notices}'
+        )
 
 
-def test_scripted_single_price_notice_names_station_and_confirmed_price():
-    sim = nrvv_env.Simulation(1, _make_server, ['S1'], script=[[('S1', 7)]])
-    sim.run(max_steps=1000)
-    assert _assert_pricing_notified_in_time(sim, 1) == 1
-    assert any(n.station == 'S1' and n.price == 7 for n in sim.pricing.notices)
+def test_notice_names_station_and_confirmed_price_and_reaches_pricing_team():
+    sim = Simulation(11, app, min_delay=0, max_delay=5)
+    sim.add_station('B-1')
+    sim.set_desired_price('B-1', 250)
+    sim.acknowledge('B-1')
+    sim.run_until_idle()
+    assert any(n['station_id'] == 'B-1' and n['price'] == 250 for n in sim.notices), sim.notices
+    assert any(ev['event'] == 'sent' and ev['channel'] == NOTICE_CHANNEL for ev in sim.traffic)
+    assert any(n['station_id'] == 'B-1' and n['price'] == 250 for n in sim.pricing.received), sim.pricing.received
 
 
-def test_notice_within_one_minute_when_many_calls_queue_on_one_station():
-    script = [[('S1', p) for p in range(1, 26)], [('S1', p) for p in range(26, 51)]]
-    checked = 0
-    for seed in range(1, 11):
-        sim = nrvv_env.Simulation(seed, _make_server, ['S1'], script=script)
-        sim.run(max_steps=20000)
-        checked += _assert_pricing_notified_in_time(sim, seed)
-    assert checked > 0
+def test_every_station_notice_within_bound_after_its_receipt():
+    for seed in SEEDS:
+        sim = Simulation(seed, app, min_delay=0, max_delay=5)
+        prices = {}
+        for i in range(4):
+            sid = f'C-{seed}-{i}'
+            prices[sid] = 300 + 10 * i + seed
+            sim.add_station(sid)
+            sim.set_desired_price(sid, prices[sid])
+            sim.acknowledge(sid)
+        sim.run_until_idle()
+        for sid, price in prices.items():
+            receipt = _receipt_time(sim, sid, price)
+            assert _issued_within_bound(sim, sid, price, receipt), (
+                f'seed {seed}: station {sid} price {price}: no notice within {NOTICE_BOUND} of receipt at t={receipt}; '
+                f'notices={sim.notices}'
+            )
 
 
-def test_notice_within_one_minute_under_heavier_load_on_five_stations():
-    stations = ['S1', 'S2', 'S3', 'S4', 'S5']
-    checked = 0
-    for seed in range(21, 31):
-        sim = nrvv_env.Simulation(seed, _make_server, stations, clients=5, calls=30)
-        sim.run(max_steps=50000)
-        checked += _assert_pricing_notified_in_time(sim, seed)
-    assert checked > 0
+def test_bound_counts_from_receipt_when_transport_delay_is_long():
+    for seed in SEEDS:
+        sim = Simulation(seed, app, min_delay=50, max_delay=59)
+        sid = f'D-{seed}'
+        price = 400 + seed
+        sim.add_station(sid)
+        sim.set_desired_price(sid, price)
+        sim.acknowledge(sid)
+        sim.advance_time(25)
+        sim.run_until_idle()
+        receipt = _receipt_time(sim, sid, price)
+        assert _issued_within_bound(sim, sid, price, receipt), (
+            f'seed {seed}: no notice within {NOTICE_BOUND} of receipt at t={receipt}; '
+            f'notices={sim.notices}'
+        )
+
+
+def test_each_new_price_notified_within_bound_after_its_receipt():
+    sim = Simulation(21, app, min_delay=0, max_delay=5)
+    sid = 'E-1'
+    sim.add_station(sid)
+    for price in (100, 120, 140):
+        sim.set_desired_price(sid, price)
+        sim.acknowledge(sid)
+        sim.run_until_idle()
+        sim.advance_time(1000)
+    for price in (100, 120, 140):
+        receipt = _receipt_time(sim, sid, price)
+        assert _issued_within_bound(sim, sid, price, receipt), (
+            f'price {price}: no notice within {NOTICE_BOUND} of receipt at t={receipt}; '
+            f'notices={sim.notices}'
+        )
