@@ -15,6 +15,8 @@
 #    "text": "<why>"}
 # exactly one of element and shares; a split has at least two shares, each for a different element, each text at most
 # SHARE_MAX_BYTES UTF-8 bytes. A missing kind is read as ALLOCATION_PROPOSAL; a null element or null shares as absent.
+# A subject naming a requirement's live row (the "(now ...)" of the prompt) is read as that requirement's reqId - the
+# lineage root the canonical answer names (development run 2026-10-10: CC answered with the live row).
 # The Dispatcher's mhdg-nrvv.store-findings checks the same rules again (NrvvAllocationUtils.parseAllocationProposals):
 # a bad answer fails HERE, at the check Task, where resetting the CC Task repairs it.
 #
@@ -140,6 +142,8 @@ def findings_of(cc_result, context):
     codes = {str(e['code']) for e in context['elements']}
     order = [str(t['reqId']) for t in context['topLevel']]
     wanted = set(order)
+    root_of_live = {str(t['liveReqId']): str(t['reqId']) for t in context['topLevel']
+                    if t.get('liveReqId') and str(t['liveReqId']) != str(t['reqId'])}
     by_subject = {}
     for i, f in enumerate(data['findings']):
         if not isinstance(f, dict):
@@ -154,6 +158,7 @@ def findings_of(cc_result, context):
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError('proposal #' + str(i) + ' has no text')
         subject = str(f.get('subject') or '').strip()
+        subject = root_of_live.get(subject, subject)
         if subject not in wanted:
             raise ValueError('proposal #' + str(i) + ' names subject ' + repr(subject) + ', which is not a requirement to allocate')
         if subject in by_subject:

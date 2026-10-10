@@ -107,6 +107,15 @@ def test_findings_of_unwraps_one_fence_and_reads_a_missing_kind_and_a_null_eleme
     assert 'element' not in out['findings'][0]
 
 
+def test_findings_of_a_live_reqid_names_its_lineage_root():
+    # development run 2026-10-10 (run #90): CC answered with the live row the prompt shows as "(now ...)"
+    live = {**SINGLE_4, 'subject': 'GAS-9'}
+    out = ap.findings_of(answer(SPLIT_3, live), ap.context_of(CONTEXT_JSON))
+    assert [f['subject'] for f in out['findings']] == ['GAS-3', 'GAS-4'], 'GAS-9 is the live row of GAS-4'
+    with pytest.raises(ValueError, match='names GAS-4 a second time'):
+        ap.findings_of(answer(SPLIT_3, SINGLE_4, live), ap.context_of(CONTEXT_JSON))
+
+
 @pytest.mark.parametrize('cc_result, message', [
     ('not json', 'not JSON'),
     (json.dumps({'proposals': []}), r'no \{"findings"'),
