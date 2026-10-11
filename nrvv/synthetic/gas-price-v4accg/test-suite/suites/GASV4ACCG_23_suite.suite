@@ -1,0 +1,6 @@
+# GASV4ACCG_23_suite - written by nrvv-test-author
+tests/test_GASV4ACCG_23_suite.py::test_single_acknowledgment_tracked
+tests/test_GASV4ACCG_23_suite.py::test_multiple_acknowledgments_show_highest_version
+tests/test_GASV4ACCG_23_suite.py::test_independent_ack_status_per_station
+tests/test_GASV4ACCG_23_suite.py::test_ordered_acks_fifo_per_station
+tests/test_GASV4ACCG_23_suite.py::test_resend_uses_ack_status_for_targeting

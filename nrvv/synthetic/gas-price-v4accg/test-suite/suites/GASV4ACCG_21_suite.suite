@@ -1,0 +1,9 @@
+# GASV4ACCG_21_suite - written by nrvv-test-author
+tests/test_GASV4ACCG_21_suite.py::test_publish_price_returns_integer_version
+tests/test_GASV4ACCG_21_suite.py::test_versions_strictly_increase
+tests/test_GASV4ACCG_21_suite.py::test_published_versions_unique
+tests/test_GASV4ACCG_21_suite.py::test_consecutive_versions_increment_by_one
+tests/test_GASV4ACCG_21_suite.py::test_get_latest_version_returns_published_version
+tests/test_GASV4ACCG_21_suite.py::test_latest_version_is_maximum
+tests/test_GASV4ACCG_21_suite.py::test_latest_version_never_decreases
+tests/test_GASV4ACCG_21_suite.py::test_versions_with_different_price_values

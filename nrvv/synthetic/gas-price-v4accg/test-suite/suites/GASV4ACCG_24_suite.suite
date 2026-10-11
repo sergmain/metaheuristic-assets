@@ -1,0 +1,8 @@
+# GASV4ACCG_24_suite - written by nrvv-test-author
+tests/test_GASV4ACCG_24_suite.py::test_resend_latest_only_single_station
+tests/test_GASV4ACCG_24_suite.py::test_resend_multiple_stale_stations
+tests/test_GASV4ACCG_24_suite.py::test_resend_uptodate_station_unchanged
+tests/test_GASV4ACCG_24_suite.py::test_resend_no_intermediate_versions
+tests/test_GASV4ACCG_24_suite.py::test_resend_to_never_acked_station
+tests/test_GASV4ACCG_24_suite.py::test_resend_multiple_calls_send_current_latest
+tests/test_GASV4ACCG_24_suite.py::test_resend_cost_exactly_one_per_stale_station
