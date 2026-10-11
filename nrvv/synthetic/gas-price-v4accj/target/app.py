@@ -1,148 +1,124 @@
 """Server side of the desired-price update service.
 
 Each station has a desired price (overwritten by every change), a held price (the
-last price the station acknowledged) and at most one outstanding send. A send is
-due when the desired price differs from the held price, nothing is outstanding,
-and at least 60 seconds have passed since the previous send. An unacknowledged
-send is abandoned 30 seconds after it was made.
+price the station last acknowledged) and at most one outstanding send. A send is due
+when the desired price differs from the held price, nothing is outstanding, and at
+least SEND_SPACING seconds have passed since the previous send to that station. An
+unacknowledged send is abandoned ABANDON_AFTER seconds after it was made; the held
+price is left as it was.
 
-The server has no clock of its own. It learns the simulated time only from
-simulated_time_wake_up, so it asks for a wake-up at once after each send, to learn
-the exact time of that send, and at each instant a send becomes due or abandoned.
+The server has no clock of its own. The environment calls simulated_time_wakeup once
+per simulated second, after that second's changes and acknowledgements that were due
+before the wake-up, so every decision is taken at a wake-up that carries the true
+time. Each acknowledgement that changes a held price is reported to the pricing team
+at the next wake-up. An acknowledgement that the environment delivers after that
+second's wake-up is reported at the following wake-up, one second late.
+
+connect(ports) starts a new session; no state is carried over from the previous one.
 """
 
-import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
-SEND_SPACING = 60.0
-ABANDON_AFTER = 30.0
-
-# Ports set by the environment when it connects; None until then.
-send_price_update = None
-request_wake_up = None
+SEND_SPACING = 60
+ABANDON_AFTER = 30
 
 
 @dataclass
 class Send:
-    send_id: object
+    send_id: int
     price: int
-    sent_at: Optional[float] = None  # None until a wake-up reports the time of the send
+    sent_at: int
 
 
 @dataclass
 class StationStatus:
-    station: object
+    station: str
     desired_price: Optional[int]
     held_price: Optional[int]
     outstanding_send: Optional[Send]
-    last_send_time: Optional[float]
+    last_send_time: Optional[int]
 
 
 class _Station:
     def __init__(self):
-        self.desired = None
-        self.held = None
-        self.last = None         # most recent send, outstanding or not
-        self.outstanding = None  # the send awaiting acknowledgement or abandonment
+        self.desired: Optional[int] = None
+        self.held: Optional[int] = None
+        self.outstanding: Optional[Send] = None
+        self.last_send_time: Optional[int] = None
 
 
 class _Session:
-    """Server state for one connection to the environment.
-
-    The state belongs to the connection: when the environment connects again, it is
-    a new simulation with its clock back at zero, so the server starts from nothing.
-    """
-
-    def __init__(self, owner):
-        self.owner = owner
-        self.now = None  # latest simulated time the server was told
+    def __init__(self, ports):
+        self.ports = ports
+        self.now: Optional[int] = None
         self.next_send_id = 1
-        self.stations = {}
-        self.wake_ups = set()  # times already asked for, so each is requested once
+        self.stations: Dict[str, _Station] = {}
+        self.newly_held: List[Tuple[str, int]] = []  # (station, price) awaiting notification
 
-    def station(self, name):
+    def station(self, name: str) -> _Station:
         if name not in self.stations:
             self.stations[name] = _Station()
         return self.stations[name]
 
-    def want_wake_up(self, at_time):
-        if at_time not in self.wake_ups:
-            self.wake_ups.add(at_time)
-            request_wake_up(at_time)
-
-    def set_desired(self, name, price):
+    def set_desired(self, name: str, price: int) -> None:
         self.station(name).desired = price
-        self.decide(name)
 
-    def acknowledged(self, name, send_id):
+    def acknowledged(self, name: str, send_id: int) -> None:
         st = self.station(name)
         if st.outstanding is None or st.outstanding.send_id != send_id:
             return  # repeated or unknown acknowledgement
         st.held = st.outstanding.price
         st.outstanding = None
-        self.decide(name)
+        self.newly_held.append((name, st.held))
 
-    def wake(self, now):
+    def wake(self, now: int) -> None:
         self.now = now
         for st in self.stations.values():
-            if st.last is not None and st.last.sent_at is None:
-                st.last.sent_at = now
-                if st.outstanding is st.last:
-                    self.want_wake_up(now + ABANDON_AFTER)
-            if st.outstanding is not None and now >= st.outstanding.sent_at + ABANDON_AFTER:
+            if st.outstanding is not None and now - st.outstanding.sent_at >= ABANDON_AFTER:
                 st.outstanding = None  # abandoned; the held price stays as it was
-        for name in list(self.stations):
-            self.decide(name)
+        for name, price in self.newly_held:
+            self.ports.notify_pricing_team(name, price, now)
+        self.newly_held.clear()
+        for name, st in list(self.stations.items()):
+            self._decide(name, st, now)
 
-    def decide(self, name):
-        st = self.station(name)
+    def _decide(self, name: str, st: _Station, now: int) -> None:
         if st.desired is None or st.desired == st.held or st.outstanding is not None:
             return
-        if st.last is not None:
-            if st.last.sent_at is None:
-                return  # the wake-up that reports the time of the last send decides again
-            due_at = st.last.sent_at + SEND_SPACING
-            while due_at - st.last.sent_at < SEND_SPACING:  # keep the gap >= 60 s after rounding
-                due_at = math.nextafter(due_at, math.inf)
-            if self.now is None or self.now < due_at:
-                self.want_wake_up(due_at)
-                return
-        self._send(name, st)
-
-    def _send(self, name, st):
-        send = Send(self.next_send_id, st.desired)
+        if st.last_send_time is not None and now - st.last_send_time < SEND_SPACING:
+            return  # due at last_send_time + SEND_SPACING; the wake-up at that second decides
+        send = Send(self.next_send_id, st.desired, now)
         self.next_send_id += 1
-        st.last = st.outstanding = send
-        send_price_update(name, send.price, send.send_id)
-        request_wake_up(0.0)  # a wake-up at once reports the time of this send
+        st.outstanding = send
+        st.last_send_time = now
+        self.ports.send_price_update(name, send.price, send.send_id)
+
+    def status(self, name: str) -> StationStatus:
+        st = self.station(name)
+        return StationStatus(name, st.desired, st.held, st.outstanding, st.last_send_time)
 
 
-_session = None
+_session = _Session(None)
 
 
-def _current():
+def connect(ports) -> None:
     global _session
-    owner = getattr(send_price_update, "__self__", send_price_update)
-    if _session is None or _session.owner is not owner:
-        _session = _Session(owner)
-    return _session
+    _session = _Session(ports)
 
 
-def set_desired_price(station, price):
-    _current().set_desired(station, price)
+def set_desired_price(station, price) -> bool:
+    _session.set_desired(station, price)
     return True
 
 
-def acknowledgement_received(station, send_id):
-    _current().acknowledged(station, send_id)
+def acknowledgement_received(station, send_id) -> None:
+    _session.acknowledged(station, send_id)
 
 
-def simulated_time_wake_up(now):
-    _current().wake(now)
+def simulated_time_wakeup(now) -> None:
+    _session.wake(now)
 
 
-def query_station_status(station):
-    st = _current().station(station)
-    last_time = st.last.sent_at if st.last is not None else None
-    return StationStatus(station, st.desired, st.held, st.outstanding, last_time)
+def query_station_status(station) -> StationStatus:
+    return _session.status(station)
