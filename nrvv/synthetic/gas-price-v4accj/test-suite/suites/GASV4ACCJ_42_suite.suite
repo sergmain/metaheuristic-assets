@@ -1,0 +1,4 @@
+# GASV4ACCJ_42_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_42_suite.py::test_send_stays_outstanding_and_no_new_send_before_30_seconds
+tests/test_GASV4ACCJ_42_suite.py::test_send_is_abandoned_at_exactly_30_seconds_and_held_price_is_unchanged
+tests/test_GASV4ACCJ_42_suite.py::test_decision_logic_may_send_again_after_abandonment

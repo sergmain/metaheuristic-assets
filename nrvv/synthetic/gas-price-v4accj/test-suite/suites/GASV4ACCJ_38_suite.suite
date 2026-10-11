@@ -1,0 +1,4 @@
+# GASV4ACCJ_38_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_38_suite.py::test_second_update_held_while_first_send_outstanding
+tests/test_GASV4ACCJ_38_suite.py::test_second_update_sent_once_first_send_acknowledged
+tests/test_GASV4ACCJ_38_suite.py::test_second_update_sent_after_timeout_without_acknowledgement

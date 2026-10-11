@@ -1,0 +1,4 @@
+# GASV4ACCJ_31_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_31_suite.py::test_every_delivered_message_is_bare_price_int
+tests/test_GASV4ACCJ_31_suite.py::test_station_holds_only_bare_price_values_it_was_sent
+tests/test_GASV4ACCJ_31_suite.py::test_every_send_passes_a_bare_price_value

@@ -1,0 +1,5 @@
+# GASV4ACCJ_36_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_36_suite.py::test_next_send_within_60_seconds_default_run
+tests/test_GASV4ACCJ_36_suite.py::test_next_send_within_60_seconds_heavy_loss
+tests/test_GASV4ACCJ_36_suite.py::test_next_send_within_60_seconds_no_loss
+tests/test_GASV4ACCJ_36_suite.py::test_next_send_within_60_seconds_many_stations_and_bursts

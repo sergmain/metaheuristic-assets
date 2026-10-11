@@ -1,0 +1,3 @@
+# GASV4ACCJ_40_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_40_suite.py::test_stale_and_duplicate_redelivery_still_leaves_latest_price
+tests/test_GASV4ACCJ_40_suite.py::test_every_station_settles_on_latest_price_under_loss_and_reordering

@@ -1,0 +1,5 @@
+# GASV4ACCJ_32_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_32_suite.py::test_no_send_before_sixty_seconds_after_acknowledged_send
+tests/test_GASV4ACCJ_32_suite.py::test_single_send_at_sixty_seconds_carries_latest_price
+tests/test_GASV4ACCJ_32_suite.py::test_abandoned_send_still_holds_back_next_send_until_sixty_seconds
+tests/test_GASV4ACCJ_32_suite.py::test_consecutive_sends_to_a_station_are_at_least_sixty_seconds_apart

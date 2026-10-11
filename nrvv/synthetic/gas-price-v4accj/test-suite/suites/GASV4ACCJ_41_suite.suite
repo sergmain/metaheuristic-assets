@@ -1,0 +1,4 @@
+# GASV4ACCJ_41_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_41_suite.py::test_changed_price_is_sent_to_station_within_120_seconds
+tests/test_GASV4ACCJ_41_suite.py::test_changed_price_is_sent_within_120_seconds_under_heavy_loss
+tests/test_GASV4ACCJ_41_suite.py::test_acknowledged_price_is_not_sent_again
