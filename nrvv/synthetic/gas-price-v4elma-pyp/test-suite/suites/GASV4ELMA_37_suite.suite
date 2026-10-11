@@ -1,0 +1,4 @@
+# GASV4ELMA_37_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_37_suite.py::test_reachable_station_shows_last_price_within_10_minutes
+tests/test_GASV4ELMA_37_suite.py::test_station_reconnecting_before_last_price_converges
+tests/test_GASV4ELMA_37_suite.py::test_every_station_converges_with_five_stations

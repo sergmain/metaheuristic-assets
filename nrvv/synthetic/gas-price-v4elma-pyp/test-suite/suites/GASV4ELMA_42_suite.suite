@@ -1,0 +1,6 @@
+# GASV4ELMA_42_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_42_suite.py::test_no_dispatch_while_station_unreachable
+tests/test_GASV4ELMA_42_suite.py::test_first_dispatch_after_reconnect_carries_newest_price
+tests/test_GASV4ELMA_42_suite.py::test_replaced_price_is_never_dispatched
+tests/test_GASV4ELMA_42_suite.py::test_replacement_dispatches_during_same_call_when_reachable
+tests/test_GASV4ELMA_42_suite.py::test_replacements_are_accepted_and_run_passes_oracle
