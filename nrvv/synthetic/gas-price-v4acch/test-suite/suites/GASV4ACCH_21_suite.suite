@@ -1,0 +1,9 @@
+# GASV4ACCH_21_suite - written by nrvv-test-author
+tests/test_GASV4ACCH_21_suite.py::test_no_transmission_for_unchanged_price
+tests/test_GASV4ACCH_21_suite.py::test_transmission_for_changed_price
+tests/test_GASV4ACCH_21_suite.py::test_acknowledged_price_becomes_baseline
+tests/test_GASV4ACCH_21_suite.py::test_independent_per_station_tracking
+tests/test_GASV4ACCH_21_suite.py::test_sequence_with_alternating_prices
+tests/test_GASV4ACCH_21_suite.py::test_message_id_monotonicity_per_station
+tests/test_GASV4ACCH_21_suite.py::test_latest_price_only_transmission
+tests/test_GASV4ACCH_21_suite.py::test_price_change_after_multiple_acks

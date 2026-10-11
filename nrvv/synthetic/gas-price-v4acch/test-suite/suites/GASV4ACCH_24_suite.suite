@@ -1,0 +1,7 @@
+# GASV4ACCH_24_suite - written by nrvv-test-author
+tests/test_GASV4ACCH_24_suite.py::test_monotonic_message_ids_per_station
+tests/test_GASV4ACCH_24_suite.py::test_no_message_sent_below_acked_message_id
+tests/test_GASV4ACCH_24_suite.py::test_multiple_stations_maintain_independent_ack_state
+tests/test_GASV4ACCH_24_suite.py::test_no_duplicate_message_ids_per_station
+tests/test_GASV4ACCH_24_suite.py::test_multiple_ack_cycles_maintain_invariant
+tests/test_GASV4ACCH_24_suite.py::test_no_lower_id_sent_after_higher_id_acked

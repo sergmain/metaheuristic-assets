@@ -1,0 +1,7 @@
+# GASV4ACCH_19_suite - written by nrvv-test-author
+tests/test_GASV4ACCH_19_suite.py::test_station_eventually_applies_transmitted_price
+tests/test_GASV4ACCH_19_suite.py::test_stations_eventually_apply_new_price
+tests/test_GASV4ACCH_19_suite.py::test_stations_settle_on_latest_of_multiple_prices
+tests/test_GASV4ACCH_19_suite.py::test_stations_cease_using_earlier_prices
+tests/test_GASV4ACCH_19_suite.py::test_rapid_price_updates_converge
+tests/test_GASV4ACCH_19_suite.py::test_all_stations_converge_to_same_latest_price
