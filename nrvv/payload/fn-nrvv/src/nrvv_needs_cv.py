@@ -51,6 +51,16 @@ def traced_by_need(trace):
     return out
 
 
+# The LAST part of the prompt: how the answer is stored. CC reads it after the NEEDs, so it acts on it.
+ANSWER = [
+    '',
+    'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+    '{"findings": [{"kind": "<kind>", "subject": "<NEED reqId>", "counterpart": "<reqId or null>", '
+    '"text": "<what is wrong>"}]}',
+    'Print nothing - neither the findings nor any explanation: only what the tool stores reaches the pipeline.',
+]
+
+
 def compose(trace):
     """The needs-CV prompt over `trace`."""
     lines = [
@@ -81,14 +91,17 @@ def compose(trace):
         '- Do not report the "assumed: ..." items in the requirements\' Rationale: they are recorded separately.',
         '- Never recommend an outcome and never rewrite a NEED or a requirement.',
         '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"findings": [{"kind": "<kind>", "subject": "<NEED reqId>", "counterpart": "<reqId or null>", '
-        '"text": "<what is wrong>"}]}',
-        '',
+        # plan 045 Phase 36 (2026-10-11, by CT): the answer instruction moved to the END (ANSWER) - after reading the
+        # NEEDs last, haiku printed its findings instead of calling the result tool (acceptance run NEEDS_CV #138), as
+        # the criterion prompt did before 21df128. It was:
+        #   'Store your answer with the result tool as exactly this JSON object, and nothing else:',
+        #   '{"findings": [{"kind": "<kind>", "subject": "<NEED reqId>", "counterpart": "<reqId or null>", '
+        #   '"text": "<what is wrong>"}]}',
+        #   '',
     ]
     if not trace:
         lines.append('The project has no agreed NEED.')
-        return '\n'.join(lines)
+        return '\n'.join(lines + ANSWER)
     lines.append('The agreed NEEDs, each with the requirements it traces to:')
     for n in trace:
         lines.append('')
@@ -106,7 +119,7 @@ def compose(trace):
             lines.append('  Traces to requirement ' + name + ':')
             for text_line in str(r.get('text') or '').strip().splitlines():
                 lines.append('    ' + text_line)
-    return '\n'.join(lines)
+    return '\n'.join(lines + ANSWER)
 
 
 def findings_of(cc_result, trace):

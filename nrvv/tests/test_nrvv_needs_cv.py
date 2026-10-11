@@ -98,3 +98,22 @@ def test_findings_of_unwraps_one_fence_and_accepts_no_finding():
 def test_findings_of_refuses(answer, message):
     with pytest.raises(ValueError, match=message):
         cv.findings_of(answer, TRACE)
+
+
+def test_the_needs_cv_prompt_ends_with_how_the_answer_is_stored():
+    # plan 045 Phase 36 (by CT): acceptance run I's NEEDS_CV #138 - haiku read the NEEDs, the prompt's LAST part,
+    # analyzed them and printed its answer instead of calling the result tool, and call-cc failed the Task (the
+    # criterion prompt's failure, fixed there by 21df128)
+    prompt = cv.compose(TRACE)
+
+    # CT Green-1: the answer instruction came BEFORE the NEEDs, and the prompt ended with the trace
+    # CT Red: the NEEDs and their trace first, then - the last thing CC reads - the tool by name, the answer's shape and
+    # "print nothing"; the same when the project has no agreed NEED
+    tail = prompt[prompt.index('NEED GAS-2 (revision 1)'):]
+    assert 'mh_cc_store_result' in tail
+    assert '{"findings": [{"kind": "<kind>", "subject": "<NEED reqId>"' in tail
+    assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
+    assert prompt.index('NEED GAS-1 (revision 2)') < prompt.index('mh_cc_store_result')
+    empty = cv.compose([])
+    assert empty.index('The project has no agreed NEED.') < empty.index('mh_cc_store_result')
+    assert empty.rstrip().endswith('only what the tool stores reaches the pipeline.')
