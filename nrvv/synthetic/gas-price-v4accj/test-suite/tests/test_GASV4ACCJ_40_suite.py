@@ -1,70 +1,53 @@
-"""GASV4ACCJ-40: the service reaches the latest desired price without station-side versioning or dedup."""
-
 import app
 from nrvv_env import Simulation
 
-SEEDS = (1, 2, 3, 4, 5, 6, 7, 8)
-TAIL = 3600.0
-HORIZON = 1800.0
+STATION = 'S1'
+SEEDS = range(40)
 
 
-def _make_sim(seed, tag, drop_probability):
-    stations = tuple(f"{tag}-{seed}-S{i}" for i in range(1, 4))
-    sim = Simulation(seed, stations=stations, drop_probability=drop_probability)
-    sim.connect(app)
+def _loss_rate(seed):
+    return (0.1, 0.3, 0.6)[seed % 3]
+
+
+def _run(seed, first, second, gap):
+    # horizon=0 leaves the environment's own price-change schedule empty, so the
+    # only changes are the two set below; the environment still delays, loses and
+    # reorders the sends the service makes.
+    sim = Simulation(seed, app, station_ids=(STATION,), horizon=0, loss_rate=_loss_rate(seed))
+    sim.server.set_desired_price(STATION, first)
+    sim.advance_to(gap)
+    sim.server.set_desired_price(STATION, second)
+    sim.run_until_idle()
     return sim
 
 
-def _last_two_changes(sim):
-    for station in sim.stations:
-        planned = [(when, price) for when, s, price in sim.schedule() if s == station]
-        if len(planned) >= 2:
-            return station, planned[-2], planned[-1]
-    raise AssertionError("seed plans no station with two price changes")
-
-
-def _delivery_of(sim, station, price, sent_after):
-    for record in sim.deliveries():
-        if record.station == station and record.price == price and record.sent_at >= sent_after:
-            return record
-    return None
-
-
-def test_stale_and_duplicate_redelivery_still_leaves_latest_price():
+def test_applied_price_is_latest_desired_price_without_station_versioning():
     for seed in SEEDS:
-        sim = _make_sim(seed, "redeliver", drop_probability=0.0)
-        station, (_, price_a), (time_b, price_b) = _last_two_changes(sim)
-        sim.run_until(time_b)
-        # Wait until the update carrying B has been delivered and the station is reachable.
-        b_record = _delivery_of(sim, station, price_b, time_b)
-        while b_record is None or not sim.reachable(station):
-            if not sim.step():
-                break
-            b_record = _delivery_of(sim, station, price_b, time_b)
-        assert b_record is not None and sim.reachable(station), (
-            f"seed {seed}: B was not delivered to a reachable station")
-
-        # The stale A is delivered again after B, and B is delivered a second time.
-        sim.send_price_update(station, price_a, ("stale", seed))
-        stale = sim.sends()[-1]
-        sim.send_price_update(station, price_b, ("duplicate", seed))
-        duplicate = sim.sends()[-1]
-        sim.run_until(sim.now + TAIL)
-
-        assert stale.delivery_order is not None and duplicate.delivery_order is not None, (
-            f"seed {seed}: injected deliveries did not complete")
-        assert stale.delivery_order > b_record.delivery_order, (
-            f"seed {seed}: stale A was not delivered after B")
-        assert sim.desired_price(station) == price_b
-        assert sim.applied_price(station) == price_b, (
-            f"seed {seed}: applied {sim.applied_price(station)}, expected {price_b}")
+        first, second = 60 + seed, 120 + seed
+        sim = _run(seed, first, second, gap=1 + seed % 5)
+        assert sim.applied_price(STATION) == second, 'seed %d' % seed
 
 
-def test_every_station_settles_on_latest_price_under_loss_and_reordering():
+def test_applied_price_stays_latest_once_service_has_settled():
     for seed in SEEDS:
-        sim = _make_sim(seed, "settle", drop_probability=0.15)
-        sim.run_until(HORIZON + TAIL)
-        for station in sim.stations:
-            assert sim.applied_price(station) == sim.desired_price(station), (
-                f"seed {seed}: station {station} applied {sim.applied_price(station)}, "
-                f"desired {sim.desired_price(station)}")
+        first, second = 60 + seed, 120 + seed
+        sim = _run(seed, first, second, gap=1 + seed % 5)
+        deliveries_before = len(sim.stations[STATION].deliveries)
+        sim.advance_to(sim.now + 300)
+        assert sim.applied_price(STATION) == second, 'seed %d' % seed
+        assert len(sim.stations[STATION].deliveries) == deliveries_before, 'seed %d' % seed
+
+
+def test_stale_update_delivered_after_latest_still_leaves_latest_price():
+    stale_seen = 0
+    for seed in SEEDS:
+        first, second = 60 + seed, 120 + seed
+        sim = _run(seed, first, second, gap=1)
+        deliveries = sim.stations[STATION].deliveries
+        first_second = next((i for i, d in enumerate(deliveries) if d.price == second), None)
+        if first_second is None:
+            continue
+        if any(d.price == first for d in deliveries[first_second + 1:]):
+            stale_seen += 1
+            assert sim.applied_price(STATION) == second, 'seed %d' % seed
+    assert stale_seen > 0

@@ -1,111 +1,101 @@
-"""Acceptance checks for GASV4ACCJ-47 (requirement GASV4ACCJ-11).
-
-Desired price is a per-station overwrite register: a new price is accepted at
-once and overwrites the register, even while an earlier update is unacknowledged.
-"""
+import random
 
 import app
 from nrvv_env import Simulation
 
-SEEDS = range(12)
-OUTSTANDING = ("in_transit", "delivered")
-STEP_LIMIT = 100000
+SEEDS = (1, 2, 3, 4, 5)
+EARLIER_AT = 1
+NEW_AT = 4
+NEWEST_AT = 5
+
+
+def _prices(seed):
+    rng = random.Random(seed)
+    earlier = rng.randint(50, 99)
+    new = rng.randint(100, 150)
+    newest = new + rng.randint(1, 20)
+    return earlier, new, newest
 
 
 def _accepted(result):
-    if result is True:
-        return True
-    text = str(getattr(result, "name", result)).lower()
-    return "accept" in text and "reject" not in text
+    if result is None:
+        return False
+    if isinstance(result, bool):
+        return result
+    if isinstance(result, str):
+        text = result.strip().lower()
+        return 'accept' in text and 'reject' not in text
+    accepted = getattr(result, 'accepted', None)
+    if accepted is not None:
+        return bool(accepted)
+    if isinstance(result, dict):
+        return bool(result.get('accepted', False))
+    return True
 
 
-def _desired_price(status):
-    if isinstance(status, dict):
-        return status["desired_price"]
-    return status.desired_price
+def _read_field(status, *names):
+    for name in names:
+        if isinstance(status, dict) and name in status:
+            return status[name]
+        if hasattr(status, name):
+            return getattr(status, name)
+    raise AssertionError('status has none of %r: %r' % (names, status))
 
 
-def _replay(tag, seed):
-    """Run one seeded simulation against app, reading the station right after each price change.
-
-    An observation records whether the station had an unacknowledged send just before
-    the change (busy), the earlier changes to that station (prior), the server's result,
-    and the desired price read straight after the change.
-    """
-    sim = Simulation(seed, stations=(f"{tag}-a", f"{tag}-b", f"{tag}-c"), changes=40)
-    sim.connect(app)
-    observations = []
-    for _ in range(STEP_LIMIT):
-        busy = {r.station for r in sim.sends() if r.state in OUTSTANDING}
-        count = len(sim.changes())
-        if not sim.step():
-            break
-        if len(sim.changes()) == count:
-            continue
-        change = sim.changes()[-1]
-        observations.append({
-            "change": change,
-            "result": change.result,
-            "busy": change.station in busy,
-            "prior": [c for c in sim.changes()[:-1] if c.station == change.station],
-            "desired_after": _desired_price(sim.status(change.station)),
-        })
-    else:
-        raise RuntimeError("simulation did not finish")
-    return sim, observations
+def _desired(station):
+    return _read_field(app.query_station_status(station), 'desired_price', 'desired')
 
 
-def _busy_observations(name):
-    found = []
+def _unacknowledged_send(sim, station):
+    sent = [s for s in sim.sends if s.station_id == station]
+    acked = [a for a in sim.acks if a.station_id == station]
+    return bool(sent) and not acked
+
+
+def _change_at(run, when):
+    matches = [c for c in run['sim'].changes if c.time == when and c.station_id == run['station']]
+    assert len(matches) == 1, 'change for %s was not dispatched at second %d' % (run['station'], when)
+    return matches[0]
+
+
+def _run(tag, seed):
+    station = '%s-%d' % (tag, seed)
+    earlier, new, newest = _prices(seed)
+    sim = Simulation(seed, app, station_ids=(station,), horizon=0, loss_rate=1.0)
+    sim._push(EARLIER_AT, 'change', (station, earlier))
+    sim.advance_to(NEW_AT - 1)
+    assert _unacknowledged_send(sim, station), 'earlier update must be sent and still unacknowledged'
+    run = {'sim': sim, 'station': station, 'new': new, 'newest': newest}
+    sim._push(NEW_AT, 'change', (station, new))
+    sim.advance_to(NEW_AT)
+    run['after_new'] = _desired(station)
+    sim._push(NEWEST_AT, 'change', (station, newest))
+    sim.advance_to(NEWEST_AT)
+    run['after_newest'] = _desired(station)
+    return run
+
+
+def test_new_price_accepted_at_once_while_earlier_update_unacknowledged():
     for seed in SEEDS:
-        _, observations = _replay(f"{name}{seed}", seed)
-        found.extend(o for o in observations if o["busy"] and o["prior"])
-    return found
+        run = _run('intake', seed)
+        change = _change_at(run, NEW_AT)
+        assert change.price == run['new']
+        assert change.time == NEW_AT
+        assert _accepted(change.result), 'new price rejected: %r' % (change.result,)
 
 
-def test_price_accepted_at_once_while_earlier_update_unacknowledged():
-    observed = _busy_observations("accept")
-    assert observed, "no seed produced a price change while an earlier update was unacknowledged"
-    for o in observed:
-        assert _accepted(o["result"]), f"change was not accepted: {o['change']}"
-
-
-def test_desired_price_reads_new_value_right_after_each_change():
-    total = 0
+def test_reading_desired_price_returns_new_value_after_submission():
     for seed in SEEDS:
-        _, observations = _replay(f"read{seed}", seed)
-        for o in observations:
-            total += 1
-            assert o["desired_after"] == o["change"].price, f"stale register: {o['change']}"
-    assert total > 0
+        run = _run('readback', seed)
+        assert run['after_new'] == run['new']
 
 
-def test_second_price_while_first_unacknowledged_is_accepted_and_read_back():
-    observed = _busy_observations("second")
-    assert observed, "no seed produced a second price while the first was unacknowledged"
-    for o in observed:
-        assert _accepted(o["prior"][-1].result), f"first price was not accepted: {o['prior'][-1]}"
-        assert _accepted(o["result"]), f"second price was not accepted: {o['change']}"
-        assert o["desired_after"] == o["change"].price
-        assert o["change"].price != o["prior"][-1].price
-
-
-def test_register_keeps_only_most_recent_price_per_station():
+def test_second_price_accepted_at_once_and_only_latest_is_read():
     for seed in SEEDS:
-        sim, _ = _replay(f"latest{seed}", seed)
-        last = {}
-        for change in sim.changes():
-            last[change.station] = change.price
-        assert last, "no price changes were made"
-        for station, price in last.items():
-            assert _desired_price(sim.status(station)) == price, f"register holds an old price for {station}"
-
-
-def test_no_price_change_is_rejected_because_of_outstanding_sends():
-    total = 0
-    for seed in SEEDS:
-        _, observations = _replay(f"intake{seed}", seed)
-        for o in observations:
-            total += 1
-            assert _accepted(o["result"]), f"change was rejected: {o['change']}"
-    assert total > 0
+        run = _run('latest', seed)
+        change = _change_at(run, NEWEST_AT)
+        assert change.price == run['newest']
+        assert change.time == NEWEST_AT
+        assert _accepted(change.result), 'second new price rejected: %r' % (change.result,)
+        assert run['after_newest'] == run['newest']
+        assert run['after_newest'] != run['new']

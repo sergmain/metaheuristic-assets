@@ -1,3 +1,5 @@
 # GASV4ACCJ_44_suite - written by nrvv-test-author
-tests/test_GASV4ACCJ_44_suite.py::test_held_price_changes_only_on_acknowledgement_of_send
-tests/test_GASV4ACCJ_44_suite.py::test_repeated_or_unknown_acknowledgement_leaves_held_price_unchanged
+tests/test_GASV4ACCJ_44_suite.py::test_send_leaves_held_price_unchanged_until_ack
+tests/test_GASV4ACCJ_44_suite.py::test_ack_sets_held_price_to_sent_price
+tests/test_GASV4ACCJ_44_suite.py::test_repeat_ack_for_same_send_id_keeps_held_price
+tests/test_GASV4ACCJ_44_suite.py::test_ack_for_unknown_send_id_keeps_held_price

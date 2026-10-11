@@ -1,98 +1,101 @@
-"""GASV4ACCJ-4: a changed desired price is sent to a station within 120 seconds.
+'''GASV4ACCJ-41: a changed desired price is sent to the station within 120 s,
+and a price the station has already acknowledged is not sent again.
 
-Driven only through nrvv_env: prices are set by the simulated pricing source, and
-sends and acknowledgements come from the simulated transport.
-"""
-
-import importlib
-
-import app
+Everything goes through nrvv_env: the simulation drives app and records the
+messages the server sends (sim.sends), the acknowledgements that reach the
+server (sim.acks) and the desired price changes (sim.changes).
+'''
 from nrvv_env import Simulation
 
-SEEDS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
-RUN_UNTIL = 2400.0  # the last change is at most 1860 s; the 120 s window ends before this
-SEND_WINDOW = 120.0
+import app
+
+WINDOW = 120
+HORIZON = 1200
+END = HORIZON + 200
+SEEDS = range(30)
 
 
 def _run(seed, **options):
-    # app keeps its state at module level, so reload it to start each run from nothing
-    module = importlib.reload(app)
-    sim = Simulation(seed, **options)
-    sim.connect(module)
-    sim.run_until(RUN_UNTIL)
+    sim = Simulation(seed, app, horizon=HORIZON, **options)
+    sim.advance_to(END)
     return sim
 
 
-def _acknowledged_price(sim, station, at):
-    # price of the last acknowledgement for station that arrived before at (acks are in send order)
-    price = None
-    for ack in sim.acks():
-        if ack.station == station and ack.ack_arrived_at < at:
-            price = ack.price
-    return price
+def _next_change_time(sim, sid, t):
+    later = [c.time for c in sim.changes if c.station_id == sid and c.time > t]
+    return min(later) if later else END
 
 
-def _next_change_time(changes, index):
-    station = changes[index].station
-    for later in changes[index + 1:]:
-        if later.station == station:
-            return later.time
-    return float('inf')
+def _superseded(sim, change):
+    return any(
+        other is not change and other.station_id == change.station_id
+        and change.time <= other.time <= change.time + WINDOW
+        for other in sim.changes
+    )
 
 
-def _lost_ack_time(sim, station, price, at):
-    # when station stops holding price: its first later acknowledgement of a different price
-    times = [ack.ack_arrived_at for ack in sim.acks()
-             if ack.station == station and ack.price != price and ack.ack_arrived_at > at]
-    return min(times, default=float('inf'))
+def _sent_before(sim, sid, price, t):
+    return any(s.station_id == sid and s.price == price and s.sent_at < t for s in sim.sends)
 
 
-def _check_sent_within_window(seed, **options):
-    # every change to a price the station has not acknowledged must be sent within SEND_WINDOW
-    checks = 0
+def _returns_to_acknowledged(sim, change):
+    sid, price, t = change.station_id, change.price, change.time
+    acks = [a for a in sim.acks if a.station_id == sid and a.time < t]
+    if not acks:
+        return False
+    matches = [s for s in sim.sends if s.station_id == sid and s.send_id == acks[-1].send_id]
+    if len(matches) != 1 or matches[0].price != price:
+        return False
+    after = sim.sends[sim.sends.index(matches[0]) + 1:]
+    return all(s.outcome != 'delivered' for s in after if s.station_id == sid and s.sent_at < t)
+
+
+def _check_new_price_sent(seed, **options):
+    checked = 0
     sim = _run(seed, **options)
-    changes = sim.changes()
-    sends = sim.sends()
-    for index, change in enumerate(changes):
-        if _acknowledged_price(sim, change.station, change.time) == change.price:
-            continue  # the station already holds this price
-        if _next_change_time(changes, index) <= change.time + SEND_WINDOW:
-            continue  # a later change inside the window supersedes this price
-        checks += 1
-        deadline = change.time + SEND_WINDOW
-        sent = [s for s in sends
-                if s.station == change.station and s.price == change.price
-                and change.time <= s.sent_at <= deadline]
-        assert sent, ('seed %d: price %d set for %s at %.3f s was not sent within %d s'
-                      % (seed, change.price, change.station, change.time, SEND_WINDOW))
-    return checks
+    for change in sim.changes:
+        sid, price, t = change.station_id, change.price, change.time
+        if _sent_before(sim, sid, price, t) or _superseded(sim, change):
+            continue
+        checked += 1
+        sent = [
+            s for s in sim.sends
+            if s.station_id == sid and s.price == price and t <= s.sent_at <= t + WINDOW
+        ]
+        assert sent, f'seed {seed}: price {price} for {sid} set at {t} not sent within {WINDOW} s'
+    return checked
 
 
-def test_changed_price_is_sent_to_station_within_120_seconds():
-    checks = sum(_check_sent_within_window(seed) for seed in SEEDS)
-    assert checks > 0
+def _check_acknowledged_not_resent(seed):
+    checked = 0
+    sim = _run(seed)
+    for change in sim.changes:
+        sid, price, t = change.station_id, change.price, change.time
+        if not _returns_to_acknowledged(sim, change):
+            continue
+        checked += 1
+        end = _next_change_time(sim, sid, t)
+        resent = [
+            s for s in sim.sends
+            if s.station_id == sid and s.price == price and t <= s.sent_at < end
+        ]
+        assert not resent, f'seed {seed}: acknowledged price {price} for {sid} re-sent after being set at {t}'
+    return checked
 
 
-def test_changed_price_is_sent_within_120_seconds_under_heavy_loss():
-    checks = sum(_check_sent_within_window(seed, drop_probability=0.5) for seed in SEEDS)
-    assert checks > 0
+def test_new_price_is_sent_to_station_within_120_seconds():
+    checked = sum(_check_new_price_sent(seed) for seed in SEEDS)
+    assert checked > 0
+
+
+def test_new_price_is_sent_within_120_seconds_on_lossless_transport():
+    checked = sum(
+        _check_new_price_sent(seed, loss_rate=0.0, station_ids=('A', 'B', 'C', 'D'))
+        for seed in SEEDS
+    )
+    assert checked > 0
 
 
 def test_acknowledged_price_is_not_sent_again():
-    checks = 0
-    for seed in SEEDS:
-        sim = _run(seed)
-        changes = sim.changes()
-        sends = sim.sends()
-        for index, change in enumerate(changes):
-            station, price, at = change.station, change.price, change.time
-            if _acknowledged_price(sim, station, at) != price:
-                continue  # the station has not acknowledged this price
-            checks += 1
-            # the station holds price until a different price is acknowledged or the next change
-            stop = min(_next_change_time(changes, index), _lost_ack_time(sim, station, price, at))
-            resent = [s for s in sends
-                      if s.station == station and s.price == price and at <= s.sent_at < stop]
-            assert not resent, ('seed %d: acknowledged price %d for %s was sent again at %.3f s'
-                                % (seed, price, station, resent[0].sent_at))
-    assert checks > 0
+    checked = sum(_check_acknowledged_not_resent(seed) for seed in SEEDS)
+    assert checked > 0

@@ -1,326 +1,301 @@
-"""Simulated clients and transport for the server side app.
+'''Deterministic simulation of the environment around the server side (app).
 
-Deterministic: the only randomness is one random.Random(seed) instance, drawn
-in a fixed order, and the only clock is the simulated now. The server is called
-only from step; its port calls (send, wake-up request) only record and schedule,
-so no call into app is ever nested inside another.
-"""
+Everything simulated here is the Environment: the price change source, the
+transport to the stations, the stations, and the simulated pricing team. The
+server side is reached only through the ports named in the Interface.
+
+Inbound to the server (called by this package):
+    server.set_desired_price(station_id, price)            GASV4ACCJ-19
+    server.acknowledgement_received(station_id, send_id)   GASV4ACCJ-21
+    server.simulated_time_wakeup(now)                      GASV4ACCJ-22
+
+Outbound from the server (the server calls these on the ports object it is given):
+    ports.send_price_update(station_id, price, send_id)     GASV4ACCJ-20
+    ports.notify_pricing_team(station_id, price, ack_time)  GASV4ACCJ-50, returns (accepted, time)
+
+The server argument of Simulation is either an object or module providing
+set_desired_price (it receives the ports through connect(ports) when it has a
+connect attribute), or a factory called as server(ports) returning such an object.
+
+Time is whole simulated seconds. Each second the transport delivers every due
+event, then calls simulated_time_wakeup, then delivers events that became due in
+that second. Any wake-up requested at a whole second is therefore served.
+'''
 
 import heapq
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Sequence, Tuple
 
-PRICE_LOW = 100
-PRICE_HIGH = 199
-MAX_DELIVERY_DELAY = 20.0
-MAX_ACK_LATENCY = 10.0
+MAX_DELAY = 20
+MAX_ACK_LATENCY = 10
+MIN_REACHABLE_RUN = 120
+MAX_UNREACHABLE_RUN = 200
+REACHABILITY_TAIL = 3600
 
-# Operations the server side must provide, named after the Interface.
-APP_OPERATIONS = (
-    "set_desired_price",
-    "acknowledgement_received",
-    "simulated_time_wake_up",
-    "query_station_status",
-)
+_CHANGE = 'change'
+_DELIVER = 'deliver'
+_ACK = 'ack'
 
 
 @dataclass
-class ChangeRecord:
-    time: float
-    station: object
+class Delivery:
+    time: int
+    order: int
+    send_id: Any
     price: int
-    result: object
 
 
 @dataclass
-class SendRecord:
-    index: int
-    station: object
-    send_id: object
-    price: int
-    sent_at: float
-    state: str = "in_transit"  # in_transit | dropped | delivered | acked
-    reason: str = None  # for dropped: "unreachable" | "lost"
-    delivered_at: float = None  # also the time the acknowledgement was emitted
-    delivery_order: int = None  # position among all deliveries, global
-    ack_arrived_at: float = None
+class Station:
+    station_id: str
+    unreachable: List[Tuple[int, int]]
+    applied_price: Optional[int] = None
+    desired_history: List[Tuple[int, int]] = field(default_factory=list)
+    # one entry per desired change: [change_time, price, converged_at or None]
+    convergence: List[list] = field(default_factory=list)
+    deliveries: List[Delivery] = field(default_factory=list)
+    acks_emitted: List[Tuple[int, Any]] = field(default_factory=list)
+    last_ack_at: int = 0
+
+    def is_reachable(self, t: int) -> bool:
+        return not any(start <= t < end for start, end in self.unreachable)
 
 
 @dataclass
-class Convergence:
-    station: object
+class Send:
+    send_id: Any
+    station_id: str
     price: int
-    changed_at: float
-    converged_at: float = None  # None: not applied while this change was the latest
+    sent_at: int
+    outcome: str = 'pending'  # 'unreachable' | 'lost' | 'delivered'
+    delivery_at: Optional[int] = None
+    ack_at: Optional[int] = None
+
+
+@dataclass
+class Change:
+    time: int
+    station_id: str
+    price: int
+    result: Any  # what set_desired_price returned
+
+
+@dataclass
+class Ack:
+    time: int  # arrival at the server
+    station_id: str
+    send_id: Any
+    order: int
+
+
+@dataclass
+class Notification:
+    time: int  # when handed over and when the pricing team answered
+    station_id: str
+    price: int
+    ack_time: int
+    accepted: bool
+
+
+def _next_price(rng, past):
+    current = past[-1] if past else None
+    earlier = [p for p in past if p != current]
+    if earlier and rng.random() < 0.3:
+        return rng.choice(earlier)  # change back to a previously held price
+    while True:
+        price = rng.randint(50, 150)
+        if price != current:
+            return price
+
+
+def _change_schedule(rng, station_ids, horizon):
+    changes = []
+    history = {sid: [] for sid in station_ids}
+    t = rng.randint(0, 30)
+    while t < horizon:
+        sid = rng.choice(station_ids)
+        if rng.random() < 0.25:
+            times = sorted(t + rng.randint(0, 55) for _ in range(rng.randint(2, 4)))
+        else:
+            times = [t]
+        for when in times:
+            price = _next_price(rng, history[sid])
+            history[sid].append(price)
+            changes.append((when, sid, price))
+        t = times[-1] + rng.randint(5, 90)
+    return changes
+
+
+def _unreachable_intervals(rng, until):
+    # Reachable runs are at least MIN_REACHABLE_RUN long and unreachable
+    # intervals at most MAX_UNREACHABLE_RUN, so every 600 s window holds at
+    # least 120 s of reachability.
+    intervals = []
+    pos = 0
+    while pos < until:
+        pos += rng.randint(MIN_REACHABLE_RUN, 600)
+        if rng.random() < 0.5:
+            length = rng.randint(10, MAX_UNREACHABLE_RUN)
+            intervals.append((pos, pos + length))
+            pos += length
+    return intervals
+
+
+def _resolve_server(server, ports):
+    if hasattr(server, 'set_desired_price'):
+        connect = getattr(server, 'connect', None)
+        if connect is not None:
+            connect(ports)
+        return server
+    if callable(server):
+        return server(ports)
+    raise TypeError('server must provide set_desired_price or be a factory taking the ports')
+
+
+class _Ports:
+    def __init__(self, sim):
+        self._sim = sim
+
+    def send_price_update(self, station_id, price, send_id):
+        self._sim._send(station_id, price, send_id)
+
+    def notify_pricing_team(self, station_id, price, ack_time):
+        return self._sim._notify(station_id, price, ack_time)
 
 
 class Simulation:
-    """One seeded run: the pricing source, the stations and the transport."""
-
-    def __init__(self, seed, stations=("S1", "S2", "S3"), horizon=1800.0,
-                 changes=40, drop_probability=0.15):
-        if not isinstance(seed, int):
-            raise TypeError("seed must be an int")
-        self._stations = tuple(stations)
-        if not self._stations:
-            raise ValueError("at least one station is required")
-        self._rng = random.Random(seed)
-        self._horizon = float(horizon)
-        self._drop_probability = drop_probability
-        self._now = 0.0
+    def __init__(self, seed, server: Any, station_ids: Sequence[str] = ('S1', 'S2', 'S3'),
+                 horizon: int = 1200, loss_rate: float = 0.1, pricing_fault_rate: float = 0.0):
+        self.seed = seed
+        self.horizon = horizon
+        self.loss_rate = loss_rate
+        self.pricing_fault_rate = pricing_fault_rate
+        self.now = 0
+        self._next_second = 0
+        self._heap: List[tuple] = []
         self._seq = 0
-        self._queue = []
-        self._app = None
-        self._pending_changes = 0
-        self._schedule = self._make_schedule(changes)
-        self._unreachable = {s: self._make_unreachable() for s in self._stations}
-        self._desired = {}
-        self._applied = {s: None for s in self._stations}
-        self._applied_history = {s: [] for s in self._stations}
-        self._last_ack_arrival = {s: 0.0 for s in self._stations}
-        self._changes = []
-        self._sends = []
-        self._deliveries = []
-        self._acks = []
-        for when, station, price in self._schedule:
-            self._push(when, "change", (station, price))
-            self._pending_changes += 1
+        self._rng = random.Random(seed)
+        ids = list(station_ids)
+        schedule = _change_schedule(self._rng, ids, horizon)
+        self.stations = {
+            sid: Station(sid, _unreachable_intervals(self._rng, horizon + REACHABILITY_TAIL))
+            for sid in ids
+        }
+        self.sends: List[Send] = []
+        self.changes: List[Change] = []
+        self.acks: List[Ack] = []
+        self.notifications: List[Notification] = []
+        self.ports = _Ports(self)
+        self.server = _resolve_server(server, self.ports)
+        for when, sid, price in schedule:
+            self._push(when, _CHANGE, (sid, price))
 
-    # ----- wiring -------------------------------------------------------
+    # ----- observation -------------------------------------------------
 
-    def connect(self, app):
-        """Attach the simulated clients to app through the ports it names.
+    def in_flight(self) -> int:
+        '''Number of sends not yet delivered plus acknowledgements not yet arrived.'''
+        return sum(1 for entry in self._heap if entry[2] != _CHANGE)
 
-        The environment's ports are set on app as send_price_update (used by the
-        server to send to a station) and request_wake_up (used by the server to
-        ask for a simulated-time wake-up).
-        """
-        for name in APP_OPERATIONS:
-            if not callable(getattr(app, name, None)):
-                raise TypeError(f"app does not provide {name}")
-        self._app = app
-        app.send_price_update = self.send_price_update
-        app.request_wake_up = self.request_wake_up
+    def pending_changes(self) -> int:
+        return sum(1 for entry in self._heap if entry[2] == _CHANGE)
 
-    # ----- ports the server calls ---------------------------------------
+    def desired_price(self, station_id):
+        history = self.stations[station_id].desired_history
+        return history[-1][1] if history else None
 
-    def send_price_update(self, station, price, send_id):
-        """Port: the server sends a price update to a station. Fire-and-forget."""
-        if station not in self._applied:
-            raise KeyError(f"unknown station {station!r}")
-        record = SendRecord(len(self._sends), station, send_id, price, self._now)
-        self._sends.append(record)
-        if not self.reachable(station, self._now):
-            record.state, record.reason = "dropped", "unreachable"
-            return
-        if self._rng.random() < self._drop_probability:
-            record.state, record.reason = "dropped", "lost"
-            return
-        delivered_at = self._now + self._rng.uniform(0.0, MAX_DELIVERY_DELAY)
-        latency = self._rng.uniform(0.0, MAX_ACK_LATENCY)
-        # Acknowledgements return in send order, so never earlier than the previous one
-        # for this station. This keeps every arrival within 30 s of its send.
-        arrival = max(delivered_at + latency, self._last_ack_arrival[station])
-        self._last_ack_arrival[station] = arrival
-        self._push(delivered_at, "deliver", record)
-        self._push(arrival, "ack", record)
+    def applied_price(self, station_id):
+        return self.stations[station_id].applied_price
 
-    def request_wake_up(self, at_time):
-        """Port: the server asks for simulated_time_wake_up at at_time."""
-        self._push(max(float(at_time), self._now), "wake", None)
+    def convergence(self, station_id):
+        '''(change_time, price, converged_at) per desired change; converged_at None if never reached.'''
+        return [tuple(entry) for entry in self.stations[station_id].convergence]
 
-    # ----- driving ------------------------------------------------------
+    def is_reachable(self, station_id, t):
+        return self.stations[station_id].is_reachable(t)
 
-    def step(self):
-        """Process the next scheduled event. Returns False when none is scheduled."""
-        if not self._queue:
-            return False
-        if self._app is None:
-            raise RuntimeError("connect an app before running the simulation")
-        self._now, _, kind, payload = heapq.heappop(self._queue)
-        if kind == "change":
-            self._do_change(*payload)
-        elif kind == "deliver":
-            self._do_deliver(payload)
-        elif kind == "ack":
-            self._do_ack(payload)
-        else:
-            self._app.simulated_time_wake_up(self._now)
-        return True
+    def unreachable_intervals(self, station_id):
+        return list(self.stations[station_id].unreachable)
 
-    def run_until(self, time):
-        """Process every event scheduled up to and including time; then the clock is time."""
-        while self._queue and self._queue[0][0] <= time:
+    # ----- driving -----------------------------------------------------
+
+    def step(self) -> int:
+        '''Advance simulated time by one second; return that second.'''
+        second = self._next_second
+        self._next_second += 1
+        self.now = second
+        self._drain(second)
+        self.server.simulated_time_wakeup(second)
+        self._drain(second)
+        return second
+
+    def advance_to(self, t: int) -> None:
+        while self._next_second <= t:
             self.step()
-        self._now = max(self._now, float(time))
 
-    def run_until_quiet(self, max_events=100000):
-        """Process events until nothing is in flight and no price change is pending.
+    def run_until_idle(self, limit: Optional[int] = None) -> int:
+        '''Step until no send or acknowledgement is in flight and no change is pending.'''
+        limit = self.horizon + REACHABILITY_TAIL if limit is None else limit
+        while self.in_flight() or self.pending_changes():
+            if self._next_second > limit:
+                raise RuntimeError('simulation not idle by second %d' % limit)
+            self.step()
+        return self.now
 
-        Wake-ups the server requested beyond the last transport event stay scheduled.
-        """
-        events = 0
-        while self.in_flight() or self._pending_changes:
-            if events >= max_events:
-                raise RuntimeError(f"not quiet after {max_events} events")
-            if not self.step():
-                break
-            events += 1
-        return self._now
+    # ----- internals ---------------------------------------------------
 
-    # ----- observation --------------------------------------------------
-
-    @property
-    def now(self):
-        return self._now
-
-    @property
-    def stations(self):
-        return self._stations
-
-    def schedule(self):
-        """The planned price changes as (time, station, price), fixed by the seed."""
-        return list(self._schedule)
-
-    def unreachable_intervals(self, station):
-        """Half-open (start, end) intervals during which the station is unreachable."""
-        return list(self._unreachable[station])
-
-    def reachable(self, station, time=None):
-        when = self._now if time is None else time
-        return not any(start <= when < end for start, end in self._unreachable[station])
-
-    def changes(self):
-        """Price changes as they were set, with the server's result."""
-        return list(self._changes)
-
-    def sends(self):
-        """Every send the server made, in send order, with its fate."""
-        return list(self._sends)
-
-    def deliveries(self):
-        """Delivered sends in delivery order."""
-        return list(self._deliveries)
-
-    def acks(self):
-        """Acknowledgements in arrival order to the server."""
-        return list(self._acks)
-
-    def in_flight(self):
-        """Sends whose delivery or acknowledgement is still pending."""
-        return sum(1 for r in self._sends if r.state in ("in_transit", "delivered"))
-
-    def desired_price(self, station):
-        return self._desired.get(station)
-
-    def applied_price(self, station, at=None):
-        """Ground-truth price the station holds now, or at time at."""
-        if at is None:
-            return self._applied[station]
-        value = None
-        for when, price in self._applied_history[station]:
-            if when > at:
-                break
-            value = price
-        return value
-
-    def applied_history(self, station):
-        """Every (time, price) the station applied, in order."""
-        return list(self._applied_history[station])
-
-    def convergence(self):
-        """For each change: the time the applied price first equals its price.
-
-        The window is the change's own time until the next change to the same station.
-        """
-        result = []
-        for i, change in enumerate(self._changes):
-            next_change = next(
-                (c.time for c in self._changes[i + 1:] if c.station == change.station),
-                float("inf"))
-            converged = None
-            if self.applied_price(change.station, at=change.time) == change.price:
-                converged = change.time
-            else:
-                for when, price in self._applied_history[change.station]:
-                    if change.time <= when < next_change and price == change.price:
-                        converged = when
-                        break
-            result.append(Convergence(change.station, change.price, change.time, converged))
-        return result
-
-    def status(self, station):
-        """Query the server's station status (read-only)."""
-        if self._app is None:
-            raise RuntimeError("connect an app before querying it")
-        return self._app.query_station_status(station)
-
-    # ----- internals ----------------------------------------------------
-
-    def _push(self, when, kind, payload):
+    def _push(self, time, kind, payload):
         self._seq += 1
-        heapq.heappush(self._queue, (when, self._seq, kind, payload))
+        heapq.heappush(self._heap, (time, self._seq, kind, payload))
 
-    def _do_change(self, station, price):
-        self._pending_changes -= 1
-        self._desired[station] = price
-        result = self._app.set_desired_price(station, price)
-        self._changes.append(ChangeRecord(self._now, station, price, result))
+    def _drain(self, second):
+        while self._heap and self._heap[0][0] <= second:
+            _, _, kind, payload = heapq.heappop(self._heap)
+            self._dispatch(kind, payload)
 
-    def _do_deliver(self, record):
-        record.state = "delivered"
-        record.delivered_at = self._now
-        record.delivery_order = len(self._deliveries)
-        self._deliveries.append(record)
-        self._applied[record.station] = record.price
-        self._applied_history[record.station].append((self._now, record.price))
+    def _dispatch(self, kind, payload):
+        if kind == _CHANGE:
+            sid, price = payload
+            st = self.stations[sid]
+            st.desired_history.append((self.now, price))
+            st.convergence.append([self.now, price, self.now if st.applied_price == price else None])
+            result = self.server.set_desired_price(sid, price)
+            self.changes.append(Change(self.now, sid, price, result))
+        elif kind == _DELIVER:
+            send = payload
+            st = self.stations[send.station_id]
+            st.deliveries.append(Delivery(self.now, len(st.deliveries), send.send_id, send.price))
+            st.applied_price = send.price
+            st.acks_emitted.append((self.now, send.send_id))
+            last = st.convergence[-1] if st.convergence else None
+            if last is not None and last[2] is None and last[1] == send.price:
+                last[2] = self.now
+        else:
+            send = payload
+            self.acks.append(Ack(self.now, send.station_id, send.send_id, len(self.acks)))
+            self.server.acknowledgement_received(send.station_id, send.send_id)
 
-    def _do_ack(self, record):
-        record.state = "acked"
-        record.ack_arrived_at = self._now
-        self._acks.append(record)
-        self._app.acknowledgement_received(record.station, record.send_id)
+    def _send(self, station_id, price, send_id):
+        station = self.stations[station_id]
+        record = Send(send_id, station_id, price, self.now)
+        self.sends.append(record)
+        if not station.is_reachable(self.now):
+            record.outcome = 'unreachable'
+            return
+        if self._rng.random() < self.loss_rate:
+            record.outcome = 'lost'
+            return
+        delivery_at = self.now + self._rng.randint(0, MAX_DELAY)
+        # Acknowledgements return in send order: never earlier than the previous one.
+        ack_at = max(delivery_at + self._rng.randint(0, MAX_ACK_LATENCY), station.last_ack_at)
+        station.last_ack_at = ack_at
+        record.outcome = 'delivered'
+        record.delivery_at = delivery_at
+        record.ack_at = ack_at
+        self._push(delivery_at, _DELIVER, record)
+        self._push(ack_at, _ACK, record)
 
-    def _make_schedule(self, changes):
-        rng = self._rng
-        raw = []
-        for _ in range(changes):
-            when = rng.uniform(0.0, self._horizon)
-            station = rng.choice(self._stations)
-            raw.append((when, station))
-            if rng.random() < 0.3:  # burst: several changes to one station within 60 s
-                for _ in range(rng.randint(2, 4)):
-                    raw.append((when + rng.uniform(0.0, 60.0), station))
-        raw.sort(key=lambda item: item[0])
-        desired = {}
-        past = {s: [] for s in self._stations}
-        schedule = []
-        for when, station in raw:
-            current = desired.get(station)
-            earlier = [p for p in past[station] if p != current]
-            if earlier and rng.random() < 0.3:  # back to a previously held price
-                price = rng.choice(earlier)
-            else:
-                price = rng.randint(PRICE_LOW, PRICE_HIGH)
-                while price == current:
-                    price = rng.randint(PRICE_LOW, PRICE_HIGH)
-            desired[station] = price
-            past[station].append(price)
-            schedule.append((when, station, price))
-        return schedule
-
-    def _make_unreachable(self):
-        # Reachable gaps are at least 60 s and outages at most 120 s, so every
-        # 600 s window holds reachable time. After the horizon all stations are reachable.
-        rng = self._rng
-        intervals = []
-        t = 0.0
-        while True:
-            t += rng.uniform(60.0, 400.0)
-            if t >= self._horizon:
-                break
-            if rng.random() < 0.5:
-                length = rng.uniform(10.0, 120.0)
-                intervals.append((t, t + length))
-                t += length
-        return intervals
+    def _notify(self, station_id, price, ack_time):
+        accepted = not (self.pricing_fault_rate > 0 and self._rng.random() < self.pricing_fault_rate)
+        self.notifications.append(Notification(self.now, station_id, price, ack_time, accepted))
+        return accepted, self.now

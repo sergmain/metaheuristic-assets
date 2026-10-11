@@ -1,54 +1,58 @@
-# Criterion GASV4ACCJ-31 (requirement GASV4ACCJ-18): the station receives the bare price value only.
-import importlib
+'''Tests for GASV4ACCJ-31 / GASV4ACCJ-18: the station receives only the bare price value.
+
+Every price update the server sends is captured by the simulated transport
+(Simulation.sends) and delivered to the station (Station.deliveries). Each
+captured message must carry the price value and nothing else.
+'''
 
 import app
 from nrvv_env import Simulation
-from nrvv_env.simulation import PRICE_HIGH, PRICE_LOW
 
-SEEDS = (1, 2, 3, 4, 5)
+SEEDS = (1, 7, 42)
 
 
 def _run(seed):
-    module = importlib.reload(app)
-    sim = Simulation(seed)
-    sim.connect(module)
-    sim.run_until_quiet()
+    sim = Simulation(seed, app)
+    sim.run_until_idle()
     return sim
 
 
-def test_every_delivered_message_is_bare_price_int():
+def _desired_prices(sim, station_id):
+    return {change.price for change in sim.changes if change.station_id == station_id}
+
+
+def test_every_captured_update_message_is_a_bare_int_price():
+    captured = 0
     for seed in SEEDS:
         sim = _run(seed)
-        deliveries = sim.deliveries()
-        assert deliveries, f'seed {seed}: no update reached a station'
-        for record in deliveries:
-            assert type(record.price) is int, (
-                f'seed {seed}: message {record.index} carries {record.price!r}, not a bare price')
-            assert PRICE_LOW <= record.price <= PRICE_HIGH
+        for send in sim.sends:
+            captured += 1
+            assert type(send.price) is int, (seed, send)
+    assert captured > 0
 
 
-def test_station_holds_only_bare_price_values_it_was_sent():
+def test_captured_update_price_is_a_desired_price_of_that_station():
     for seed in SEEDS:
         sim = _run(seed)
-        scheduled = {s: set() for s in sim.stations}
-        for _, station, price in sim.schedule():
-            scheduled[station].add(price)
-        for station in sim.stations:
-            history = sim.applied_history(station)
-            delivered = [r.price for r in sim.deliveries() if r.station == station]
-            assert [value for _, value in history] == delivered, (
-                f'seed {seed}: {station} applied values differ from the messages it received')
-            for when, value in history:
-                assert type(value) is int, (
-                    f'seed {seed}: {station} applied {value!r} at {when}, not a bare price')
-                assert value in scheduled[station], (
-                    f'seed {seed}: {station} applied {value!r}, which was never a price for it')
+        for send in sim.sends:
+            assert send.price in _desired_prices(sim, send.station_id), (seed, send)
 
 
-def test_every_send_passes_a_bare_price_value():
+def test_delivered_station_message_carries_only_the_price_value():
+    delivered = 0
     for seed in SEEDS:
         sim = _run(seed)
-        assert sim.sends(), f'seed {seed}: the trigger produced no send'
-        for record in sim.sends():
-            assert type(record.price) is int, (
-                f'seed {seed}: send {record.index} passed {record.price!r} as the price')
+        for station_id, station in sim.stations.items():
+            for delivery in station.deliveries:
+                delivered += 1
+                assert type(delivery.price) is int, (seed, station_id, delivery)
+                assert delivery.price in _desired_prices(sim, station_id), (seed, delivery)
+    assert delivered > 0
+
+
+def test_update_message_price_is_not_a_container_or_text_wrapping_extra_fields():
+    for seed in SEEDS:
+        sim = _run(seed)
+        for send in sim.sends:
+            assert not isinstance(send.price, (tuple, list, dict, set, str, bytes)), (seed, send)
+            assert not isinstance(send.price, bool), (seed, send)

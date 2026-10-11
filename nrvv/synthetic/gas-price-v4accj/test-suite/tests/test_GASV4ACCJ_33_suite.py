@@ -1,133 +1,125 @@
-'''GASV4ACCJ-33: the send decision is taken at every trigger; a send is issued only when it is due.'''
+import importlib
 
 import app
 from nrvv_env import Simulation
 
-ABANDON_AFTER = 30.0
-LIMIT = 2400.0
-MAX_EVENTS = 20000
+STATION = 'S1'
+SEEDS = (1, 2, 3)
+FOREVER = 10 ** 6
 
 
-def _outstanding(sends, station, now):
-    '''Sends the server still counts as outstanding: unacknowledged and not yet abandoned.'''
-    return [
-        r for r in sends
-        if r.station == station
-        and (r.state in ('in_transit', 'delivered')
-             or (r.state == 'dropped' and now - r.sent_at < ABANDON_AFTER))
-    ]
+def _fresh_app(ports):
+    importlib.reload(app)  # no state carried over between simulations
+    app.connect(ports)
+    return app
 
 
-def _held(acks, station):
-    held = None
-    for record in acks:
-        if record.station == station:
-            held = record.price
-    return held
+def _sim(seed, unreachable=()):
+    sim = Simulation(seed, _fresh_app, station_ids=(STATION,), horizon=0, loss_rate=0.0)
+    sim.stations[STATION].unreachable = list(unreachable)
+    return sim
 
 
-def _sends_to(sim, station):
-    return [r for r in sim.sends() if r.station == station]
+def _change(sim, at, price):
+    sim._push(at, 'change', (STATION, price))
 
 
-def _arrangement(desired, held, in_flight_prices):
-    if desired is None:
-        return None
-    if desired == held:
-        return 'equal'
-    if desired in in_flight_prices:
-        return 'in_flight'
-    if not in_flight_prices:
-        return 'send'
-    return None  # another price is in flight; the requirement does not decide this case
+def _prices(sim):
+    return [s.price for s in sim.sends if s.station_id == STATION]
 
 
-def _check_every_trigger(sim, seen):
-    for _ in range(MAX_EVENTS):
-        if sim.now > LIMIT:
-            return
-        changes, acks = len(sim.changes()), len(sim.acks())
-        deliveries, sends = len(sim.deliveries()), len(sim.sends())
-        if not sim.step():
-            return
-        now = sim.now
-        earlier = sim.sends()[:sends]
-        new_sends = sim.sends()[sends:]
-        if len(sim.changes()) > changes:
-            trigger, stations = 'price change', [sim.changes()[-1].station]
-        elif len(sim.acks()) > acks:
-            trigger, stations = 'acknowledgement', [sim.acks()[-1].station]
-        elif len(sim.deliveries()) > deliveries:
-            assert not new_sends, 'a send was issued on a delivery, which is not a trigger'
-            continue
-        else:
-            trigger, stations = 'due time or abandonment', list(sim.stations)
-        for station in stations:
-            desired = sim.desired_price(station)
-            held = _held(sim.acks(), station)
-            in_flight = [r.price for r in _outstanding(earlier, station, now)]
-            arrangement = _arrangement(desired, held, in_flight)
-            if arrangement is None:
-                continue
-            seen.add(arrangement)
-            issued = [r for r in new_sends if r.station == station]
-            if arrangement == 'send':
-                assert len(issued) == 1 and issued[0].price == desired, (
-                    f'{trigger} at {now}: expected one send of {desired}, '
-                    f'got {[r.price for r in issued]}')
-            else:
-                assert not issued, (
-                    f'{trigger} at {now}: arrangement {arrangement} must send nothing, '
-                    f'got {len(issued)} send(s)')
-    raise AssertionError('simulation did not finish')
+def test_due_time_sends_desired_price_once_when_it_differs_and_nothing_in_flight():
+    for seed in SEEDS:
+        sim = _sim(seed)
+        _change(sim, 1, 100)
+        sim.advance_to(1 + 61)  # the price change, then a due time
+        assert _prices(sim) == [100], seed
+        sim.advance_to(200)
+        assert _prices(sim) == [100], seed
+        assert sim.applied_price(STATION) == 100, seed
 
 
-def _single_change_sim(tag, drop_probability):
-    '''A connected run whose only planned price change is the first one; returns (sim, station, price, time).'''
-    for seed in range(1000):
-        name = f'{tag}-{seed}'
-        sim = Simulation(seed, stations=(name,), horizon=60.0, changes=1,
-                         drop_probability=drop_probability)
-        if len(sim.schedule()) == 1:
-            sim.connect(app)
-            when, station, price = sim.schedule()[0]
-            return sim, station, price, when
-    raise AssertionError('no seed with a single planned price change')
+def test_due_time_sends_nothing_when_desired_equals_held():
+    for seed in SEEDS:
+        sim = _sim(seed)
+        _change(sim, 1, 100)
+        sim.advance_to(120)
+        assert sim.applied_price(STATION) == 100, seed  # held price is now 100
+        assert _prices(sim) == [100], seed
+        sim.advance_to(120 + 61)  # a due time with desired == held
+        assert _prices(sim) == [100], seed
 
 
-def test_send_decision_is_taken_at_every_trigger():
-    seen = set()
-    for seed in range(1, 9):
-        sim = Simulation(seed, stations=(f'A{seed}', f'B{seed}', f'C{seed}'))
-        sim.connect(app)
-        _check_every_trigger(sim, seen)
-    assert {'send', 'equal', 'in_flight'} <= seen, f'arrangements exercised: {seen}'
+def test_due_time_sends_nothing_when_outstanding_send_carries_desired():
+    for seed in SEEDS:
+        sim = _sim(seed, unreachable=[(0, FOREVER)])  # never delivered, so it stays outstanding
+        _change(sim, 1, 100)
+        while not _prices(sim) and sim.now < 60:
+            sim.step()
+        assert _prices(sim) == [100], seed
+        sim.step()  # a due time while the send is outstanding (abandonment is 30 s away)
+        assert _prices(sim) == [100], seed
 
 
-def test_lost_send_blocks_resend_until_it_is_abandoned():
-    sim, station, price, when = _single_change_sim('lost', drop_probability=1.0)
-    sim.run_until(when)
-    sends = _sends_to(sim, station)
-    assert [r.price for r in sends] == [price]
-    sim.request_wake_up(when + 1.0)
-    sim.run_until(when + 1.0)
-    assert len(_sends_to(sim, station)) == 1, 'a due time must not resend the price in flight'
-    sim.run_until(when + 31.0)
-    sends = _sends_to(sim, station)
-    assert len(sends) == 2, 'the abandoned send must be followed by one new send'
-    assert all(r.price == price for r in sends)
-    assert 30.0 <= sends[1].sent_at - when <= 31.0
+def test_price_change_sends_only_when_desired_differs_and_nothing_in_flight():
+    for seed in SEEDS:
+        # desired differs from held (none held) and nothing in flight
+        sim = _sim(seed)
+        _change(sim, 1, 100)
+        sim.advance_to(2)
+        assert _prices(sim) == [100], seed
+
+        # desired equals held
+        sim = _sim(seed)
+        _change(sim, 1, 100)
+        sim.advance_to(120)
+        assert sim.applied_price(STATION) == 100, seed
+        _change(sim, 121, 100)
+        sim.advance_to(122)
+        assert _prices(sim) == [100], seed
+
+        # outstanding send carries desired
+        sim = _sim(seed, unreachable=[(0, FOREVER)])
+        _change(sim, 1, 100)
+        _change(sim, 3, 100)
+        sim.advance_to(4)
+        assert _prices(sim) == [100], seed
 
 
-def test_acknowledged_price_is_not_sent_again():
-    sim, station, price, when = _single_change_sim('acked', drop_probability=0.0)
-    sim.run_until(when)
-    assert len(_sends_to(sim, station)) == 1
-    while not sim.acks():
-        assert sim.step(), 'the send was never acknowledged'
-    assert sim.applied_price(station) == price
-    assert len(_sends_to(sim, station)) == 1, 'the acknowledgement must not trigger a resend'
-    later = sim.now + 1.0
-    sim.request_wake_up(later)
-    sim.run_until(later)
-    assert len(_sends_to(sim, station)) == 1, 'a due time after the acknowledgement must not send'
+def test_acknowledgement_sends_only_when_desired_differs_and_nothing_in_flight():
+    for seed in SEEDS:
+        # desired moves on while the only send is in flight; the acknowledgement then triggers one send
+        sim = _sim(seed)
+        _change(sim, 1, 100)
+        _change(sim, 1, 120)
+        sim.advance_to(120)
+        assert _prices(sim) == [100, 120], seed
+
+        # the outstanding send carries desired; its acknowledgement leaves nothing to send
+        sim = _sim(seed)
+        _change(sim, 1, 100)
+        _change(sim, 1, 100)
+        sim.advance_to(120)
+        assert _prices(sim) == [100], seed
+
+
+def test_abandonment_sends_only_when_desired_differs_and_nothing_in_flight():
+    for seed in SEEDS:
+        # the send is lost to an unreachable window; abandonment leaves desired != held with nothing in flight
+        sim = _sim(seed, unreachable=[(0, 10)])
+        _change(sim, 1, 100)
+        sim.advance_to(120)
+        assert _prices(sim) == [100, 100], seed
+        sim.advance_to(200)
+        assert _prices(sim) == [100, 100], seed
+
+        # desired equals held when the outstanding send is abandoned
+        sim = _sim(seed)
+        _change(sim, 1, 100)
+        sim.advance_to(120)
+        assert sim.applied_price(STATION) == 100, seed
+        sim.stations[STATION].unreachable = [(121, 131)]
+        _change(sim, 121, 120)
+        _change(sim, 122, 100)
+        sim.advance_to(200)
+        assert _prices(sim) == [100, 120], seed

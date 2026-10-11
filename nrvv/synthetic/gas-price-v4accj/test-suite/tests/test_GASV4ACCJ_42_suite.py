@@ -1,125 +1,142 @@
-"""Checks GASV4ACCJ-15: an outstanding send that is not acknowledged is abandoned after 30 seconds."""
+'''GASV4ACCJ-42: an outstanding send is abandoned after 30 s without acknowledgement (GASV4ACCJ-15).
 
-import importlib
-
-import pytest
-
+The send is withheld from acknowledgement by making the station unreachable at the
+moment of the send, so the environment never delivers it and never acknowledges it.
+'''
 import app
 from nrvv_env import Simulation
 
-ABANDON_AFTER = 30.0
-CASES = 3
-SEEDS = range(1, 300)
+STATION = 'S1'
+FIRST_PRICE = 100
+WITHHELD_PRICE = 200
+ABANDON_AFTER = 30
+SEEDS = range(1, 40)
 
 
-def _fresh_app():
-    # Each case starts from a freshly loaded app, so no state carries over between cases.
-    return importlib.reload(app)
+def _make_server(ports):
+    if hasattr(app, 'set_desired_price'):
+        if hasattr(app, 'connect'):
+            app.connect(ports)
+        return app
+    cls = next(v for v in vars(app).values() if isinstance(v, type) and hasattr(v, 'set_desired_price'))
+    try:
+        server = cls(ports)
+    except TypeError:
+        server = cls()
+        if hasattr(server, 'connect'):
+            server.connect(ports)
+    return server
 
 
-def _field(obj, *names):
+def _new_sim(seed):
+    return Simulation(seed, _make_server, horizon=0, loss_rate=0.0)
+
+
+def _windows(count):
+    # (seed, start) pairs where S1 is unreachable for at least 100 s starting at or after 100 s.
+    found = []
+    for seed in SEEDS:
+        sim = _new_sim(seed)
+        for start, end in sim.unreachable_intervals(STATION):
+            if start >= 100 and end - start >= 100:
+                found.append((seed, start))
+                break
+        if len(found) == count:
+            break
+    assert found, 'no seed gives a suitable unreachable window'
+    return found
+
+
+def _field(status, *names):
     for name in names:
-        if isinstance(obj, dict):
-            if name in obj:
-                return obj[name]
-        elif hasattr(obj, name):
-            return getattr(obj, name)
-    raise AssertionError(f"status has none of {names}: {obj!r}")
+        if isinstance(status, dict):
+            if name in status:
+                return status[name]
+        elif hasattr(status, name):
+            return getattr(status, name)
+    raise AssertionError('station status has none of %s: %r' % (names, status))
+
+
+def _status(sim):
+    query = getattr(sim.server, 'query_station_status', None)
+    if query is None:
+        query = app.query_station_status
+    return query(STATION)
 
 
 def _held(status):
-    return _field(status, "held_price", "held")
+    return _field(status, 'held_price', 'held')
 
 
-def _desired(status):
-    return _field(status, "desired_price", "desired")
+def _outstanding(status):
+    return _field(status, 'outstanding_send', 'outstanding')
 
 
-def _outstanding_price(status):
-    send = _field(status, "outstanding_send", "outstanding")
-    if send is None:
-        return None
-    if isinstance(send, (int, float)):
-        return send
-    return _field(send, "price")
+def _advance_until_sent(sim, price, limit):
+    while True:
+        found = [r for r in sim.sends if r.station_id == STATION and r.price == price]
+        if found:
+            return found[0]
+        assert sim.now < limit, 'no send of price %d by second %d' % (price, limit)
+        sim.step()
 
 
-def _sends_started_between(sim, record, start, end):
-    return [r for r in sim.sends()
-            if r.index > record.index and r.station == record.station
-            and start <= r.sent_at < end]
+def _withheld_send(seed, start):
+    sim = _new_sim(seed)
+    sim.server.set_desired_price(STATION, FIRST_PRICE)
+    sim.advance_to(start - 1)
+    assert _held(_status(sim)) == FIRST_PRICE, 'first price not acknowledged before the unreachable window'
+    sim.advance_to(start + 1)
+    sim.server.set_desired_price(STATION, WITHHELD_PRICE)
+    sent = _advance_until_sent(sim, WITHHELD_PRICE, start + 60)
+    t0 = sent.sent_at
+    assert _outstanding(_status(sim)), 'send is not outstanding right after it was made'
+    return sim, t0
 
 
-def _withheld_cases(count):
-    """Yield (sim, record) for the first `count` seeds whose send is dropped, so it is never acknowledged."""
-    found = 0
-    for seed in SEEDS:
-        app_module = _fresh_app()
-        sim = Simulation(seed)
-        sim.connect(app_module)
-        seen = 0
-        record = None
-        while record is None and sim.step():
-            sends = sim.sends()
-            record = next((r for r in sends[seen:] if r.state == "dropped"), None)
-            seen = len(sends)
-        if record is not None:
-            yield sim, record
-            found += 1
-            if found == count:
-                return
-    pytest.fail(f"only {found} of {count} seeds produced a send that was never acknowledged")
+def test_outstanding_send_stays_outstanding_before_30_seconds():
+    for seed, start in _windows(3):
+        sim, t0 = _withheld_send(seed, start)
+        for t in range(t0 + 1, t0 + ABANDON_AFTER):
+            sim.advance_to(t)
+            assert _outstanding(_status(sim)), 'send no longer outstanding at +%d s' % (t - t0)
 
 
-def test_send_stays_outstanding_and_no_new_send_before_30_seconds():
-    for sim, record in _withheld_cases(CASES):
-        station = record.station
-        start = record.sent_at
-        for offset in (10.0, 29.0, 29.999):
-            sim.run_until(start + offset)
-            assert _outstanding_price(sim.status(station)) == record.price, (
-                f"send {record.send_id!r} stopped being outstanding {offset} s after it was made")
-        sim.run_until(start + ABANDON_AFTER)
-        assert not _sends_started_between(sim, record, start, start + ABANDON_AFTER), (
-            "a new send was made to the station while the earlier send was still outstanding")
+def test_no_new_send_while_send_is_outstanding_under_30_seconds():
+    for seed, start in _windows(3):
+        sim, t0 = _withheld_send(seed, start)
+        sim.advance_to(t0 + ABANDON_AFTER - 1)
+        later = [r for r in sim.sends
+                 if r.station_id == STATION and t0 < r.sent_at <= t0 + ABANDON_AFTER - 1]
+        assert not later, 'new send made while the earlier send was outstanding'
 
 
-def test_send_is_abandoned_at_exactly_30_seconds_and_held_price_is_unchanged():
-    for sim, record in _withheld_cases(CASES):
-        station = record.station
-        start = record.sent_at
-        sim.run_until(start + ABANDON_AFTER - 0.001)
-        held_before = _held(sim.status(station))
-        applied_before = sim.applied_price(station)
-        sim.run_until(start + ABANDON_AFTER)
-        status = sim.status(station)
-        assert _held(status) == held_before
-        assert sim.applied_price(station) == applied_before
-        outstanding = _outstanding_price(status)
-        if outstanding is not None:
-            # Still outstanding only if a fresh send was made at this very instant.
-            assert any(r.station == station and r.index > record.index
-                       and r.sent_at == start + ABANDON_AFTER and r.price == outstanding
-                       for r in sim.sends()), "send was not abandoned at 30 seconds"
+def test_send_abandoned_exactly_at_30_seconds():
+    for seed, start in _windows(3):
+        sim, t0 = _withheld_send(seed, start)
+        sim.advance_to(t0 + ABANDON_AFTER - 1)
+        assert _outstanding(_status(sim)), 'send already abandoned before 30 s'
+        sim.advance_to(t0 + ABANDON_AFTER)
+        new_sends = [r for r in sim.sends if r.station_id == STATION and r.sent_at == t0 + ABANDON_AFTER]
+        # A new send at exactly +30 s is only possible if the old send was already abandoned.
+        assert new_sends or not _outstanding(_status(sim)), 'send still outstanding at 30 s'
 
 
-def test_decision_logic_may_send_again_after_abandonment():
-    checked = 0
-    for sim, record in _withheld_cases(CASES):
-        station = record.station
-        start = record.sent_at
-        sim.run_until(start + ABANDON_AFTER)
-        status = sim.status(station)
-        desired, held = _desired(status), _held(status)
-        sim.run_until(start + 330.0)
-        later_changes = [c for c in sim.changes()
-                         if c.station == station and c.time > start + ABANDON_AFTER]
-        if later_changes or desired == held:
-            continue
-        resent = [r for r in sim.sends()
-                  if r.station == station and r.index > record.index
-                  and r.sent_at >= start + ABANDON_AFTER]
-        assert resent, "no new send to the station after the send was abandoned"
-        assert resent[0].price == desired
-        checked += 1
-    assert checked, "no case left a price still to send after abandonment"
+def test_held_price_unchanged_by_abandonment():
+    for seed, start in _windows(3):
+        sim, t0 = _withheld_send(seed, start)
+        sim.advance_to(t0 + ABANDON_AFTER - 1)
+        before = _held(_status(sim))
+        sim.advance_to(t0 + ABANDON_AFTER)
+        after = _held(_status(sim))
+        assert before == after == FIRST_PRICE, 'held price changed by abandonment: %r -> %r' % (before, after)
+
+
+def test_decision_may_send_again_after_abandonment():
+    for seed, start in _windows(3):
+        sim, t0 = _withheld_send(seed, start)
+        sim.advance_to(t0 + 90)
+        again = [r for r in sim.sends
+                 if r.station_id == STATION and t0 + ABANDON_AFTER <= r.sent_at <= t0 + 90]
+        assert again, 'decision logic did not send again after the send was abandoned'
+        assert again[0].price == WITHHELD_PRICE

@@ -1,127 +1,125 @@
-"""Test case GASV4ACCJ-38 for requirement GASV4ACCJ-13: at most one outstanding send per station."""
+'''Requirement GASV4ACCJ-13: at most one outstanding send per station.
+
+Test case GASV4ACCJ-38. Drives the server only through nrvv_env.
+'''
+import importlib
 
 import app
 from nrvv_env import Simulation
 
-TIMEOUT = 30.0  # abandonment timeout of an unacknowledged send
-SEEDS = range(1, 31)
-MAX_STEPS = 100000
+STATION = 'S1'
+FIRST_PRICE = 60
+SECOND_PRICE = 120
+ABANDON_AFTER = 30  # D5 timeout in seconds
+SLOT = 60  # D7 slot in seconds
+_OUTSTANDING_FIELDS = ('outstanding', 'outstanding_send', 'unresolved', 'unresolved_sends')
 
 
-def _sim(tag, seed, drop_probability):
-    # The app module keeps its state between simulations, so each run gets a
-    # station name that no earlier run used.
-    station = f"{tag}-{seed}"
-    sim = Simulation(seed, stations=(station,), drop_probability=drop_probability)
-    sim.connect(app)
-    return sim, station
+def _fresh_sim(seed, station_ids=(STATION,), loss_rate=0.0):
+    # Reload so that no server state leaks between simulations.
+    server = importlib.reload(app)
+    return Simulation(seed, server, station_ids=station_ids, horizon=0, loss_rate=loss_rate)
 
 
-def _sends(sim, station):
-    return [r for r in sim.sends() if r.station == station]
+def _reachable_sim(window, loss_rate):
+    # Pick a seed whose station is reachable for the first `window` seconds,
+    # so that a send can be delivered and acknowledged.
+    for seed in range(1, 200):
+        sim = _fresh_sim(seed, loss_rate=loss_rate)
+        if all(sim.is_reachable(STATION, t) for t in range(window)):
+            return sim
+    raise AssertionError('no seed keeps the station reachable')
 
 
-def _unresolved(sim, station):
-    """Sends for station that are neither acknowledged nor past their timeout."""
-    return [r for r in sim.sends()
-            if r.station == station and r.ack_arrived_at is None
-            and sim.now < r.sent_at + TIMEOUT]
+def _schedule(sim, when, station_id, price):
+    # Submit an update through the environment's own change source.
+    sim._push(when, 'change', (station_id, price))
 
 
-def _applied(sim, station):
-    """Number of planned changes for station that the simulation has applied."""
-    return sum(1 for c in sim.changes() if c.station == station)
+def _step_until(sim, done, limit):
+    while not done():
+        if sim.now >= limit:
+            raise AssertionError('condition not reached by second %d' % limit)
+        sim.step()
 
 
-def _next_change(sim, station):
-    """(time, price) of the next planned change for station not yet applied, or None."""
-    planned = [(t, p) for t, s, p in sim.schedule() if s == station]
-    done = _applied(sim, station)
-    return planned[done] if done < len(planned) else None
+def _sends(sim, station_id=STATION):
+    return [s for s in sim.sends if s.station_id == station_id]
 
 
-def _transmitted(sim, station, price, since):
-    return any(r.station == station and r.price == price and r.sent_at >= since
-               for r in sim.sends())
+def _sends_at_price(sim, price):
+    return [s for s in _sends(sim) if s.price == price]
 
 
-def _run_until(sim, done):
-    for _ in range(MAX_STEPS):
-        if done():
-            return True
-        if not sim.step():
-            return done()
-    return False
+def _acked_ids(sim):
+    return {a.send_id for a in sim.acks}
 
 
-def _scenarios(tag, drop_probability):
-    """Per seed, the first moment one station has exactly one unresolved send and its
-    next planned change is due before that send times out.
-
-    Yields (sim, station, first_send, (change_time, price)).
-    """
-    for seed in SEEDS:
-        sim, station = _sim(tag, seed, drop_probability)
-        for _ in range(MAX_STEPS):
-            unresolved = _unresolved(sim, station)
-            nxt = _next_change(sim, station)
-            if (len(unresolved) == 1 and nxt is not None
-                    and sim.now < nxt[0] < unresolved[0].sent_at + TIMEOUT):
-                yield sim, station, unresolved[0], nxt
-                break
-            if not sim.step():
-                break
+def _unresolved_count(status):
+    for name in _OUTSTANDING_FIELDS:
+        if isinstance(status, dict) and name in status:
+            value = status[name]
+            break
+        if not isinstance(status, dict) and hasattr(status, name):
+            value = getattr(status, name)
+            break
+    else:
+        raise AssertionError('station status shows no outstanding send: %r' % (status,))
+    if value is None:
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return len(value)
+    return 1
 
 
 def test_second_update_held_while_first_send_outstanding():
-    checked = 0
-    for sim, station, first, _ in _scenarios("A38", 0.0):
-        applied = _applied(sim, station)
-        sends_before = len(_sends(sim, station))
-        assert _run_until(sim, lambda: _applied(sim, station) > applied
-                          or first.ack_arrived_at is not None)
-        if first.ack_arrived_at is not None:
-            continue  # acknowledged before the second update arrived
-        checked += 1
-        assert len(_sends(sim, station)) == sends_before
-        assert len(_unresolved(sim, station)) == 1
-        # Hold until the first send is acknowledged or times out.
-        while first.ack_arrived_at is None and sim.now < first.sent_at + TIMEOUT:
-            assert len(_sends(sim, station)) == sends_before
-            assert len(_unresolved(sim, station)) == 1
-            if not sim.step():
-                break
-    assert checked > 0
+    for seed in (1, 2, 3):
+        # Every send is lost, so the first send stays unresolved until its timeout.
+        sim = _fresh_sim(seed, loss_rate=1.0)
+        _schedule(sim, 1, STATION, FIRST_PRICE)
+        _step_until(sim, lambda: bool(_sends(sim)), limit=10)
+        first = _sends(sim)[0]
+        _schedule(sim, sim.now + 2, STATION, SECOND_PRICE)
+        while sim.now < first.sent_at + ABANDON_AFTER - 1:
+            sim.step()
+            assert len(_sends(sim)) == 1, 'second send transmitted while first is outstanding'
+            assert _unresolved_count(app.query_station_status(STATION)) == 1
+        assert any(c.price == SECOND_PRICE for c in sim.changes), 'second update never submitted'
 
 
-def test_second_update_sent_once_first_send_acknowledged():
-    checked = 0
-    for sim, station, first, (change_at, price) in _scenarios("B38", 0.0):
-        applied = _applied(sim, station)
-        assert _run_until(sim, lambda: _applied(sim, station) > applied
-                          or first.ack_arrived_at is not None)
-        if _applied(sim, station) > applied:
-            continue  # the second update arrived first: covered by the hold test
-        checked += 1
-        assert _run_until(sim, lambda: _applied(sim, station) > applied)
-        assert _run_until(sim, lambda: _transmitted(sim, station, price, change_at))
-        sent = [r for r in sim.sends()
-                if r.station == station and r.price == price and r.sent_at >= change_at]
-        assert sent[0].sent_at >= first.ack_arrived_at
-    assert checked > 0
+def test_second_update_sent_after_first_send_acknowledged():
+    sim = _reachable_sim(window=120, loss_rate=0.0)
+    _schedule(sim, 1, STATION, FIRST_PRICE)
+    _step_until(sim, lambda: bool(_sends(sim)), limit=10)
+    first = _sends(sim)[0]
+    assert first.outcome == 'delivered'
+    _step_until(sim, lambda: first.send_id in _acked_ids(sim), limit=first.sent_at + ABANDON_AFTER)
+    _schedule(sim, sim.now + 1, STATION, SECOND_PRICE)
+    _step_until(sim, lambda: bool(_sends_at_price(sim, SECOND_PRICE)), limit=sim.now + SLOT * 2)
+    assert len(_sends_at_price(sim, SECOND_PRICE)) == 1
 
 
-def test_second_update_sent_after_timeout_without_acknowledgement():
-    checked = 0
-    for sim, station, first, (change_at, price) in _scenarios("C38", 1.0):
-        applied = _applied(sim, station)
-        sends_before = len(_sends(sim, station))
-        assert _run_until(sim, lambda: _applied(sim, station) > applied)
-        assert len(_sends(sim, station)) == sends_before
-        checked += 1
-        # Nothing is acknowledged, so the second update waits for the timeout.
-        assert _run_until(sim, lambda: len(_sends(sim, station)) > sends_before)
-        second = _sends(sim, station)[sends_before]
-        assert second.price == price
-        assert second.sent_at >= first.sent_at + TIMEOUT
-    assert checked > 0
+def test_unacknowledged_send_abandoned_at_timeout_then_second_update_sent():
+    for seed in (1, 2, 3):
+        sim = _fresh_sim(seed, loss_rate=1.0)  # no acknowledgement ever comes back
+        _schedule(sim, 1, STATION, FIRST_PRICE)
+        _step_until(sim, lambda: bool(_sends(sim)), limit=10)
+        first = _sends(sim)[0]
+        _schedule(sim, sim.now + 1, STATION, SECOND_PRICE)
+        _step_until(sim, lambda: bool(_sends_at_price(sim, SECOND_PRICE)),
+                    limit=first.sent_at + ABANDON_AFTER + SLOT * 2)
+        second = _sends_at_price(sim, SECOND_PRICE)[0]
+        assert second.sent_at >= first.sent_at + ABANDON_AFTER, 'second send before the first timed out'
+
+
+def test_outstanding_send_to_one_station_does_not_hold_another_station():
+    sim = _fresh_sim(1, station_ids=('S1', 'S2'), loss_rate=1.0)
+    _schedule(sim, 1, 'S1', FIRST_PRICE)
+    _schedule(sim, 2, 'S2', FIRST_PRICE)
+    _schedule(sim, 3, 'S1', SECOND_PRICE)
+    _step_until(sim, lambda: bool(_sends(sim, 'S2')), limit=10)
+    sim.advance_to(5)
+    assert len(_sends(sim, 'S1')) == 1, 'second update for S1 sent while its first is outstanding'
+    assert len(_sends(sim, 'S2')) == 1
