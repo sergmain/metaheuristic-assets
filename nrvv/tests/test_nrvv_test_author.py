@@ -102,6 +102,19 @@ def test_the_criterion_prompt_carries_the_requirement_text_and_the_answer_shape(
     assert '{{M=' not in prompt and 'METADATA' not in prompt
 
 
+def test_the_criterion_prompt_ends_with_how_the_answer_is_stored():
+    # plan 045 Phase 36 (by CT): acceptance runs CRITERIA #96 and #99 - haiku reasoned about the requirement, the prompt's
+    # LAST part, then printed {"criterion": ...} instead of calling the result tool, and call-cc failed the Task
+    prompt = cp.compose('GASV4ACCC-5', E1_REQUIREMENT)
+
+    # the requirement first, then - the last thing CC reads - the tool by name, the answer's shape, and "print nothing"
+    tail = prompt[prompt.index('4.1) Not applicable.'):]
+    assert 'mh_cc_store_result' in tail
+    assert '{"criterion": "<the criterion>"}' in tail
+    assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
+    assert prompt.index('Requirement GASV4ACCC-5:') < prompt.index('mh_cc_store_result')
+
+
 @pytest.mark.parametrize('req_id, content', [('', E1_REQUIREMENT), ('X-1', ''), ('X-1', '{{M=1}}  \n')])
 def test_the_criterion_prompt_refuses_an_empty_input(req_id, content):
     with pytest.raises(ValueError):

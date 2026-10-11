@@ -60,11 +60,18 @@ def compose(req_id, content):
         '- The Rationale\'s "source:" line says where the requirement was recovered from; it is not part of the',
         '  criterion.',
         '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"criterion": "<the criterion>"}',
-        '',
+        # plan 045 Phase 36 (2026-10-10, by CT): the answer instruction moved to the END - after reading the requirement
+        # last, haiku reasoned about it and printed {"criterion": ...} instead of calling the result tool (acceptance
+        # runs CRITERIA #96, #99), and call-cc failed the Task. It was:
+        #   'Store your answer with the result tool as exactly this JSON object, and nothing else:',
+        #   '{"criterion": "<the criterion>"}',
+        #   '',
         'Requirement ' + req + ':',
         text,
+        '',
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"criterion": "<the criterion>"}',
+        'Print nothing - neither the criterion nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
 
