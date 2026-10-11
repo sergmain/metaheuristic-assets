@@ -68,6 +68,8 @@ def test_decompose_prompt_carries_every_need_and_the_answer_shape():
 
 def test_design_prompt_carries_the_needs_the_obligations_and_the_three_lists():
     prompt = nd.compose_design_prompt(NEEDS, checked_decomposition())
+    # plan 045 Phase 36: the one-parent rule stated as a rule, not only in the list heading
+    assert '- "parent" is ONE obligation key, exactly as written (for example "R1") - never a list and never several keys.' in prompt
     assert N1 in prompt
     assert 'R2 - T R2 (restates N-1, N-2)\nThe service shall do it.' in prompt
     for shape in ('"design": [{"key": "D1", "parent": "R1"', '"interface": [{"key": "I1"', '"environment": [{"key": "E1"'):

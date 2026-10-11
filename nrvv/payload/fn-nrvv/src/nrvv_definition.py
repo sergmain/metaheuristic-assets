@@ -135,6 +135,10 @@ def compose_design_prompt(needs, decomposition):
         '',
         'Rules:',
         '- Language-neutral: name no programming language, module, file, class, framework or library.',
+        # plan 045 Phase 36 (2026-10-10): haiku answered "parent": "R1, R2" for an item serving two obligations - the
+        # check refuses that (DERIVATION is a tree, decision 6); the rule is now stated where the answer is written
+        '- "parent" is ONE obligation key, exactly as written (for example "R1") - never a list and never several keys.',
+        '  An item that serves several obligations goes under the one it serves most directly.',
         '- You decide alone - nobody answers questions. Begin the rationale of an item that resolves an ambiguity with',
         '  "assumed: <what you decided and why>".',
         '- A title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters.',
