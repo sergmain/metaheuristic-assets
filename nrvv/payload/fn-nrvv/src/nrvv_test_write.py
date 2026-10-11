@@ -35,6 +35,7 @@ import sys
 import mh_task_io as io
 import nrvv_paths
 from nrvv_checkout import parse_location
+import nrvv_cc_answer as ca
 
 FUNCTION_CODE = 'mh.asset.nrvv-test-write_1.0'
 
@@ -85,10 +86,7 @@ def parse_answer(cc_result, suite):
     fenced = FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + excerpt(text)) from None
+    data = ca.loads(text)
     if not isinstance(data, dict):
         raise ValueError('CC answered no JSON object {"testFile": ..., "testIds": [...]}: ' + excerpt(text))
     source = data.get('testFile')

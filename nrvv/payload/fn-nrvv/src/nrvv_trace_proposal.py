@@ -22,6 +22,7 @@
 import json
 
 import nrvv_assessment as na
+import nrvv_cc_answer as ca
 
 KINDS = ('TRACE_PROPOSAL', 'COMPLIANCE_PROPOSAL', 'NOT_TO_PORT')
 FIELDS = ('kind', 'subject', 'counterpart', 'text')
@@ -128,10 +129,7 @@ def findings_of(cc_result, context, chunk):
     fenced = na.FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + na.excerpt(text)) from None
+    data = ca.loads(text)
     if not isinstance(data, dict) or set(data.keys()) != {'findings'} or not isinstance(data['findings'], list):
         raise ValueError('CC answered no {"findings": [...]} object: ' + na.excerpt(text))
     needs = {str(n['reqId']) for n in context['needs']}

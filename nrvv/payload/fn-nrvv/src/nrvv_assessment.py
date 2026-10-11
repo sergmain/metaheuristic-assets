@@ -14,6 +14,7 @@
 
 import json
 import re
+import nrvv_cc_answer as ca
 
 KINDS = ('CONTRADICTION', 'REDUNDANCY', 'VAGUE_TERM', 'SOLUTION_STATEMENT', 'SYSTEM_VOICE', 'NOT_SINGULAR')
 PAIR_KINDS = ('CONTRADICTION', 'REDUNDANCY')
@@ -105,10 +106,7 @@ def findings_of(cc_result, agreed_needs):
     fenced = FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + excerpt(text)) from None
+    data = ca.loads(text)
     if not isinstance(data, dict) or set(data.keys()) != {'findings'} or not isinstance(data['findings'], list):
         raise ValueError('CC answered no {"findings": [...]} object: ' + excerpt(text))
     known = {str(n.get('reqId')) for n in agreed_needs}

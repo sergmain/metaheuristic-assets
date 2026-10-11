@@ -29,6 +29,7 @@
 
 import json
 import re
+import nrvv_cc_answer as ca
 
 # A model sometimes wraps JSON in a markdown fence. That, and only that, is unwrapped (as the other checks do).
 FENCE = re.compile(r'^```[A-Za-z]*\s*\n(.*)\n```$', re.DOTALL)
@@ -223,10 +224,7 @@ def _answer_object(cc_result, shape):
     fenced = FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + excerpt(text)) from None
+    data = ca.loads(text)
     if not isinstance(data, dict):
         raise ValueError('CC answered no JSON object ' + shape + ': ' + excerpt(text))
     return data

@@ -15,6 +15,7 @@
 import json
 
 import nrvv_assessment as na
+import nrvv_cc_answer as ca
 
 TITLE_MAX_CHARS = 250
 FIELDS = ('title', 'statement')
@@ -103,10 +104,7 @@ def wording_of(cc_result):
     fenced = na.FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + na.excerpt(text)) from None
+    data = ca.loads(text)
     if not isinstance(data, dict):
         raise ValueError('CC answered no {"title", "statement"} object: ' + na.excerpt(text))
     extra = [k for k in data.keys() if k not in FIELDS]

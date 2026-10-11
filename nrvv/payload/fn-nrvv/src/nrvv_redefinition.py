@@ -40,6 +40,7 @@
 import json
 
 import nrvv_assessment as na
+import nrvv_cc_answer as ca
 
 ACTIONS = ('KEEP', 'CHANGE', 'OBSOLETE')
 KINDS = {'D': 'design', 'I': 'interface', 'E': 'environment'}
@@ -351,10 +352,7 @@ def _answer_object(cc_result):
     fenced = na.FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + na.excerpt(text)) from None
+    data = ca.loads(text)
     if not isinstance(data, dict):
         raise ValueError('CC answered no JSON object: ' + na.excerpt(text))
     return data

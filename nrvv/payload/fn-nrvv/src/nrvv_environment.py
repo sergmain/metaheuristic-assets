@@ -23,6 +23,7 @@ import re
 import shutil
 import sys
 
+import nrvv_cc_answer as ca
 import nrvv_requirement_text as rt
 
 PACKAGE = 'nrvv_env'
@@ -136,12 +137,8 @@ def parse_env_answer(cc_result):
     fenced = FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data, end = json.JSONDecoder().raw_decode(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + excerpt(text)) from None
-    if not STRAY_CLOSERS.fullmatch(text[end:]):
-        raise ValueError('CC answered something that is not JSON: ' + excerpt(text))
+    # the shared decode of every NRVV check (nrvv_cc_answer) - STRAY_CLOSERS above is the rule it took over
+    data = ca.loads(text)
     files = data.get('files') if isinstance(data, dict) else None
     if not isinstance(files, dict) or not files:
         raise ValueError('CC answered no JSON object {"files": {"<module>.py": "<content>"}}: ' + excerpt(text))

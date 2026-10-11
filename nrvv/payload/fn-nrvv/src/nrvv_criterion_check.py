@@ -19,6 +19,7 @@ import re
 import sys
 
 import mh_task_io as io
+import nrvv_cc_answer as ca
 
 FUNCTION_CODE = 'mh.asset.nrvv-criterion-check_1.0'
 
@@ -40,10 +41,7 @@ def criterion_of(cc_result):
     fenced = FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    try:
-        data = json.loads(text)
-    except ValueError:
-        raise ValueError('CC answered something that is not JSON: ' + excerpt(text)) from None
+    data = ca.loads(text)
     if not isinstance(data, dict):
         raise ValueError('CC answered no JSON object {"criterion": ...}: ' + excerpt(text))
     value = data.get('criterion')

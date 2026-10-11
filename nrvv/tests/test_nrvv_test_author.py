@@ -210,6 +210,15 @@ def test_parse_answer_unwraps_one_markdown_fence():
     assert tw.parse_answer('```json\n' + answer() + '\n```', SUITE)[0] == GOOD_TESTS
 
 
+def test_parse_answer_with_a_stray_quote_and_brace_after_the_object():
+    # plan 045 Phase 36, acceptance run TEST_AUTHOR #114 (Variable 20334): haiku stored the whole, valid answer object
+    # followed by '"}' - json.loads refused it as "Extra data"
+    source, ids = tw.parse_answer(json.dumps({'testFile': GOOD_TESTS}) + '"}', SUITE)
+
+    assert source == GOOD_TESTS, 'the object is whole; the stray quote and brace carry nothing'
+    assert ids == [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line']
+
+
 # observed: TA1 (ExecContext #91), branch 2, Task 25250 - CC's test answer, Variable 13815, byte for byte. It carries
 # the test file and no testIds, although the prompt asked for both.
 TA1_BRANCH2_ANSWER = r"""{"testFile": "import inspect\n\nimport nrvv_sample\n\n\ndef _get_class():\n    cls = getattr(nrvv_sample, \"NrvvSample\", None)\n    assert cls is not None, \"module nrvv_sample must declare a class named 'NrvvSample'\"\n    assert inspect.isclass(cls), \"'NrvvSample' must be a class\"\n    return cls\n\n\ndef test_class_declares_main_member():\n    cls = _get_class()\n    assert \"main\" in dir(cls), \"class NrvvSample must declare a member named 'main'\"\n\n\ndef test_main_is_callable():\n    cls = _get_class()\n    main = getattr(cls, \"main\", None)\n    assert main is not None, \"class NrvvSample must have a 'main' method\"\n    assert callable(main), \"'main' must be callable (a method)\"\n\n\ndef test_main_is_a_function_or_method():\n    cls = _get_class()\n    main = inspect.getattr_static(cls, \"main\", None)\n    assert main is not None, \"class NrvvSample must declare 'main'\"\n    assert isinstance(\n        main, (staticmethod, classmethod)\n    ) or inspect.isfunction(main), \"'main' must be a method of NrvvSample\"\n"}"""
