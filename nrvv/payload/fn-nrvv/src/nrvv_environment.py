@@ -32,6 +32,9 @@ INIT = '__init__.py'
 FORBIDDEN = ('threading', '_thread', 'multiprocessing', 'asyncio', 'concurrent', 'time', 'socket', 'subprocess')
 FENCE = re.compile(r'^```[A-Za-z]*\s*\n(.*)\n```$', re.DOTALL)
 EXCERPT = 300
+# what may follow the decoded answer object: whitespace and stray closers only (plan 045 Phase 36: haiku stored a whole
+# files object and one '}' more) - anything else after the object is content, and is refused
+STRAY_CLOSERS = re.compile(r'[\s}\]]*')
 
 
 def excerpt(text):
@@ -134,9 +137,11 @@ def parse_env_answer(cc_result):
     if fenced:
         text = fenced.group(1).strip()
     try:
-        data = json.loads(text)
+        data, end = json.JSONDecoder().raw_decode(text)
     except ValueError:
         raise ValueError('CC answered something that is not JSON: ' + excerpt(text)) from None
+    if not STRAY_CLOSERS.fullmatch(text[end:]):
+        raise ValueError('CC answered something that is not JSON: ' + excerpt(text))
     files = data.get('files') if isinstance(data, dict) else None
     if not isinstance(files, dict) or not files:
         raise ValueError('CC answered no JSON object {"files": {"<module>.py": "<content>"}}: ' + excerpt(text))

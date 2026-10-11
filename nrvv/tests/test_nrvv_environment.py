@@ -100,6 +100,20 @@ def test_parse_env_answer_refuses_what_is_not_a_files_map():
             ne.parse_env_answer(bad)
 
 
+def test_parse_env_answer_with_a_stray_closing_brace_after_the_object():
+    # plan 045 Phase 36, acceptance run TEST_AUTHOR #107 (Task 31708): haiku stored the whole, valid files object and
+    # one '}' more, then CRLF - json.loads refused it as "Extra data"
+    answer = json.dumps(ANSWER) + '}\r\n'
+    assert ne.parse_env_answer(answer) == ANSWER['files'], 'the object is whole; the stray closer carries nothing'
+
+
+@pytest.mark.parametrize('tail', ['} {"files": {}}', 'and some prose', ']x', '{'])
+def test_parse_env_answer_refuses_content_after_the_object(tail):
+    with pytest.raises(ValueError) as e:
+        ne.parse_env_answer(json.dumps(ANSWER) + tail)
+    assert 'CC answered something that is not JSON' in str(e.value), str(e.value)
+
+
 # ---------------------------------------------------------------------------------------------------------- write
 
 def test_write_env_replaces_the_package_and_adds_init(tmp_path):
