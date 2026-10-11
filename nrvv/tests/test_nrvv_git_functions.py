@@ -1,5 +1,6 @@
 # checkout, guard and commit-push against a bare remote the test builds itself (conftest.GitWorld).
 
+import json
 import os
 
 import pytest
@@ -168,6 +169,45 @@ def test_guard_counts_both_sides_of_a_rename_out_of_the_allowed_dir(world, tmp_p
 
     with pytest.raises(guard.GuardError, match='app.py'):
         guard.check(root, base, 'nrvv/target')
+
+
+def guard_params(tmp_path, working, workspace, location, base):
+    """A params document for nrvv_guard.main, as a Processor writes it: inputs as files, the report as output #101."""
+    values = {'workspace': workspace, 'target': json.dumps(location), 'targetBase': base}
+    inputs = []
+    for number, (name, text) in enumerate(values.items(), 1):
+        os.makedirs(os.path.join(working, 'variable'), exist_ok=True)
+        with open(os.path.join(working, 'variable', str(number)), 'w', encoding='utf-8') as f:
+            f.write(text)
+        inputs.append({'name': name, 'id': number, 'dataType': 'variable'})
+    task = {'workingPath': working,
+            'metas': [{'nrvv-role': 'target'}, {'variable-for-workspace': 'workspace'},
+                      {'variable-for-location': 'target'}, {'variable-for-base-commit': 'targetBase'},
+                      {'variable-for-guard-report': 'guardReport'}],
+            'inputs': inputs, 'outputs': [{'name': 'guardReport', 'id': 101}]}
+    path = tmp_path / 'params.json'
+    path.write_text(json.dumps({'task': task}), encoding='utf-8')
+    return str(path)
+
+
+def test_guard_main_with_nothing_changed_writes_a_report_that_can_be_uploaded(world, tmp_path):
+    # plan 045 Phase 38 (by CT): IMPLEMENTATION #142 - the implement session changed nothing, the guard wrote a 0-byte
+    # report, the Dispatcher refused the upload ("440.182 file has zero length", UNRECOVERABLE_ERROR), the Processor
+    # dropped the Task and the Dispatcher kept it IN_PROGRESS: the run never ended
+    world.init(FILES)
+    ws = str(tmp_path / 'ws')
+    base, _ = co.checkout(ws, 'target', loc(world, d='nrvv/target'))
+    w = str(tmp_path / 'guard')
+
+    guard.main(['nrvv_guard.py', guard_params(tmp_path, w, ws, loc(world, d='nrvv/target'), base)])
+
+    report = os.path.join(w, 'artifacts', '101')
+    # CT Green-1: nothing changed - the report was 0 bytes
+    # CT Red: the report is never empty - with no changed path it says so, and it is still not a path
+    with open(report, encoding='utf-8') as f:
+        assert f.read() == guard.NO_CHANGES
+    assert os.path.getsize(report) > 0
+    assert '/' not in guard.NO_CHANGES
 
 
 # ---------------------------------------------------------------------------------------------------

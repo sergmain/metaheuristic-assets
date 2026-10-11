@@ -9,6 +9,8 @@
 #   nrvv-role     the checkout to inspect (target for the implementation run)
 # Output:
 #   guard-report  the changed paths, one per line; written only when the guard passes
+#                 with no changed path it holds NO_CHANGES - never 0 bytes: MH refuses to upload an empty file
+#                 (440.182), and the Task then never ends (plan 045 Phase 38, IMPLEMENTATION #142)
 #
 # "Changed" is everything that differs from base-commit: committed since it, staged, unstaged, untracked; a rename
 # counts both paths. An empty allowed dir (the repository root) allows everything.
@@ -33,6 +35,10 @@ def paths_outside(paths, allowed_rel_dir):
     return [p for p in paths if p != allowed and not p.startswith(allowed + '/')]
 
 
+# what the report says when the session changed nothing - not a path (it holds no '/')
+NO_CHANGES = 'no changed paths'
+
+
 def check(repo_root, base_sha, allowed_rel_dir):
     """The changed paths when every one lies under allowed_rel_dir; GuardError naming the offenders otherwise."""
     changed = nrvv_git.changed_paths(repo_root, base_sha)
@@ -50,7 +56,7 @@ def main(argv):
     location = nrvv_checkout.parse_location(io.read_role(task, 'location'))
     base = io.read_role(task, 'base-commit').strip()
     changed = check(nrvv_paths.checkout_root(workspace, role), base, location['dir'])
-    io.write_text(io.output_role(task, 'guard-report'), '\n'.join(changed))
+    io.write_text(io.output_role(task, 'guard-report'), '\n'.join(changed) if changed else NO_CHANGES)
     print('nrvv-guard: ' + str(len(changed)) + ' changed path(s), all under \'' + location['dir'] + '\'')
 
 
