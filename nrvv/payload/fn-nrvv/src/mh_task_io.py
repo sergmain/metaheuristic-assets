@@ -5,6 +5,7 @@
 # hit wins. Inputs sit at {workingPath}/{dataType}/{id}, outputs are written to {workingPath}/artifacts/{id}.
 
 import os
+import sys
 
 ARTIFACTS_DIR = 'artifacts'
 
@@ -86,6 +87,19 @@ def output_role(task, role):
 def load_params(argv):
     """The params document; its path is always the LAST argument. PyYAML is imported here, not at module scope,
     so the modules of this payload stay importable by a test on a box without it."""
+    # plan 045 Phase 36 (2026-10-10, by CT): every Function's main() comes here first, so the console is made UTF-8
+    # here - a Windows Processor runs Python with a cp1252 console, and print() of CC's text holding a character outside
+    # it ('\u2264') failed the Task after its work was written (CRITERIA #96, mh.asset.nrvv-criterion-check_1.0)
+    utf8_console()
     import yaml
     with open(argv[len(argv) - 1], 'r', encoding='utf-8') as stream:
         return yaml.load(stream, Loader=yaml.FullLoader)
+
+
+def utf8_console():
+    """stdout and stderr re-encoded as UTF-8 - what nrvv_implement.main does for itself; an unencodable character is
+    written escaped, never raised."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is not None:
+            reconfigure(encoding='utf-8', errors='backslashreplace')
