@@ -1,0 +1,2 @@
+# GASV4ACCK_33_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_33_suite.py::test_latest_price_wins_when_older_price_arrives_last

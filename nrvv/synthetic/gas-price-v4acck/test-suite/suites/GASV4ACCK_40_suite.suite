@@ -1,0 +1,4 @@
+# GASV4ACCK_40_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_40_suite.py::test_update_content_is_station_and_price_only
+tests/test_GASV4ACCK_40_suite.py::test_each_station_final_price_is_dispatched_without_versioning
+tests/test_GASV4ACCK_40_suite.py::test_station_only_acknowledgement_is_accepted

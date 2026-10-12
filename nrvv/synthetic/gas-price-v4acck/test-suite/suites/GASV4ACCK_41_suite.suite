@@ -1,0 +1,5 @@
+# GASV4ACCK_41_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_41_suite.py::test_latest_and_last_acknowledged_price_converge_to_final_price
+tests/test_GASV4ACCK_41_suite.py::test_acknowledgement_dispatches_latest_only_when_it_differs_from_last_acknowledged
+tests/test_GASV4ACCK_41_suite.py::test_frequent_changes_settle_on_final_price
+tests/test_GASV4ACCK_41_suite.py::test_single_change_settles_on_that_price

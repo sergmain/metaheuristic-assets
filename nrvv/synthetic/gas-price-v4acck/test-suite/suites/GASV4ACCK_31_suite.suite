@@ -1,0 +1,7 @@
+# GASV4ACCK_31_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_31_suite.py::test_single_station_settles_on_last_set_price
+tests/test_GASV4ACCK_31_suite.py::test_each_station_settles_on_its_own_last_price
+tests/test_GASV4ACCK_31_suite.py::test_final_price_equal_to_earlier_price_is_held
+tests/test_GASV4ACCK_31_suite.py::test_random_change_sequences_settle_on_latest_price
+tests/test_GASV4ACCK_31_suite.py::test_many_changes_per_station_settle_on_latest_price
+tests/test_GASV4ACCK_31_suite.py::test_settled_price_stays_after_quiet_period

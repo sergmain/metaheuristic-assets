@@ -1,0 +1,5 @@
+# GASV4ACCK_44_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_44_suite.py::test_new_price_dispatched_within_five_minutes
+tests/test_GASV4ACCK_44_suite.py::test_repeated_price_dispatched_within_five_minutes_unless_carried
+tests/test_GASV4ACCK_44_suite.py::test_change_to_outstanding_price_is_not_counted_stale
+tests/test_GASV4ACCK_44_suite.py::test_stations_end_on_final_latest_price
