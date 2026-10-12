@@ -1,0 +1,4 @@
+# GASV4E2CM_40_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_40_suite.py::test_latest_ack_overrides_earlier_ack_for_station_a
+tests/test_GASV4E2CM_40_suite.py::test_station_b_records_its_single_ack_price
+tests/test_GASV4E2CM_40_suite.py::test_station_a_keeps_1_60_after_station_b_ack

@@ -1,0 +1,5 @@
+# GASV4E2CM_48_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_48_suite.py::test_ack_with_in_flight_update_sets_confirmed_price_and_clears_in_flight
+tests/test_GASV4E2CM_48_suite.py::test_ack_with_in_flight_update_reevaluates_dispatch_once
+tests/test_GASV4E2CM_48_suite.py::test_ack_without_in_flight_update_is_discarded_and_counted_as_anomaly
+tests/test_GASV4E2CM_48_suite.py::test_acknowledgements_are_processed_in_arrival_order
