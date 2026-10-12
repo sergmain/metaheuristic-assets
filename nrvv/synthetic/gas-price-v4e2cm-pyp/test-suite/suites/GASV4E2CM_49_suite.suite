@@ -1,0 +1,4 @@
+# GASV4E2CM_49_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_49_suite.py::test_desired_equal_to_confirmed_sends_nothing
+tests/test_GASV4E2CM_49_suite.py::test_return_to_confirmed_after_other_ack_sends_confirmed_once
+tests/test_GASV4E2CM_49_suite.py::test_ack_of_return_price_sends_nothing_more

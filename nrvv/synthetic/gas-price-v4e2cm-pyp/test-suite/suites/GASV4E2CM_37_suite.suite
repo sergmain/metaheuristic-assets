@@ -1,0 +1,5 @@
+# GASV4E2CM_37_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_37_suite.py::test_changed_price_sends_exactly_one_update_to_that_station
+tests/test_GASV4E2CM_37_suite.py::test_unchanged_price_sends_no_update_to_that_station
+tests/test_GASV4E2CM_37_suite.py::test_changed_price_sends_one_update_under_loss_and_outage
+tests/test_GASV4E2CM_37_suite.py::test_unchanged_price_sends_no_update_under_loss_and_outage
