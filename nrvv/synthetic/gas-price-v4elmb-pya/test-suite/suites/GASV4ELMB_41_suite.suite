@@ -1,0 +1,3 @@
+# GASV4ELMB_41_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_41_suite.py::test_later_ack_alone_leaves_later_update_not_acknowledged
+tests/test_GASV4ELMB_41_suite.py::test_earlier_ack_after_later_ack_marks_both_updates_acknowledged
