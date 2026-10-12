@@ -1,0 +1,4 @@
+# GASV4ELMB_42_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_42_suite.py::test_second_price_accepted_while_first_update_unacknowledged
+tests/test_GASV4ELMB_42_suite.py::test_new_price_accepted_for_every_station_with_updates_in_flight
+tests/test_GASV4ELMB_42_suite.py::test_back_to_back_prices_all_accepted_before_any_acknowledgement

@@ -1,0 +1,2 @@
+# GASV4ELMB_37_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_37_suite.py::test_coalesced_changes_send_only_latest_price
