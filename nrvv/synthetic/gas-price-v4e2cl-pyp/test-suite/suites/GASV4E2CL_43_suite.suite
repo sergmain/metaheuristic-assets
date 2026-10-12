@@ -1,0 +1,6 @@
+# GASV4E2CL_43_suite - written by nrvv-test-author
+tests/test_GASV4E2CL_43_suite.py::test_single_trigger_sends_exactly_one_update_to_station
+tests/test_GASV4E2CL_43_suite.py::test_update_carries_exactly_price_and_update_identifier
+tests/test_GASV4E2CL_43_suite.py::test_no_query_reset_or_control_message_to_station
+tests/test_GASV4E2CL_43_suite.py::test_nothing_sent_after_station_acknowledges_update
+tests/test_GASV4E2CL_43_suite.py::test_acknowledgement_names_identifier_carried_by_update
