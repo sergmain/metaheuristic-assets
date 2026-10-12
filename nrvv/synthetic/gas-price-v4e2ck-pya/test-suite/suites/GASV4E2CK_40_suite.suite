@@ -1,0 +1,2 @@
+# GASV4E2CK_40_suite - written by nrvv-test-author
+tests/test_GASV4E2CK_40_suite.py::test_station_not_up_to_date_while_an_earlier_update_is_unacked

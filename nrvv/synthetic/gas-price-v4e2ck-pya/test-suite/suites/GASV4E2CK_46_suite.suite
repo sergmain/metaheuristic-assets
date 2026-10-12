@@ -1,0 +1,5 @@
+# GASV4E2CK_46_suite - written by nrvv-test-author
+tests/test_GASV4E2CK_46_suite.py::test_up_to_date_true_after_single_update_acknowledged
+tests/test_GASV4E2CK_46_suite.py::test_up_to_date_false_while_outstanding_entry_remains
+tests/test_GASV4E2CK_46_suite.py::test_up_to_date_flag_tracks_outstanding_list_under_loss
+tests/test_GASV4E2CK_46_suite.py::test_up_to_date_true_only_after_last_of_several_acks
