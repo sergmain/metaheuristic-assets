@@ -1,0 +1,3 @@
+# GASV4R12A_43_suite - written by nrvv-test-author
+tests/test_GASV4R12A_43_suite.py::test_up_to_date_only_after_ack_for_latest_price
+tests/test_GASV4R12A_43_suite.py::test_not_up_to_date_without_any_ack
