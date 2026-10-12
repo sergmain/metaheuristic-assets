@@ -1,0 +1,4 @@
+# GASV4PRDA_47_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_47_suite.py::test_second_price_waits_while_first_update_unacknowledged
+tests/test_GASV4PRDA_47_suite.py::test_at_most_one_unacknowledged_update_per_station
+tests/test_GASV4PRDA_47_suite.py::test_next_price_is_sent_only_after_previous_is_acknowledged

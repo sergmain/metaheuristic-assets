@@ -1,0 +1,6 @@
+# GASV4PRDA_36_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_36_suite.py::test_resend_is_sent_by_t0_plus_30
+tests/test_GASV4PRDA_36_suite.py::test_fresh_update_is_sent_by_t0_plus_40
+tests/test_GASV4PRDA_36_suite.py::test_fresh_update_is_delivered_by_t0_plus_45
+tests/test_GASV4PRDA_36_suite.py::test_resend_and_fresh_deliveries_take_at_most_5_seconds
+tests/test_GASV4PRDA_36_suite.py::test_acknowledgements_return_within_5_seconds

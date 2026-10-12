@@ -1,0 +1,5 @@
+# GASV4PRDA_41_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_41_suite.py::test_new_price_not_sent_before_outstanding_ack
+tests/test_GASV4PRDA_41_suite.py::test_new_price_sent_after_outstanding_ack
+tests/test_GASV4PRDA_41_suite.py::test_newer_price_held_under_loss_duplicates_and_outages
+tests/test_GASV4PRDA_41_suite.py::test_hold_applies_per_station

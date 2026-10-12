@@ -1,0 +1,6 @@
+# GASV4PRDA_37_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_37_suite.py::test_station_displays_only_price_of_last_update_received
+tests/test_GASV4PRDA_37_suite.py::test_station_acknowledges_every_update_copy_it_receives
+tests/test_GASV4PRDA_37_suite.py::test_update_carries_complete_price_and_no_other_field
+tests/test_GASV4PRDA_37_suite.py::test_final_display_equals_latest_desired_price_without_faults
+tests/test_GASV4PRDA_37_suite.py::test_delayed_stale_copy_does_not_leave_stale_price_last
