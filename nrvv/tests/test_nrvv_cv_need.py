@@ -7,6 +7,7 @@ import pytest
 
 import nrvv_cv_need as cv
 import nrvv_cv_need_contradiction as contradiction
+import nrvv_cv_need_feasibility as feasibility
 import nrvv_cv_need_quality as quality
 
 NEEDS = [
@@ -117,3 +118,69 @@ def test_conflict_key():
     assert cv.conflict_key('CONTRADICTION', 'GAS-6', 'GAS-2', ('CONTRADICTION',)) == 'CONTRADICTION|GAS-2|GAS-6'
     assert cv.conflict_key('VAGUE_TERM', 'GAS-6', None, ('REDUNDANCY',)) == 'VAGUE_TERM|GAS-6'
     assert cv.conflict_key('VAGUE_TERM', 'GAS-6', 'GAS-2', ('REDUNDANCY',)) == 'VAGUE_TERM|GAS-6'
+
+
+# ==================== FEASIBILITY (plan 047, Phase 11) ====================
+
+WITNESS = ('One publisher per station keeps the newest price and resends it until acknowledged: GAS-2 holds by resending '
+           'the newest; GAS-6 is met by never replacing the first; GAS-7 by coalescing; GAS-9 by default.')
+
+
+def test_feasibility_prompt_tail_and_verdicts():
+    prompt = feasibility.compose(NEEDS)
+    lines = prompt.split('\n')
+    assert lines[-1].startswith('Print nothing')
+    assert lines[-2] == feasibility.ANSWER_SHAPE
+    assert 'mh_cc_store_result' in lines[-4] or 'mh_cc_store_result' in lines[-3]
+    for v in feasibility.VERDICTS:
+        assert '- ' + v + ':' in prompt, v
+    assert 'MINIMAL set' in prompt
+    assert 'names EVERY agreed NEED' in prompt
+    assert 'Optimality is not a criterion' in prompt
+    assert prompt.index('NEED GAS-9') < prompt.index('mh_cc_store_result'), 'the instruction is LAST'
+
+
+def test_feasibility_infeasible_canonical():
+    raw = json.dumps({'verdict': 'INFEASIBLE', 'needReqIds': [' GAS-6', 'GAS-2'], 'reason': ' keep first vs latest ',
+                      'witness': None, 'openChoices': []})
+    assert feasibility.verdict_of(raw, NEEDS) == {'verdict': 'INFEASIBLE', 'needReqIds': ['GAS-6', 'GAS-2'],
+                                                  'reason': 'keep first vs latest'}
+
+
+def test_feasibility_underdetermined_and_determined_canonical():
+    out = feasibility.verdict_of(json.dumps({'verdict': 'UNDERDETERMINED', 'witness': WITNESS,
+                                             'openChoices': ['the resend interval']}), NEEDS)
+    assert out == {'verdict': 'UNDERDETERMINED', 'witness': WITNESS, 'openChoices': ['the resend interval']}
+    out = feasibility.verdict_of(json.dumps({'verdict': 'DETERMINED', 'witness': WITNESS, 'needReqIds': []}), NEEDS)
+    assert out == {'verdict': 'DETERMINED', 'witness': WITNESS}
+
+
+def test_feasibility_witness_names_need_by_reqid_not_by_prefix():
+    assert feasibility.names('meets GAS-2 and GAS-21', 'GAS-2')
+    assert not feasibility.names('meets GAS-21 only', 'GAS-2')
+
+
+@pytest.mark.parametrize('answer_object, message', [
+    ({'verdict': 'MAYBE', 'witness': WITNESS}, 'unknown verdict'),
+    ({'verdict': 'DETERMINED', 'witness': WITNESS, 'design': 'x'}, 'unknown field'),
+    ({'verdict': 'INFEASIBLE', 'needReqIds': [], 'reason': 'r'}, 'at least one NEED'),
+    ({'verdict': 'INFEASIBLE', 'reason': 'r'}, 'at least one NEED'),
+    ({'verdict': 'INFEASIBLE', 'needReqIds': ['GAS-99'], 'reason': 'r'}, 'not one of the agreed NEEDs'),
+    ({'verdict': 'INFEASIBLE', 'needReqIds': ['GAS-2', 'GAS-2'], 'reason': 'r'}, 'twice'),
+    ({'verdict': 'INFEASIBLE', 'needReqIds': ['GAS-2'], 'reason': ' '}, 'reason'),
+    ({'verdict': 'DETERMINED'}, 'witness design'),
+    ({'verdict': 'DETERMINED', 'witness': WITNESS.replace('GAS-9', 'the last')}, 'does not name NEED GAS-9'),
+    ({'verdict': 'DETERMINED', 'witness': WITNESS + 'x' * 2000}, 'at most 2000'),
+    ({'verdict': 'UNDERDETERMINED', 'witness': WITNESS}, 'leave open'),
+    ({'verdict': 'UNDERDETERMINED', 'witness': WITNESS, 'openChoices': [' ']}, 'leave open'),
+])
+def test_feasibility_check_refuses(answer_object, message):
+    with pytest.raises(ValueError) as e:
+        feasibility.verdict_of(json.dumps(answer_object), NEEDS)
+    assert message in str(e.value)
+
+
+def test_feasibility_check_refuses_a_non_object():
+    with pytest.raises(ValueError) as e:
+        feasibility.verdict_of('["DETERMINED"]', NEEDS)
+    assert 'no {"verdict"' in str(e.value)
