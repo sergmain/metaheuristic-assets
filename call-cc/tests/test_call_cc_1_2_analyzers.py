@@ -77,7 +77,7 @@ def test_an_ordinary_console_blocks_nothing():
 def test_the_v5_flows_name_call_cc_1_2():
     # plan 047: every v5 development flow names mh.asset.call-cc_1.2
     for name in ('nrvv-expectation-analysis-1.0.mhsc', 'nrvv-cv-need-contradiction-1.0.mhsc',
-                 'nrvv-cv-need-quality-1.0.mhsc'):
+                 'nrvv-cv-need-quality-1.0.mhsc', 'nrvv-cv-need-feasibility-1.0.mhsc'):
         with open(os.path.join(REPO, 'nrvv', 'source-codes', name), encoding='utf-8') as f:
             codes = set(re.findall(r'(mh\.asset\.call-cc[_0-9.]*) \{', f.read()))
         assert codes == {'mh.asset.call-cc_1.2'}, name + ': ' + str(codes)
