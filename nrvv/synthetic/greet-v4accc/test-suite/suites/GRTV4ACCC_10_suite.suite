@@ -1,0 +1,4 @@
+# GRTV4ACCC_10_suite - written by nrvv-test-author
+tests/test_GRTV4ACCC_10_suite.py::test_main_prints_exact_greeting
+tests/test_GRTV4ACCC_10_suite.py::test_main_completes_without_stderr_output
+tests/test_GRTV4ACCC_10_suite.py::test_script_run_prints_exact_greeting_and_exits_zero

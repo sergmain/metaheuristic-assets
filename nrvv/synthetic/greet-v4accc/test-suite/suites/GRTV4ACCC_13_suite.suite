@@ -1,0 +1,4 @@
+# GRTV4ACCC_13_suite - written by nrvv-test-author
+tests/test_GRTV4ACCC_13_suite.py::test_greeting_is_written_to_standard_output
+tests/test_GRTV4ACCC_13_suite.py::test_greeting_is_not_written_to_standard_error
+tests/test_GRTV4ACCC_13_suite.py::test_standard_error_does_not_contain_greeting_text

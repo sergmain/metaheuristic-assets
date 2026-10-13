@@ -1,0 +1,5 @@
+# GRTV4ACCC_11_suite - written by nrvv-test-author
+tests/test_GRTV4ACCC_11_suite.py::test_main_is_defined_on_class
+tests/test_GRTV4ACCC_11_suite.py::test_main_runs_with_no_arguments_and_prints_one_line
+tests/test_GRTV4ACCC_11_suite.py::test_main_completes_normally_returning_none
+tests/test_GRTV4ACCC_11_suite.py::test_running_module_as_program_prints_greeting_once
