@@ -152,6 +152,7 @@ NEEDS = [{'needReqId': 'GAS-3'}]
     (answer(clause(0, 10), clause(5, 15)), None, 'overlap'),
     (answer(clause(0, 10, kind='WISH')), None, 'unknown kind'),
     (answer(dict(clause(0, 10), title=' ')), None, 'no title'),
+    (answer(dict(clause(0, 10), title='t' * 251)), None, 'over 250'),
     (answer(dict(clause(0, 10), statement='')), None, 'empty statement'),
     (answer(clause(0, 10, mapping='NEW')), None, 'no parent'),
     (answer(clause(0, 10, needReqId='GAS-3')), None, 'no parent'),

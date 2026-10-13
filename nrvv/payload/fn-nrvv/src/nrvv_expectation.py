@@ -28,6 +28,8 @@ KINDS = ('OBLIGATION', 'COST_OBJECTIVE', 'ENVIRONMENT_FACT', 'SCOPE_LIMITER')
 MAPPINGS = ('UNCHANGED', 'AMENDS', 'NEW')
 MAPPED = ('UNCHANGED', 'AMENDS')
 FIELDS = ('from', 'to', 'kind', 'title', 'statement', 'mapping', 'needReqId')
+# NRVV_PROPOSED_NEED.TITLE is VARCHAR(250)
+TITLE_MAX_CHARS = 250
 
 # a piece: from its first non-blank character up to and including a terminator followed by blank or the line's end,
 # or - with no such terminator - to the line's last non-blank character
@@ -179,6 +181,8 @@ def clauses_of(cc_result, expectation):
             raise ValueError(where + ' has no title')
         if '\n' in title.strip() or '\r' in title.strip():
             raise ValueError(where + ' has a title of more than one line')
+        if len(title.strip()) > TITLE_MAX_CHARS:
+            raise ValueError(where + ' has a title over ' + str(TITLE_MAX_CHARS) + ' characters')
         if not isinstance(statement, str) or not statement.strip():
             raise ValueError(where + ' has an empty statement')
         mapping = c.get('mapping')
