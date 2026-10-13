@@ -19,6 +19,14 @@
 # CC DECIDES (decision 2): no question goes to the user. Every interpretation CC makes - an ambiguity resolved, a word
 # made measurable - is written into a statement, and stated in that item's rationale as `assumed: ...`.
 #
+# Plan 047 Phase 14 (decision 14) narrows that for the top-level requirements: a statement holds only what the NEEDs
+# state or what holds under every reading of them; an ambiguity is recorded, not resolved - one rationale line
+# `ambiguity: <what>` each (the Dispatcher stores one AMBIGUITY finding per line, Phase 15); no number, duration, rate
+# or limit the NEEDs do not state enters a statement; a COST_OBJECTIVE NEED becomes an obligation to measure and report
+# that cost, never a bound. `assumed:` stays for the design, Interface and Environment items only. A NEED shows its
+# clause kind when it has one, and the answer instruction is the LAST part of each prompt - CC acts on what it reads
+# last.
+#
 # LANGUAGE-NEUTRAL (decision 8): one definition feeds several implementations, so no item names a programming
 # language, a module, a file or a framework; the Python binding lives in the test and implementation prompts.
 #
@@ -69,10 +77,14 @@ def need_id(need):
 
 
 def needs_text(needs):
-    """The NEEDs as a prompt shows them: code, revision and title, then the statement."""
+    """The NEEDs as a prompt shows them: code, revision and title, then the statement.
+
+    Plan 047 Phase 14: a NEED with a clause kind (an agreed NEED of an analysed Expectation) shows it after its revision;
+    one without keeps the v4 line."""
     blocks = []
     for n in needs:
-        blocks.append(need_id(n) + ' (revision ' + str(n.get('revision')) + ') - '
+        kind = _text(n.get('kind'))
+        blocks.append(need_id(n) + ' (revision ' + str(n.get('revision')) + (', ' + kind if kind else '') + ') - '
                       + (_text(n.get('title')) or '') + '\n' + _text(n.get('statement')))
     return '\n\n'.join(blocks)
 
@@ -95,20 +107,29 @@ def compose_decompose_prompt(needs):
         '  at least one requirement. Name no other code.',
         '- Verifiable: an observer can decide from outside whether the system meets it.',
         '- Language-neutral: name no programming language, module, file, class, framework or library.',
-        '- You decide alone - nobody answers questions. Where a NEED is ambiguous or a word must be made measurable,',
-        '  decide, write the decision into the statement, and begin that requirement\'s rationale with',
-        '  "assumed: <what you decided and why>". Otherwise the rationale says why the requirement follows from its',
-        '  NEED(s).',
+        # plan 047 Phase 14 (decision 14): was "Where a NEED is ambiguous or a word must be made measurable, decide,
+        # write the decision into the statement" - which wrote a deadline and a send spacing r1 never stated
+        '- You decide alone - nobody answers questions.',
+        '- A statement holds only what the NEEDs state, or what holds under EVERY reading of them.',
+        '- Where a NEED is ambiguous, choose no reading: write the statement so that it holds under every reading,',
+        '  and add to its rationale one line "ambiguity: <what is ambiguous>" per ambiguity.',
+        '- No number, duration, rate or limit the NEEDs do not state appears in a statement - not as a deadline, a',
+        '  spacing, a count or a bound.',
+        '- A COST_OBJECTIVE NEED (a cost the stakeholders want kept low) is restated as an obligation to measure and',
+        '  report that cost - never as a bound on it.',
+        '- A rationale never begins with "assumed:" - a requirement that restates NEEDs assumes nothing. The rationale',
+        '  says why the requirement follows from its NEED(s).',
         '- A title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters.',
         '- Keys R1, R2, R3, ... in order.',
-        '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"requirements": [{"key": "R1", "needs": ["' + need_id(needs[0]) + '"], "title": "<title>", "statement": "<the obligation>",'
-        ' "rationale": "<rationale>"}]}',
         '',
         'The NEEDs:',
         '',
         needs_text(needs),
+        '',
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"requirements": [{"key": "R1", "needs": ["' + need_id(needs[0]) + '"], "title": "<title>", "statement": "<the obligation>",'
+        ' "rationale": "<rationale>"}]}',
+        'Print nothing - neither the requirements nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
 
@@ -145,12 +166,6 @@ def compose_design_prompt(needs, decomposition):
         '- A title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters.',
         '- Keys D1, D2, ... for design, I1, I2, ... for interface, E1, E2, ... for environment.',
         '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"design": [{"key": "D1", "parent": "R1", "title": "<title>", "statement": "<statement>",'
-        ' "rationale": "<rationale>"}],',
-        ' "interface": [{"key": "I1", "parent": "R1", "title": "...", "statement": "...", "rationale": "..."}],',
-        ' "environment": [{"key": "E1", "parent": "R1", "title": "...", "statement": "...", "rationale": "..."}]}',
-        '',
         'The NEEDs:',
         '',
         needs_text(needs),
@@ -158,6 +173,13 @@ def compose_design_prompt(needs, decomposition):
         'The obligations:',
         '',
         obligations,
+        '',
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"design": [{"key": "D1", "parent": "R1", "title": "<title>", "statement": "<statement>",'
+        ' "rationale": "<rationale>"}],',
+        ' "interface": [{"key": "I1", "parent": "R1", "title": "...", "statement": "...", "rationale": "..."}],',
+        ' "environment": [{"key": "E1", "parent": "R1", "title": "...", "statement": "...", "rationale": "..."}]}',
+        'Print nothing - neither the design nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
 

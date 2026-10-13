@@ -31,6 +31,12 @@
 # No text may hold a guillemet: the amendment the Dispatcher writes for a CHANGE quotes the new text with them. The
 # amendment replaces item 1 and then strikes / inserts in item 2 with a ONE-LINE command: jcons ends a quoted text only
 # at the next command, and RG's reason item after a quoted last command would be swallowed into it.
+# Plan 047 Phase 14 (decision 14): a top-level statement holds only what the NEEDs state or what holds under every
+# reading of them; an added requirement records each ambiguity as a rationale line `ambiguity: <what>` (a CHANGE keeps
+# its Rationale, so its statement must hold under every reading); no number, duration, rate or limit the NEEDs do not
+# state; a COST_OBJECTIVE NEED becomes a requirement to measure and report that cost. `assumed:` stays for design,
+# Interface and Environment items. A NEED shows its clause kind when the context carries one; the answer instruction
+# is the LAST part of both prompts.
 # The Dispatcher checks the same rules again (NrvvRedefinitionUtils.parseTopLevel / parseDesign) before it writes; a
 # bad answer fails HERE, where resetting the CC Task repairs it. CC decides every top-level requirement and item, but
 # never a NEED: the NEEDs are agreed by people.
@@ -80,8 +86,10 @@ def _needs_text(context):
     blocks = []
     for n in context['needs']:
         mark = '  <-- CHANGED OR NEW: cite "' + n['reqId'] + ' r' + str(n['revision']) + '"' if n.get('delta') else ''
-        blocks.append(n['reqId'] + ' r' + str(n['revision']) + ' - ' + (n.get('title') or '') + mark + '\n'
-                      + (n.get('statement') or ''))
+        # plan 047 Phase 14: the clause kind, when the NEED has one
+        kind = n.get('kind') if isinstance(n.get('kind'), str) and n.get('kind').strip() else None
+        blocks.append(n['reqId'] + ' r' + str(n['revision']) + (' (' + kind.strip() + ')' if kind else '') + ' - '
+                      + (n.get('title') or '') + mark + '\n' + (n.get('statement') or ''))
     return '\n\n'.join(blocks)
 
 
@@ -118,16 +126,20 @@ def compose_top_level(context):
         '- Every NEED of the delta is cited, at its current revision, by at least one CHANGE or ADD.',
         '- Cite only the NEEDs listed below, each at the revision shown, each at most once per requirement.',
         '- Verifiable and language-neutral: no programming language, module, file, class, framework or library.',
-        '- You decide alone - nobody answers questions. Begin a rationale with "assumed: <what you decided and why>"',
-        '  where you resolve an ambiguity.',
+        # plan 047 Phase 14 (decision 14): was 'Begin a rationale with "assumed: <what you decided and why>" where you
+        # resolve an ambiguity' - a decided ambiguity is how a quantity no NEED states reaches a requirement
+        '- You decide alone - nobody answers questions.',
+        '- A statement holds only what the NEEDs state, or what holds under EVERY reading of them.',
+        '- Where a NEED is ambiguous, choose no reading: write the statement so that it holds under every reading.',
+        '  An added requirement records each ambiguity as one line "ambiguity: <what is ambiguous>" of its rationale;',
+        '  a CHANGE keeps its rationale, so its statement must hold under every reading of its NEEDs.',
+        '- No number, duration, rate or limit the NEEDs do not state appears in a statement - not as a deadline, a',
+        '  spacing, a count or a bound.',
+        '- A COST_OBJECTIVE NEED (a cost the stakeholders want kept low) is restated as a requirement to measure and',
+        '  report that cost - never as a bound on it.',
+        '- A rationale never begins with "assumed:" - a requirement that restates NEEDs assumes nothing.',
         '- Never use the characters \u00ab or \u00bb.',
         '- An added requirement has a title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters and a key A1, A2, ...',
-        '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"topLevel": [{"reqId": "<reqId>", "action": "KEEP"},',
-        '              {"reqId": "<reqId>", "action": "CHANGE", "needs": ["<NEED> r<rev>"], "statement": "..."},',
-        '              {"reqId": "<reqId>", "action": "OBSOLETE", "reason": "..."}],',
-        ' "add": [{"key": "A1", "needs": ["<NEED> r<rev>"], "title": "...", "statement": "...", "rationale": "..."}]}',
         '',
         'The agreed NEEDs:',
         '',
@@ -136,6 +148,13 @@ def compose_top_level(context):
         'The top-level requirements:',
         '',
         _top_level_text(context),
+        '',
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"topLevel": [{"reqId": "<reqId>", "action": "KEEP"},',
+        '              {"reqId": "<reqId>", "action": "CHANGE", "needs": ["<NEED> r<rev>"], "statement": "..."},',
+        '              {"reqId": "<reqId>", "action": "OBSOLETE", "reason": "..."}],',
+        ' "add": [{"key": "A1", "needs": ["<NEED> r<rev>"], "title": "...", "statement": "...", "rationale": "..."}]}',
+        'Print nothing - neither the decisions nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
 
@@ -187,12 +206,6 @@ def compose_design(context, top):
         '- Added keys: D1, D2, ... for design, I1, ... for interface, E1, ... for environment; titles of at most '
         + str(ASKED_MAX_TITLE_CHARS) + ' characters.',
         '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"items": [{"reqId": "<reqId>", "action": "KEEP"},',
-        '           {"reqId": "<reqId>", "action": "CHANGE", "statement": "...", "rationale": "..."},',
-        '           {"reqId": "<reqId>", "action": "OBSOLETE", "reason": "..."}],',
-        ' "add": [{"key": "D1", "parent": "<reqId or add key>", "title": "...", "statement": "...", "rationale": "..."}]}',
-        '',
         'The changed and added top-level requirements:',
         '',
         '\n\n'.join(changed_blocks) or 'none',
@@ -204,6 +217,13 @@ def compose_design(context, top):
         'The other items of the design (not to be named; they stay as they are or go with an obsoleted requirement):',
         '',
         '\n'.join(others) or 'none',
+        '',
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"items": [{"reqId": "<reqId>", "action": "KEEP"},',
+        '           {"reqId": "<reqId>", "action": "CHANGE", "statement": "...", "rationale": "..."},',
+        '           {"reqId": "<reqId>", "action": "OBSOLETE", "reason": "..."}],',
+        ' "add": [{"key": "D1", "parent": "<reqId or add key>", "title": "...", "statement": "...", "rationale": "..."}]}',
+        'Print nothing - neither the decisions nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
 

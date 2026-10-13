@@ -241,3 +241,57 @@ def test_citation_line_of_and_first_paragraph():
     assert rd.citation_line_of('none') is None
     assert rd.first_paragraph('\n first \nsecond') == 'first'
     assert rd.first_paragraph('') == ''
+
+
+# ==================== plan 047 ====================
+# Phase 14 (definition without phantoms, decision 14): characterization tests of the two re-definition prompts - the
+# rule on ambiguities and invented quantities, the clause kinds of the agreed NEEDs, where the answer instruction stands.
+
+KINDS_V5 = {'N-1': 'OBLIGATION', 'N-2': 'COST_OBJECTIVE', 'N-3': 'OBLIGATION', 'N-4': 'SCOPE_LIMITER', 'N-5': 'OBLIGATION'}
+CONTEXT_V5 = dict(CONTEXT, needs=[dict(n, kind=KINDS_V5[n['reqId']]) for n in CONTEXT['needs']])
+
+V4_TOP_RULE = ('- You decide alone - nobody answers questions. Begin a rationale with "assumed: <what you decided and why>"\n'
+               '  where you resolve an ambiguity.')
+V4_DESIGN_RULE = '- You decide alone. Begin a rationale with "assumed: ..." where you resolve an ambiguity.'
+V4_ANSWER = 'Store your answer with the result tool as exactly this JSON object, and nothing else:'
+V5_ANSWER = 'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:'
+# decision 14, one rule per line of the prompt
+V5_TOP_LEVEL_RULES = (
+    'A statement holds only what the NEEDs state, or what holds under EVERY reading of them.',
+    'Where a NEED is ambiguous, choose no reading: write the statement so that it holds under every reading',
+    '"ambiguity: <what is ambiguous>"',
+    'a CHANGE keeps its rationale, so its statement must hold under every reading',
+    'No number, duration, rate or limit the NEEDs do not state appears in a statement',
+    # 'requirement', not 'obligation': the vocabulary of this prompt is top-level requirement (plan 045 decision 2.2.21)
+    'A COST_OBJECTIVE NEED (a cost the stakeholders want kept low) is restated as a requirement to measure and',
+    'report that cost - never as a bound on it.',
+    'A rationale never begins with "assumed:" - a requirement that restates NEEDs assumes nothing.',
+)
+
+
+def context_v5():
+    return rd.context_of(json.dumps(CONTEXT_V5))
+
+
+def test_top_level_prompt_v5_rules_and_answer_last():
+    p = rd.compose_top_level(context_v5())
+    assert V4_TOP_RULE not in p, 'no decided ambiguity'
+    for rule in V5_TOP_LEVEL_RULES:
+        assert rule in p, rule
+    assert 'N-1 r2 (OBLIGATION) - Prices  <-- CHANGED OR NEW: cite "N-1 r2"' in p
+    assert 'N-2 r1 (COST_OBJECTIVE) - Acks\n' in p, 'a NEED shows its clause kind'
+    assert V4_ANSWER not in p
+    lines = p.splitlines()
+    assert lines[-1] == 'Print nothing - neither the decisions nor any explanation: only what the tool stores reaches the pipeline.'
+    assert lines.index(V5_ANSWER) == len(lines) - 6, 'the instruction, the four-line shape, the tail'
+    assert p.index('The top-level requirements:') < p.index(V5_ANSWER), 'the answer instruction is the LAST part'
+
+
+def test_design_prompt_v5_keeps_assumed_and_answers_last():
+    p = rd.compose_design(context_v5(), rd.check_top_level(json.dumps(TOP_VALID), context_v5()))
+    assert V4_DESIGN_RULE in p, 'assumed: stays for design items (decision 14)'
+    assert V4_ANSWER not in p
+    lines = p.splitlines()
+    assert lines[-1] == 'Print nothing - neither the decisions nor any explanation: only what the tool stores reaches the pipeline.'
+    assert lines.index(V5_ANSWER) == len(lines) - 6, 'the instruction, the four-line shape, the tail'
+    assert p.index('The other items of the design') < p.index(V5_ANSWER), 'the answer instruction is the LAST part'

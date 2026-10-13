@@ -62,7 +62,9 @@ def test_decompose_prompt_carries_every_need_and_the_answer_shape():
     assert N1 in prompt and 'Every price sent is recorded.' in prompt
     assert '"requirements": [{"key": "R1", "needs": ["N-1"]' in prompt
     assert 'what the system shall do - never how' in prompt
-    assert '"assumed: <what you decided and why>"' in prompt, 'CC decides, and says so (decision 2)'
+    # plan 047 decision 14: CC still decides alone, but a top-level requirement assumes nothing - an ambiguity is
+    # recorded, not resolved (was: '"assumed: <what you decided and why>"', plan 043 decision 2)
+    assert 'nobody answers questions' in prompt and 'never begins with "assumed:"' in prompt
     assert 'name no programming language' in prompt, 'language-neutral (decision 8)'
 
 
@@ -244,3 +246,68 @@ def test_the_decompose_functions_read_agreed_needs_under_their_role(tmp_path):
                                  {'variable-for-decomposition': 'decomposition'}],
                             {'decomposeResult': json.dumps(answer), 'agreedNeeds': AGREED_JSON}, ['decomposition']))
     assert json.loads(artifact(w2, 101))['requirements'][0]['needs'] == ['GAS-1', 'GAS-4']
+
+
+# ---------------------------------------------------------------------------------------------------------- plan 047
+# Phase 14 (definition without phantoms, decision 14): characterization tests of the two prompts - the rule on
+# ambiguities and invented quantities, the clause kinds of the agreed NEEDs, and where the answer instruction stands.
+
+AGREED_V5 = [dict(AGREED[0], kind='OBLIGATION'), dict(AGREED[1], kind='COST_OBJECTIVE')]
+
+V4_DECOMPOSE_RULE = ('- You decide alone - nobody answers questions. Where a NEED is ambiguous or a word must be made measurable,\n'
+                     '  decide, write the decision into the statement, and begin that requirement\'s rationale with\n'
+                     '  "assumed: <what you decided and why>". Otherwise the rationale says why the requirement follows from its\n'
+                     '  NEED(s).')
+V4_DESIGN_RULE = ('- You decide alone - nobody answers questions. Begin the rationale of an item that resolves an ambiguity with\n'
+                  '  "assumed: <what you decided and why>".')
+V4_ANSWER = 'Store your answer with the result tool as exactly this JSON object, and nothing else:'
+V5_ANSWER = 'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:'
+# decision 14, one rule per line of the prompt
+V5_TOP_LEVEL_RULES = (
+    'A statement holds only what the NEEDs state, or what holds under EVERY reading of them.',
+    'Where a NEED is ambiguous, choose no reading: write the statement so that it holds under every reading',
+    '"ambiguity: <what is ambiguous>"',
+    'No number, duration, rate or limit the NEEDs do not state appears in a statement',
+    'A COST_OBJECTIVE NEED (a cost the stakeholders want kept low) is restated as an obligation to measure and',
+    'report that cost - never as a bound on it.',
+    'A rationale never begins with "assumed:" - a requirement that restates NEEDs assumes nothing.',
+)
+
+
+def checked_decomposition_v5():
+    return nd.check_decomposition(json.dumps({'requirements': [r_item('R1', ['GAS-1']), r_item('R2', ['GAS-4'])]}),
+                                  AGREED_V5)
+
+
+def test_decompose_prompt_v5_rules_and_answer_last():
+    prompt = nd.compose_decompose_prompt(AGREED_V5)
+    assert V4_DECOMPOSE_RULE not in prompt and 'a word must be made measurable' not in prompt, 'no decided ambiguity'
+    for rule in V5_TOP_LEVEL_RULES:
+        assert rule in prompt, rule
+    assert 'GAS-1 (revision 2, OBLIGATION) - Gas stations settle on the latest price\n' + N1 in prompt
+    assert 'GAS-4 (revision 1, COST_OBJECTIVE) - Audit' in prompt, 'a NEED shows its clause kind'
+    lines = prompt.splitlines()
+    assert lines[-3] == V5_ANSWER
+    assert lines[-2].startswith('{"requirements": [{"key": "R1", "needs": ["GAS-1"]'), lines[-2]
+    assert lines[-1] == ('Print nothing - neither the requirements nor any explanation: only what the tool stores reaches'
+                         ' the pipeline.')
+    assert V4_ANSWER not in prompt
+    assert prompt.index('The NEEDs:') < prompt.index(V5_ANSWER), 'the answer instruction is the LAST part'
+
+
+def test_decompose_prompt_v5_of_needs_without_kinds_keeps_their_lines():
+    prompt = nd.compose_decompose_prompt(AGREED)
+    assert 'GAS-4 (revision 1) - Audit' in prompt
+    assert prompt.splitlines()[-3] == V5_ANSWER
+
+
+def test_design_prompt_v5_keeps_assumed_and_answers_last():
+    prompt = nd.compose_design_prompt(AGREED_V5, checked_decomposition_v5())
+    assert V4_DESIGN_RULE in prompt, 'assumed: stays for design items (decision 14)'
+    assert 'GAS-4 (revision 1, COST_OBJECTIVE) - Audit' in prompt
+    assert V4_ANSWER not in prompt
+    lines = prompt.splitlines()
+    assert lines[-1] == ('Print nothing - neither the design nor any explanation: only what the tool stores reaches the'
+                         ' pipeline.')
+    assert prompt.index('The obligations:') < prompt.index(V5_ANSWER), 'the answer instruction is the LAST part'
+    assert lines.index(V5_ANSWER) == len(lines) - 5, 'the instruction, the three-line shape, the tail'
