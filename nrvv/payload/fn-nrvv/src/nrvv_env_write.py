@@ -5,6 +5,8 @@
 #   workspace   absolute path of the run workspace
 #   location    the NRVV project's test-suite location, JSON {"url", "branchOrRef", "dir"} - checked out before
 #   cc-result   CC's answer, stored through call-cc's result tool: {"files": {"<module>.py": "<content>"}}
+#   design      optional (plan 047 Phase 21): the design list-scope wrote - with it, no file may expose a public function
+#               or method named as an Interface operation or port (nrvv_environment.check_ports)
 # Output:
 #   files       JSON array of the repository-relative paths written
 #
@@ -32,6 +34,9 @@ def run(task):
     workspace = nrvv_paths.require_workspace((io.read_role(task, 'workspace') or '').strip())
     location = parse_location(io.read_role(task, 'location'))
     files = ne.parse_env_answer(io.read_role(task, 'cc-result'))
+    # plan 047 Phase 21 (by its characterization test): the ports are closures inside connect, never public methods
+    if io.meta_value(task.get('metas') or [], 'variable-for-design'):
+        ne.check_ports(files, ne.parse_design(io.read_role(task, 'design')))
     # plan 044, Phase 16: a fresh base directory is not in the repository yet - the checkout must exist, the dir is
     # created inside it (as nrvv_implement does for the target)
     root = nrvv_paths.checkout_root(workspace, 'test-suite')

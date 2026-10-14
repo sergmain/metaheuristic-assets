@@ -85,6 +85,11 @@ def compose_env_prompt(design):
         '- Give a test what it needs: to build the simulation from a seed, to drive `app` through the transport step by',
         '  step until nothing is in flight, and to observe every client and the traffic (what was sent, delivered and',
         '  acknowledged).',
+        # plan 047 Phase 21: an event index orders what happens at one instant; the ports are closed to tests
+        '- Every recorded send, delivery and acknowledgement carries a global `event_index`: ONE counter for the whole',
+        '  simulation, increasing by one per event - a test orders events that happen at one instant by it.',
+        '- Hand `app` its ports inside `connect` as closures (functions defined inside `connect`), never as public',
+        '  methods or functions of the package: a test must not be able to call a port itself, only drive `app`.',
         '- Deterministic: no thread, no clock, no real I/O. Any randomness only through a random.Random(seed) instance',
         '  built from the seed the test gives; the same seed gives the same run.',
         '- The standard library and `' + PACKAGE + '` itself only; never threading, _thread, multiprocessing, asyncio,',
@@ -135,6 +140,46 @@ def check_imports(name, source):
                                  + ' no clock, no real I/O')
             if top != PACKAGE and top not in sys.stdlib_module_names:
                 raise ValueError(name + ' imports ' + module + ', which is neither the standard library nor ' + PACKAGE)
+
+
+# plan 047 Phase 21: a name the Interface gives is an identifier written right before '(' - "set_price(station, price)"; no
+# space allowed, so prose such as "result (a price)" names nothing
+INTERFACE_NAME = re.compile(r'\b([A-Za-z_][A-Za-z0-9_]*)\(')
+
+
+def snake_case(name):
+    """A name bound to Python: setPrice -> set_price; set_price stays."""
+    return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+
+
+def interface_names(design):
+    """Plan 047 Phase 21: every operation and port name the Interface items give, bound to Python (snake_case)."""
+    names = set()
+    for item in design.get('interface') or []:
+        for name in INTERFACE_NAME.findall(rt.plain_text(item.get('content'))):
+            names.add(snake_case(name))
+    return names
+
+
+def check_ports(files, design):
+    """Plan 047 Phase 21: a ValueError when a file of nrvv_env exposes a PUBLIC function or method - defined at module level
+    or in a class body, no leading '_' - named as an Interface operation or port. The ports are handed to `app` as
+    closures inside `connect`, so a test cannot call one on the simulation instead of driving `app`."""
+    names = interface_names(design)
+    if not names:
+        return
+    for name, source in sorted(files.items()):
+        tree = ast.parse(source, filename=name)
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith('_') and node.name in names:
+                raise ValueError(name + ': ' + node.name + " is public and named as the Interface's " + node.name
+                                 + ' - hand app its ports as closures inside connect')
+            if isinstance(node, ast.ClassDef):
+                for member in node.body:
+                    if (isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and not member.name.startswith('_')
+                            and member.name in names):
+                        raise ValueError(name + ': ' + node.name + '.' + member.name + " is public and named as the"
+                                         + " Interface's " + member.name + ' - hand app its ports as closures inside connect')
 
 
 def parse_env_answer(cc_result):

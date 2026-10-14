@@ -43,6 +43,8 @@
 // of the scope's snapshot as "<reqId>: <requirement content>" blocks - and the test prompt receives it as read-only
 // constraints, with the four test rules of decision 15 in design mode; CC is called through call-cc 1.2, as by every v5
 // flow. Needs a Dispatcher whose list-scope writes scopeRequirements (plan 047 Phase 20).
+// Plan 047 Phase 21: ewrite also gets the design and refuses an nrvv_env exposing a public method or function named as
+// an Interface operation or port (the ports are closures inside connect).
 source "nrvv-suite-author-1.2" {
 
     variables {
@@ -116,8 +118,9 @@ source "nrvv-suite-author-1.2" {
                         meta variable-for-workspace = "workspace",
                              variable-for-location = "testSuite",
                              variable-for-cc-result = "envResult",
+                             variable-for-design = "design",
                              variable-for-files = "envFiles"
-                        <- workspace, testSuite, envResult
+                        <- workspace, testSuite, envResult, design
                         -> envFiles: ext=".json"
                         timeout 60
                     }

@@ -59,6 +59,29 @@ def test_env_prompt_ends_with_the_answer_instruction():
     assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
 
 
+def test_env_prompt_requires_the_event_index_and_closed_ports():
+    # plan 047 Phase 21
+    prompt = ne.compose_env_prompt(ne.parse_design(json.dumps(DESIGN)))
+    assert 'Every recorded send, delivery and acknowledgement carries a global `event_index`' in prompt
+    assert 'a test orders events that happen at one instant by it' in prompt
+    assert 'Hand `app` its ports inside `connect` as closures' in prompt
+    assert prompt.index('`event_index`') < prompt.index('mh_cc_store_result'), 'rules before the answer instruction'
+
+
+def test_interface_names_and_check_ports():
+    design = {'interface': [{'reqId': 'X-3', 'content': INTERFACE},
+                            {'reqId': 'X-5', 'content': '{{M=2}}1.1) Port ackPrice(station) - the result (a price) is logged.'}],
+              'environment': DESIGN['environment']}
+    assert ne.interface_names(design) == {'set_price', 'ack_price'}, 'camelCase bound to snake_case; "result (" names nothing'
+    for source, refusal in (('def set_price(s, p):\n    pass\n', "w.py: set_price is public"),
+                            ('class W:\n    def ack_price(self, s):\n        pass\n', "w.py: W.ack_price is public")):
+        with pytest.raises(ValueError) as e:
+            ne.check_ports({'w.py': source}, design)
+        assert refusal in str(e.value)
+    ne.check_ports({'w.py': 'class W:\n    def _set_price(self):\n        pass\n\n    def step(self):\n        pass\n'}, design)
+    ne.check_ports({'w.py': 'def set_price():\n    pass\n'}, {'interface': [], 'environment': []})
+
+
 @pytest.mark.parametrize('bad', [
     'not json',
     '[]',
@@ -239,3 +262,46 @@ def test_ewrite_into_a_fresh_dir_of_the_checkout(tmp_path):
                                             'nrvv/synthetic/fresh/test-suite/tests/nrvv_env/world.py']
     assert os.path.isfile(os.path.join(workspace, 'test-suite', 'nrvv', 'synthetic', 'fresh', 'test-suite', 'tests',
                                        'nrvv_env', 'world.py'))
+
+
+# plan 047 Phase 21: a World that exposes set_price - a name the Interface gives (set_price(station, price)) - as a public
+# method, which a test could call instead of driving app
+WORLD_EXPOSING_A_PORT = WORLD + '''
+    def set_price(self, station, price):
+        self.displayed[station] = price
+'''
+
+
+def ewrite_task(tmp_path, world_source):
+    workspace = str(tmp_path / 'ws')
+    os.makedirs(os.path.join(workspace, 'test-suite', 'ts'), exist_ok=True)
+    location = json.dumps({'url': 'https://example.com/a.git', 'branchOrRef': 'master', 'dir': 'ts'})
+    answer = {'files': {'__init__.py': 'from .world import World\n', 'world.py': world_source}}
+    task = task_with_inputs(str(tmp_path / 'ewrite'),
+                            [{'variable-for-workspace': 'workspace'}, {'variable-for-location': 'testSuite'},
+                             {'variable-for-cc-result': 'envResult'}, {'variable-for-design': 'design'},
+                             {'variable-for-files': 'envFiles'}],
+                            {'workspace': workspace, 'testSuite': location, 'envResult': json.dumps(answer),
+                             'design': json.dumps(DESIGN)}, ['envFiles'])
+    return task, os.path.join(workspace, 'test-suite', 'ts', 'tests', 'nrvv_env', 'world.py')
+
+
+def test_ewrite_refuses_an_env_exposing_a_port_as_a_public_method(tmp_path):
+    task, world = ewrite_task(tmp_path, WORLD_EXPOSING_A_PORT)
+    # CT Green-1 (plan 047 Phase 21): the env was written whatever methods it exposed
+    # CT Red (plan 047 Phase 21): a public method named as an Interface operation or port is refused before anything is
+    # written - the ports are handed to app as closures inside connect, never callable on the simulation
+    with pytest.raises(ValueError) as e:
+        ew.run(task)
+    assert "world.py: World.set_price is public and named as the Interface's set_price" in str(e.value), str(e.value)
+    assert not os.path.exists(world)
+
+    closed = WORLD + '''
+    def connect(self, app):
+        def set_price(station, price):
+            self.displayed[station] = price
+        app.set_price = set_price
+'''
+    task2, world2 = ewrite_task(tmp_path / 'closed', closed)
+    ew.run(task2)
+    assert os.path.isfile(world2), 'a port defined inside connect is no public method'
