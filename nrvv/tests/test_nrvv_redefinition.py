@@ -340,3 +340,38 @@ def test_check_top_level_keep_citing_a_superseded_revision_of_a_delta_need():
         rd.check_top_level(answer, context())
     assert ('top-level requirement R-1 may not be KEEP: it cites N-1 r1, and N-1 is a delta NEED now at r2 - CHANGE it'
             ' to cite N-1 r2, or OBSOLETE it') in str(e.value), str(e.value)
+
+
+def reason(finding_id, kind, subject, counterpart=None):
+    return {'findingId': finding_id, 'kind': kind, 'subjectRef': subject, 'counterpartRef': counterpart,
+            'text': kind + ' on ' + subject}
+
+
+def context_with(*reasons):
+    return rd.context_of(json.dumps(dict(CONTEXT, reasons=list(reasons))))
+
+
+def test_reasoned_top_level():
+    out = rd.reasoned_top_level(context_with(reason(7, 'OVER_REACH', 'R-5'), reason(8, 'REQ_CONTRADICTION', 'D-2', 'E-1'),
+                                             reason(9, 'RESTS_ON_SUPERSEDED', 'N-1')))
+    assert list(out.keys()) == ['R-1', 'R-2']
+    assert out['R-1']['findingId'] == 7, 'R-5 is the live row of R-1; the first reason naming R-1 is kept'
+    assert out['R-2']['findingId'] == 8, 'E-1 is an Environment item under R-2'
+    assert rd.reasoned_top_level(context()) == {}, 'a person\'s REDEFINITION has no reason'
+
+
+def test_check_top_level_a_reason_named_requirement_is_not_kept():
+    with pytest.raises(ValueError) as e:
+        rd.check_top_level(json.dumps(TOP_VALID), context_with(reason(7, 'OVER_REACH', 'R-2')))
+    assert str(e.value) == ('top-level requirement R-2 may not be KEEP: finding #7 (OVER_REACH) names it - this'
+                            ' re-definition resolves it: CHANGE or OBSOLETE it')
+    assert rd.check_top_level(json.dumps(TOP_VALID), context_with(reason(7, 'OVER_REACH', 'R-5')))['topLevel'][1] == KEEP_2
+
+
+def test_top_level_prompt_lists_the_reasons_before_the_answer():
+    prompt = rd.compose_top_level(context_with(reason(7, 'REQ_CONTRADICTION', 'R-5', 'R-2')))
+    assert 'finding #7 REQ_CONTRADICTION on R-5 and R-2: REQ_CONTRADICTION on R-5' in prompt
+    assert prompt.index('Findings this re-definition resolves') < prompt.index('Answer by calling the mh_cc_store_result')
+    assert prompt.split('\n')[-1].startswith('Print nothing'), 'the answer instruction is LAST'
+    assert 'Findings this re-definition resolves' not in rd.compose_top_level(context()), 'a person\'s REDEFINITION'
+    assert 'rests on NEED text no longer in' in rd.compose_top_level(context())

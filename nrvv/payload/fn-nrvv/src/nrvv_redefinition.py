@@ -108,7 +108,7 @@ def _top_level_text(context):
 def compose_top_level(context):
     """The prompt asking CC what becomes of every top-level requirement after the NEED change."""
     delta = context['delta']
-    return '\n'.join([
+    lines = [
         'The agreed NEEDs of a software system changed. You carry the change into its TOP-LEVEL REQUIREMENTS.',
         '',
         'A NEED says, in the stakeholders\' words, what they need. A top-level requirement restates NEEDs as what the',
@@ -141,6 +141,9 @@ def compose_top_level(context):
         '- A rationale never begins with "assumed:" - a requirement that restates NEEDs assumes nothing.',
         '- Never use the characters \u00ab or \u00bb.',
         '- An added requirement has a title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters and a key A1, A2, ...',
+        # plan 047 Phase 18: what may not be KEEP
+        '- A requirement that cites a delta NEED at a revision older than the one shown rests on NEED text no longer in',
+        '  force: it may not be KEEP - CHANGE it to cite the current revision, or OBSOLETE it.',
         '',
         'The agreed NEEDs:',
         '',
@@ -150,6 +153,18 @@ def compose_top_level(context):
         '',
         _top_level_text(context),
         '',
+    ]
+    # plan 047 Phase 18: an automatic REDEFINITION resolves hard findings - they come before the answer instruction
+    reasons = context.get('reasons') or []
+    if reasons:
+        lines += ['Findings this re-definition resolves - a top-level requirement a finding names (itself, or an item'
+                  ' under it) may not be KEEP: CHANGE it so the finding no longer holds, or OBSOLETE it:', '']
+        for r in reasons:
+            counterpart = r.get('counterpartRef')
+            lines.append('finding #' + str(r.get('findingId')) + ' ' + str(r.get('kind')) + ' on ' + str(r.get('subjectRef'))
+                         + (' and ' + str(counterpart) if counterpart else '') + ': ' + str(r.get('text') or '').strip())
+        lines.append('')
+    return '\n'.join(lines + [
         'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
         '{"topLevel": [{"reqId": "<reqId>", "action": "KEEP"},',
         '              {"reqId": "<reqId>", "action": "CHANGE", "needs": ["<NEED> r<rev>"], "statement": "..."},',
@@ -237,6 +252,7 @@ def check_top_level(cc_result, context):
     existing = [t['reqId'] for t in context['topLevel']]
     rationales = {t['reqId']: t.get('rationale') or '' for t in context['topLevel']}
     by_req_id = {t['reqId']: t for t in context['topLevel']}
+    reasoned = reasoned_top_level(context)
     decisions, named = [], set()
     for e in _entries(data, 'topLevel', True):
         req_id = _required(e, 'reqId', "an entry of 'topLevel'")
@@ -251,6 +267,11 @@ def check_top_level(cc_result, context):
             refusal = _keep_refusal(by_req_id[req_id], context, revisions)
             if refusal:
                 raise ValueError(refusal)
+            reason = reasoned.get(req_id)
+            if reason:
+                raise ValueError('top-level requirement ' + req_id + ' may not be KEEP: finding #' + str(reason.get('findingId'))
+                                 + ' (' + str(reason.get('kind')) + ') names it - this re-definition resolves it: CHANGE'
+                                 ' or OBSOLETE it')
             decisions.append({'reqId': req_id, 'action': action})
         elif action == 'CHANGE':
             if not citation_line_of(rationales[req_id]):
@@ -295,6 +316,22 @@ def _keep_refusal(t, context, revisions):
                     + ' is a delta NEED now at r' + current + ' - CHANGE it to cite ' + need + ' r' + current
                     + ', or OBSOLETE it')
     return None
+
+
+def reasoned_top_level(context):
+    """Plan 047 Phase 18: top-level reqId -> the first reason naming it - as subject or counterpart, by its reqId, its
+    live row, or an item under it (NrvvRedefinitionUtils.reasonedTopLevel). Empty when the context has no reason."""
+    out = {}
+    for r in context.get('reasons') or []:
+        named = {r.get('subjectRef'), r.get('counterpartRef')} - {None}
+        for t in context['topLevel']:
+            if t['reqId'] in named or t.get('liveReqId') in named:
+                out.setdefault(t['reqId'], r)
+        for i in context['items']:
+            if i['reqId'] in named or i.get('liveReqId') in named:
+                for p in i.get('parents') or []:
+                    out.setdefault(p, r)
+    return out
 
 
 def check_design(cc_result, context, top):
