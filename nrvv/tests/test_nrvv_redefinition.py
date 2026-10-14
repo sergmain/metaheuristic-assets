@@ -19,8 +19,10 @@ CONTEXT = {
     'topLevel': [
         {'reqId': 'R-1', 'liveReqId': 'R-5', 'title': 'Prices', 'statement': 'The service shall publish prices.',
          'rationale': 'need: N-1 r1\nRestates N-1.', 'citations': ['N-1 r1'], 'tracedFrom': ['N-1']},
+        # plan 047 Phase 18: R-2 cites N-2 r1 only (it cited N-1 r1 too) - a KEEP of a requirement citing a superseded
+        # revision of the delta NEED N-1 is refused, and TOP_VALID keeps R-2
         {'reqId': 'R-2', 'liveReqId': 'R-2', 'title': 'Acks', 'statement': 'The service shall record acknowledgements.',
-         'rationale': 'need: N-2 r1, N-1 r1\nRestates N-2.', 'citations': ['N-2 r1', 'N-1 r1'], 'tracedFrom': ['N-1', 'N-2']},
+         'rationale': 'need: N-2 r1\nRestates N-2.', 'citations': ['N-2 r1'], 'tracedFrom': ['N-1', 'N-2']},
     ],
     'items': [
         {'reqId': 'D-1', 'liveReqId': 'D-1', 'kind': 'design', 'parents': ['R-1'], 'title': 'Queue',
@@ -129,8 +131,9 @@ def test_check_top_level_unwraps_one_fence():
     (top({'reqId': 'R-1', 'action': 'OBSOLETE'}, KEEP_2), 'R-1 has no reason'),
     (top({'reqId': 'R-1', 'action': 'CHANGE', 'needs': ['N-1 r2', 'N-3 r1', 'N-5 r1'], 'statement': 'a \u00abq\u00bb',
           'rationale': 'r'}, KEEP_2), 'holds a guillemet'),
-    (top({'reqId': 'R-1', 'action': 'KEEP'}, KEEP_2, add=[{'key': 'R-2', 'needs': ['N-1 r2'], 'title': 't',
-                                                            'statement': 's', 'rationale': 'r'}]), 'is used twice or is an existing reqId'),
+    # plan 047 Phase 18: R-1 CHANGEd (it was KEPT) - a KEEP of R-1, citing N-1 r1 of the delta NEED N-1, is refused first
+    (top(change_1('N-1 r2'), KEEP_2, add=[{'key': 'R-2', 'needs': ['N-1 r2'], 'title': 't',
+                                           'statement': 's', 'rationale': 'r'}]), 'is used twice or is an existing reqId'),
     ('[]', 'no JSON object'),
     ('{}', "'topLevel' is missing"),
 ])
@@ -320,3 +323,20 @@ def test_check_design_keeps_assumed():
                                [{'key': 'D1', 'parent': 'R-1', 'title': 't', 'statement': 's', 'rationale': 'assumed: x'}]),
                         context(), top_valid())
     assert d['add'][0]['rationale'] == 'assumed: x'
+
+
+# ==================== plan 047 Phase 18: what may not be KEEP ====================
+
+ADD_A1 = [{'key': 'A1', 'needs': ['N-3 r1', 'N-5 r1'], 'title': 'New', 'statement': 'The service shall do the new thing.',
+           'rationale': 'Restates N-3 and N-5.'}]
+
+
+def test_check_top_level_keep_citing_a_superseded_revision_of_a_delta_need():
+    # R-1 cites N-1 r1; N-1 is at r2 and is a delta NEED - R-1 rests on NEED text no longer in force
+    answer = top({'reqId': 'R-1', 'action': 'KEEP'},
+                 {'reqId': 'R-2', 'action': 'CHANGE', 'needs': ['N-2 r1', 'N-1 r2'], 'statement': 'The service shall record acks.'},
+                 add=ADD_A1)
+    with pytest.raises(ValueError) as e:
+        rd.check_top_level(answer, context())
+    assert ('top-level requirement R-1 may not be KEEP: it cites N-1 r1, and N-1 is a delta NEED now at r2 - CHANGE it'
+            ' to cite N-1 r2, or OBSOLETE it') in str(e.value), str(e.value)

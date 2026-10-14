@@ -236,6 +236,7 @@ def check_top_level(cc_result, context):
     revisions = {n['reqId']: n['revision'] for n in context['needs']}
     existing = [t['reqId'] for t in context['topLevel']]
     rationales = {t['reqId']: t.get('rationale') or '' for t in context['topLevel']}
+    by_req_id = {t['reqId']: t for t in context['topLevel']}
     decisions, named = [], set()
     for e in _entries(data, 'topLevel', True):
         req_id = _required(e, 'reqId', "an entry of 'topLevel'")
@@ -246,6 +247,10 @@ def check_top_level(cc_result, context):
         named.add(req_id)
         action = _action(e, req_id)
         if action == 'KEEP':
+            # plan 047 Phase 18: a requirement resting on a superseded revision of a delta NEED may not be KEPT
+            refusal = _keep_refusal(by_req_id[req_id], context, revisions)
+            if refusal:
+                raise ValueError(refusal)
             decisions.append({'reqId': req_id, 'action': action})
         elif action == 'CHANGE':
             if not citation_line_of(rationales[req_id]):
@@ -277,6 +282,19 @@ def check_top_level(cc_result, context):
     if all(d['action'] == 'OBSOLETE' for d in decisions) and not added:
         raise ValueError('the answer obsoletes every top-level requirement and adds none')
     return {'topLevel': decisions, 'add': added}
+
+
+def _keep_refusal(t, context, revisions):
+    """Why top-level requirement `t` may not be KEPT, or None: it cites a delta NEED at a revision no longer in force."""
+    delta = set(context['delta'])
+    for c in t.get('citations') or []:
+        need, _, rev = str(c).rpartition(' r')
+        if need in delta and rev.isdigit() and int(rev) != revisions.get(need):
+            current = str(revisions.get(need))
+            return ('top-level requirement ' + t['reqId'] + ' may not be KEEP: it cites ' + str(c) + ', and ' + need
+                    + ' is a delta NEED now at r' + current + ' - CHANGE it to cite ' + need + ' r' + current
+                    + ', or OBSOLETE it')
+    return None
 
 
 def check_design(cc_result, context, top):
