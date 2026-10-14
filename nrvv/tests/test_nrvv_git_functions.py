@@ -238,6 +238,22 @@ def test_nothing_to_commit_returns_the_base_and_leaves_the_remote_alone(world, t
     assert world.tip('main') == first
 
 
+def test_the_commit_is_the_newest_one_touching_the_dir(world, tmp_path):
+    # plan 047 Phase 24 (decision 18): the target's head touched ANOTHER directory of the shared repository, and the run
+    # committed nothing in nrvv/target
+    first = world.init(FILES)
+    other = world.push_change({'nrvv/test-suite/tests/test_b.py': 'def test_b():\n    assert True\n'})
+    ws = str(tmp_path / 'ws')
+    co.checkout(ws, 'target', loc(world, d='nrvv/target'))
+
+    sha = cp.commit_and_push(os.path.join(ws, 'target'), loc(world, d='nrvv/target'), 'nrvv: nothing')
+
+    # CT Green-1 (plan 047 Phase 24): the output was the checkout's head - a commit that never touched nrvv/target
+    # CT Red (plan 047 Phase 24, decision 18): the output is the newest commit touching the location's dir
+    assert sha == first and sha != other
+    assert world.tip('main') == other, 'nothing pushed'
+
+
 def test_basic_auth_header():
     # base64('user:tok') == 'dXNlcjp0b2s='
     assert cp.basic_auth_header('user:tok') == 'Authorization: Basic dXNlcjp0b2s='

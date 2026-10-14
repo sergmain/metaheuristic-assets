@@ -62,6 +62,42 @@ def head(repo_root):
     return git(['rev-parse', 'HEAD'], cwd=repo_root)
 
 
+DEEPEN_BY = 50
+DEEPEN_ROUNDS = 20
+
+
+def shallow_commits(repo_root):
+    """The boundary commits of a shallow repository (.git/shallow) - their parents are not fetched; empty when complete."""
+    path = os.path.join(repo_root, '.git', 'shallow')
+    if not os.path.isfile(path):
+        return set()
+    with open(path, encoding='utf-8') as f:
+        return {line.strip() for line in f if line.strip()}
+
+
+def newest_commit_touching(repo_root, rev, rel_dir, url=None, branch=None, auth_header=None):
+    """Plan 047 Phase 24 (decision 18): the newest commit at or before `rev` touching `rel_dir` (repository-relative,
+    '/'-separated); `rev` itself for no dir or when no commit touches it.
+
+    A checkout is fetched one commit deep, and a shallow boundary commit looks as if it added every file - so a commit
+    found on the boundary is no answer yet: the branch is deepened by DEEPEN_BY commits (from `url`, with the same
+    auth header as the push) and asked again, until the commit found lies inside the fetched history, the history is
+    complete, or DEEPEN_ROUNDS rounds were fetched. Call it after run_commits(): deepening ends the one-commit history
+    that run_commits relies on."""
+    d = (rel_dir or '').strip().strip('/')
+    if not d:
+        return rev
+    env_config = [('http.extraHeader', auth_header)] if auth_header else None
+    sha = ''
+    for _ in range(DEEPEN_ROUNDS):
+        sha = git(['log', '-1', '--format=%H', rev, '--', d], cwd=repo_root)
+        boundary = shallow_commits(repo_root)
+        if not boundary or (sha and sha not in boundary) or url is None or branch is None:
+            break
+        git(['fetch', '-q', '--deepen', str(DEEPEN_BY), url, 'refs/heads/' + branch], cwd=repo_root, env_config=env_config)
+    return sha or rev
+
+
 def is_clean(repo_root):
     return git(['status', '--porcelain=v1', '-uall'], cwd=repo_root) == ''
 

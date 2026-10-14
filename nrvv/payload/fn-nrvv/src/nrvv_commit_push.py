@@ -39,13 +39,19 @@ def basic_auth_header(user_colon_token):
 
 
 def commit_and_push(repo_root, location, message, auth_header=None):
-    """The sha at the branch tip after committing every change and pushing it."""
+    """The sha at the branch tip after committing every change and pushing it.
+
+    Plan 047 Phase 24 (decision 18, by its characterization test): the newest commit at that tip touching the location's
+    dir - a shared repository's head may be a commit in another directory, which says nothing about this one."""
     sha = nrvv_git.commit_all(repo_root, message, AUTHOR_NAME, AUTHOR_EMAIL)
     if not nrvv_git.run_commits(repo_root):
         # nothing committed since the checkout: nothing of this run to land, the remote is left alone
-        return sha
-    return nrvv_git.push_onto_moving_branch(repo_root, location['url'], location['branchOrRef'],
-                                            AUTHOR_NAME, AUTHOR_EMAIL, auth_header)
+        return nrvv_git.newest_commit_touching(repo_root, sha, location.get('dir'), location['url'],
+                                               location['branchOrRef'], auth_header)
+    tip = nrvv_git.push_onto_moving_branch(repo_root, location['url'], location['branchOrRef'],
+                                           AUTHOR_NAME, AUTHOR_EMAIL, auth_header)
+    return nrvv_git.newest_commit_touching(repo_root, tip, location.get('dir'), location['url'], location['branchOrRef'],
+                                           auth_header)
 
 
 def main(argv):
