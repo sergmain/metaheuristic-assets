@@ -12,6 +12,9 @@
 #                (mhdg-nrvv.list-scope's scopeSuites). Absent, NULLIFIED or [] = every suite of the checkout. Every
 #                named suite must be in the checkout; the others are named in the prompt as suites that must keep
 #                passing, without their test files
+#   failures     optional (plan 047, Phase 23): the failures of the previous verification a triage classed CODE -
+#                mhdg-nrvv.list-scope's repairFailures. Absent, NULLIFIED or blank = no such section: the prompt is
+#                exactly the one without it
 # Meta:
 #   timeout-sec  seconds allowed to the session; absent = 1800
 # Output:
@@ -145,7 +148,8 @@ def read_test_files(test_suite_dir, files):
     return texts
 
 
-def compose_prompt(target_dir, test_suite_dir, suites, texts, others=(), interface=None, env_files=None):
+def compose_prompt(target_dir, test_suite_dir, suites, texts, others=(), interface=None, env_files=None,
+                   failures=None):
     target = posix(target_dir)
     ts = posix(test_suite_dir)
     deliver = [
@@ -179,6 +183,14 @@ def compose_prompt(target_dir, test_suite_dir, suites, texts, others=(), interfa
         lines += [
             'The checkout holds other suites as well. They are not listed here, and they must keep passing - the',
             'command above runs them too: ' + ', '.join(others),
+            '',
+        ]
+    if failures and failures.strip():
+        # plan 047 Phase 23: a repair round - the failures a triage classed CODE are the implementation's to fix
+        lines += [
+            'This is a repair: the previous verification of this implementation failed, and a triage found the tests',
+            'below right and the implementation wrong. Fix the implementation so that they pass:',
+            failures.strip(),
             '',
         ]
     lines += [
@@ -292,6 +304,7 @@ def run(task, claude=None):
     effort = optional_role(task, 'effort')
     names = parse_suite_names(optional_role(task, 'suites'))
     interface = interface_items(optional_role(task, 'design'))
+    failures = optional_role(task, 'failures')
     summary_path = io.output_role(task, 'summary')   # resolved before the paid session
 
     test_suite_dir = nrvv_paths.dir_path(workspace, 'test-suite', test_suite['dir'])
@@ -304,7 +317,7 @@ def run(task, claude=None):
     suites, others = select_suites(read_suites(test_suite_dir), names)
     texts = read_test_files(test_suite_dir, test_files(suites))
     env_files = read_env_files(test_suite_dir) if interface else None
-    prompt = compose_prompt(target_dir, test_suite_dir, suites, texts, others, interface, env_files)
+    prompt = compose_prompt(target_dir, test_suite_dir, suites, texts, others, interface, env_files, failures)
 
     work_dir = task['workingPath']
     os.makedirs(work_dir, exist_ok=True)
