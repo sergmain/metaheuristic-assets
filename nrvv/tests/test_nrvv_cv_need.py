@@ -311,6 +311,19 @@ def test_backtrace_check_refuses_a_non_object():
     assert 'no {"verdicts"' in str(e.value)
 
 
+def test_backtrace_justified_without_text():
+    # development run 244 (project #48): CC answered every JUSTIFIED with needReqIds only - the prompt asks for "only the
+    # fields its verdict uses", and a JUSTIFIED verdict stores nothing
+    raw = bt_answer({'subject': 'GAS-10', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-2']},
+                    bt_verdict('GAS-11', 'OVER_REACH', '"at most once every 60 seconds"'),
+                    {'subject': 'GAS-20', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-7'], 'text': None})
+    assert backtrace.verdicts_of(raw, BT_CONTEXT, BT_CHUNK) == {'verdicts': [
+        {'subject': 'GAS-10', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-2']},
+        {'subject': 'GAS-11', 'verdict': 'OVER_REACH', 'text': '"at most once every 60 seconds"'},
+        {'subject': 'GAS-20', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-7']},
+    ]}, 'a JUSTIFIED verdict needs no text; every other verdict still does'
+
+
 @pytest.mark.parametrize('raw, message', [
     ('', 'the chunk names no subject'),
     ('GAS-10\nGAS-99', "'GAS-99', which is not a subject"),

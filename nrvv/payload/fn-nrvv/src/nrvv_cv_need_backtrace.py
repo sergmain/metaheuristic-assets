@@ -18,8 +18,10 @@
 # The chunk is one reqId per line (mh.batch-line-splitter over the output `subjects`).
 #
 # The canonical answer {"verdicts": [{"subject", "verdict", "needReqIds"?, "needReqId"?, "text"}]} has exactly one entry
-# per subject of the chunk, in chunk order, and only the fields its verdict uses. The Dispatcher's mhdg-nrvv.store-findings
-# checks the same rules again (NrvvFindingUtils.parseBacktrace) and stores one finding per verdict other than JUSTIFIED.
+# per subject of the chunk, in chunk order, and only the fields its verdict uses. Every verdict but JUSTIFIED gives its
+# text - it is the finding stored; a JUSTIFIED one stores nothing, so its text is optional (kept when given). The
+# Dispatcher's mhdg-nrvv.store-findings checks the same rules again (NrvvFindingUtils.parseBacktrace) and stores one
+# finding per verdict other than JUSTIFIED.
 #
 # Pure but for run_prompt() / run_check().
 
@@ -195,7 +197,11 @@ def verdicts_of(cc_result, context, chunk):
         if verdict not in VERDICTS:
             raise ValueError(where + ' has an unknown verdict ' + repr(verdict))
         reason = v.get('text')
-        if not isinstance(reason, str) or not reason.strip():
+        if reason is not None and not isinstance(reason, str):
+            raise ValueError(where + ' has a text that is not a string')
+        # development run 244: a JUSTIFIED verdict stores nothing, so CC may leave its text out
+        reason = (reason or '').strip()
+        if not reason and verdict != 'JUSTIFIED':
             raise ValueError(where + ' has no text')
         ids = _ids(v.get('needReqIds'))
         if ids is None:
@@ -229,7 +235,9 @@ def verdicts_of(cc_result, context, chunk):
         if verdict == 'OVER_REACH' and held:
             raise ValueError(where + ' is OVER_REACH, which is an owned requirement\'s verdict only: a held requirement no'
                              ' NEED needs is UNNEEDED')
-        item = {'subject': subject, 'verdict': verdict, 'text': reason.strip()}
+        item = {'subject': subject, 'verdict': verdict}
+        if reason:
+            item['text'] = reason
         if verdict == 'JUSTIFIED':
             item['needReqIds'] = ids
         if need is not None:
