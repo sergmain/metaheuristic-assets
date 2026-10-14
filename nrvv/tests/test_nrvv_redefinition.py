@@ -295,3 +295,28 @@ def test_design_prompt_v5_keeps_assumed_and_answers_last():
     assert lines[-1] == 'Print nothing - neither the decisions nor any explanation: only what the tool stores reaches the pipeline.'
     assert lines.index(V5_ANSWER) == len(lines) - 6, 'the instruction, the four-line shape, the tail'
     assert p.index('The other items of the design') < p.index(V5_ANSWER), 'the answer instruction is the LAST part'
+
+
+# Phase 15 (decision 14): the check mirrors the Dispatcher's refusal of an added top-level assumed: (06.015.130)
+
+def top_with_add_rationale(rationale):
+    return json.dumps(dict(TOP_VALID, add=[dict(TOP_VALID['add'][0], rationale=rationale)]))
+
+
+@pytest.mark.parametrize('rationale', ['Restates N-3 and N-5.\nassumed: daily', 'Restates N-3 (ASSUMED: daily).'])
+def test_check_top_level_added_assumed(rationale):
+    with pytest.raises(ValueError) as e:
+        rd.check_top_level(top_with_add_rationale(rationale), context())
+    assert "top-level requirement A1 holds an 'assumed:' item in its rationale" in str(e.value), str(e.value)
+
+
+def test_check_top_level_added_ambiguity_passes():
+    assert rd.check_top_level(top_with_add_rationale('Restates N-3.\nambiguity: daily or weekly'), context())['add'][0][
+        'rationale'] == 'Restates N-3.\nambiguity: daily or weekly'
+
+
+def test_check_design_keeps_assumed():
+    d = rd.check_design(design([K('D-1'), K('D-2'), K('I-1')],
+                               [{'key': 'D1', 'parent': 'R-1', 'title': 't', 'statement': 's', 'rationale': 'assumed: x'}]),
+                        context(), top_valid())
+    assert d['add'][0]['rationale'] == 'assumed: x'

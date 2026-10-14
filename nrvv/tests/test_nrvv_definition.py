@@ -311,3 +311,26 @@ def test_design_prompt_v5_keeps_assumed_and_answers_last():
                          ' pipeline.')
     assert prompt.index('The obligations:') < prompt.index(V5_ANSWER), 'the answer instruction is the LAST part'
     assert lines.index(V5_ANSWER) == len(lines) - 5, 'the instruction, the three-line shape, the tail'
+
+
+# Phase 15 (decision 14): the check mirrors the Dispatcher's refusal of a top-level assumed: (06.015.130)
+
+@pytest.mark.parametrize('rationale', ['restates GAS-1\nassumed: latest means requested', 'restates GAS-1 (Assumed: one price)'])
+def test_check_decomposition_top_level_assumed(rationale):
+    answer = {'requirements': [dict(r_item('R1', ['GAS-1']), rationale=rationale), r_item('R2', ['GAS-4'])]}
+    with pytest.raises(ValueError) as e:
+        nd.check_decomposition(json.dumps(answer), AGREED_V5)
+    assert "top-level requirement R1 holds an 'assumed:' item in its rationale" in str(e.value), str(e.value)
+
+
+def test_check_decomposition_top_level_ambiguity_passes():
+    answer = {'requirements': [dict(r_item('R1', ['GAS-1']), rationale='restates GAS-1\nambiguity: latest'),
+                               r_item('R2', ['GAS-4'])]}
+    assert nd.check_decomposition(json.dumps(answer), AGREED_V5)['requirements'][0]['rationale'] == \
+        'restates GAS-1\nambiguity: latest'
+
+
+def test_check_design_keeps_assumed():
+    design = dict(DESIGN, design=[dict(child('D1', 'R1'), rationale='assumed: one price in flight')])
+    assert nd.check_design(json.dumps(design), checked_decomposition_v5())['design'][0]['rationale'] == \
+        'assumed: one price in flight'

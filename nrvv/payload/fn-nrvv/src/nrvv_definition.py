@@ -45,6 +45,10 @@ EXCERPT = 300
 
 ASKED_MAX_TITLE_CHARS = 80
 
+# Plan 047 Phase 15 (decision 14): an assumed: item anywhere in a top-level requirement's rationale, any case - the
+# Dispatcher refuses it too (NrvvDefinitionUtils.assumedRefusal, 06.015.130); design items may assume.
+ASSUMED = re.compile(r'(?i)\bassumed:')
+
 
 def excerpt(text):
     text = text or ''
@@ -206,7 +210,17 @@ def check_decomposition(cc_result, needs):
     unanswered = [c for c in codes if c not in named]
     if unanswered:
         raise ValueError('no obligation restates NEED(s) ' + str(unanswered))
+    for r in requirements:
+        assumed_refusal(r['key'], r['rationale'])
     return {'requirements': requirements}
+
+
+def assumed_refusal(key, rationale):
+    """Plan 047 Phase 15: a ValueError when the rationale of top-level requirement `key` holds an assumed: item."""
+    if ASSUMED.search(rationale or ''):
+        raise ValueError('top-level requirement ' + key + " holds an 'assumed:' item in its rationale - a top-level"
+                         ' requirement assumes nothing: state what holds under every reading of its NEEDs and record each'
+                         " open ambiguity as a line 'ambiguity: <what>'")
 
 
 def check_design(cc_result, decomposition):

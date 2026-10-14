@@ -47,6 +47,7 @@ import json
 
 import nrvv_assessment as na
 import nrvv_cc_answer as ca
+import nrvv_definition as nd
 
 ACTIONS = ('KEEP', 'CHANGE', 'OBSOLETE')
 KINDS = {'D': 'design', 'I': 'interface', 'E': 'environment'}
@@ -266,6 +267,8 @@ def check_top_level(cc_result, context):
         keys.add(key)
         added.append({'key': key, 'needs': _citations(e.get('needs'), key, revisions), 'title': _text(e, 'title', key),
                       'statement': _text(e, 'statement', key), 'rationale': _text(e, 'rationale', key)})
+        # plan 047 Phase 15: an added top-level requirement assumes nothing (a CHANGE keeps its Rationale)
+        nd.assumed_refusal(key, added[-1]['rationale'])
     cited = {c.rsplit(' r', 1)[0] for x in decisions + added for c in x.get('needs', [])}
     uncited = [n for n in context['delta'] if n not in cited]
     if uncited:
