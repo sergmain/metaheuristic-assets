@@ -84,7 +84,9 @@ def test_the_v5_flows_name_call_cc_1_2():
                  # plan 047 Phase 20
                  'nrvv-criteria-1.1.mhsc', 'nrvv-suite-author-1.2.mhsc',
                  # plan 047 Phase 23
-                 'nrvv-triage-1.0.mhsc'):
+                 'nrvv-triage-1.0.mhsc',
+                 # plan 047 Phase 26
+                 'nrvv-recovery-baseline-1.2.mhsc'):
         with open(os.path.join(REPO, 'nrvv', 'source-codes', name), encoding='utf-8') as f:
             codes = set(re.findall(r'(mh\.asset\.call-cc[_0-9.]*) \{', f.read()))
         assert codes == {'mh.asset.call-cc_1.2'}, name + ': ' + str(codes)
