@@ -97,8 +97,17 @@ def test_a_skipped_listed_test_did_not_run_and_is_error(dirs):
 
     e = sr.run_suite(ts, 'REQ_5_suite', tg, out)
 
-    assert e['verdict'] == 'ERROR'
-    assert e['missingIds'] == ['tests/test_skipped.py::test_later']
+    # CT Green-1 (plan 047 Phase 22): a skipped listed test did not run - missing, and the suite ERROR
+    # CT Red (plan 047 Phase 22, decision 16): a skipped test RAN to a skip - reported SKIPPED with its reason, not missing;
+    # a suite is FAIL if a test fails, else INCONCLUSIVE if a test is skipped, else PASS
+    assert e['verdict'] == 'INCONCLUSIVE'
+    assert e['missingIds'] == []
+    assert e['tests'] == [{'testId': 'tests/test_skipped.py::test_later', 'outcome': 'SKIPPED', 'message': 'not today'}]
+
+    suite(ts, 'REQ_6_suite', 'tests/test_greeter.py::test_greets', 'tests/test_skipped.py::test_later')
+    assert sr.run_suite(ts, 'REQ_6_suite', tg, out)['verdict'] == 'INCONCLUSIVE', 'a pass and a skip'
+    suite(ts, 'REQ_7_suite', 'tests/test_broken.py::test_wrong', 'tests/test_skipped.py::test_later')
+    assert sr.run_suite(ts, 'REQ_7_suite', tg, out)['verdict'] == 'FAIL', 'a failure wins over a skip'
 
 
 def test_a_suite_listing_nothing_is_error_and_pytest_is_not_run(dirs):

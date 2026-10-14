@@ -12,6 +12,11 @@
 #   PASS   everything listed ran and passed, exit 0
 # A runner that silently runs nothing must not pass, so "did it run" is decided from the XML, per listed id.
 #
+# Plan 047 Phase 22 (decision 16, by its characterization test): a skipped test RAN - to a skip, which is what a test
+# does when a precondition cannot be reached (pytest.skip("precondition not reached: <what>")) - so it is reported as
+# outcome SKIPPED with its reason and is not missing; the suite verdict is ERROR as above, else FAIL if a test failed,
+# else INCONCLUSIVE if a test was skipped, else PASS. NOT_RUN stays for an id pytest did not run at all.
+#
 # A listed id covers the results it names: itself, its parametrizations (id[...]) and, for a file or a class,
 # everything under it (id::...).
 #
@@ -63,7 +68,7 @@ def node_id(testcase):
 
 
 def read_results(xml_path):
-    """node id -> (outcome, message) from a JUnit XML file; outcome in PASS | FAIL | ERROR | NOT_RUN."""
+    """node id -> (outcome, message) from a JUnit XML file; outcome in PASS | FAIL | ERROR | SKIPPED (with its reason)."""
     results = {}
     for tc in ET.parse(xml_path).getroot().iter('testcase'):
         outcome, message = 'PASS', None
@@ -73,19 +78,21 @@ def read_results(xml_path):
             elif child.tag == 'error':
                 outcome, message = 'ERROR', child.get('message')
             elif child.tag == 'skipped':
-                outcome, message = 'NOT_RUN', child.get('message')
+                # plan 047 Phase 22: it ran to a skip (it was NOT_RUN)
+                outcome, message = 'SKIPPED', child.get('message')
         results[node_id(tc)] = (outcome, message)
     return results
 
 
 def outcome_of(listed_id, results):
-    """(outcome, message) of one listed id over the results it covers; NOT_RUN when it covers nothing that ran."""
+    """(outcome, message) of one listed id over the results it covers - ERROR, else FAIL, else SKIPPED, else PASS;
+    NOT_RUN when it covers nothing that ran."""
     covered = [v for k, v in results.items()
                if k == listed_id or k.startswith(listed_id + '[') or k.startswith(listed_id + '::')]
     ran = [v for v in covered if v[0] != 'NOT_RUN']
     if not ran:
         return 'NOT_RUN', (covered[0][1] if covered else 'did not run')
-    for wanted in ('ERROR', 'FAIL'):
+    for wanted in ('ERROR', 'FAIL', 'SKIPPED'):
         hit = [v for v in ran if v[0] == wanted]
         if hit:
             return wanted, hit[0][1]
@@ -97,6 +104,9 @@ def verdict_of(exit_code, tests, missing):
         return 'ERROR'
     if any(t['outcome'] == 'FAIL' for t in tests):
         return 'FAIL'
+    # plan 047 Phase 22 (decision 16): a skip makes the suite INCONCLUSIVE - neither met nor failed
+    if exit_code == 0 and any(t['outcome'] == 'SKIPPED' for t in tests):
+        return 'INCONCLUSIVE'
     return 'PASS' if exit_code == 0 else 'ERROR'
 
 
