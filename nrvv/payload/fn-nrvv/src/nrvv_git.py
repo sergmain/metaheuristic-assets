@@ -1,20 +1,34 @@
 # Git, through the git CLI, for the NRVV Functions: resolve a ref, check out a commit, list what changed, commit,
 # push. Every call runs `git` as a subprocess and fails loudly with git's own stderr.
+#
+# Plan 047 Phase 26 (decision 19): a network-class failure - exit 128 with `Could not resolve host`, `Connection timed
+# out` or `unable to access` - is retried, RETRY_DELAYS apart (5 retries, 10/20/30/30/30 s); every other failure, and
+# the last retry's, fails at once as before.
 
 import os
 import re
 import subprocess
+import sys
+import time
 
 SHA = re.compile(r'^[0-9a-f]{40}$')
 # git's refusal of a push whose branch moved since the checkout: the remote holds commits this checkout does not have
 REJECTED_BEHIND = re.compile(r'\[rejected\][^\n]*\((?:fetch first|non-fast-forward)\)')
+# plan 047 Phase 26: git could not reach the host - the same command may succeed a moment later
+NETWORK_FAILURE = re.compile(r'Could not resolve host|Connection timed out|unable to access')
+RETRY_DELAYS = (10, 20, 30, 30, 30)
 
 
 class GitError(RuntimeError):
     pass
 
 
-def git(args, cwd=None, extra_config=None, env_config=None, strip=True):
+def is_network_failure(returncode, output):
+    """True for git's exit 128 with a message naming a host it could not resolve or reach."""
+    return returncode == 128 and bool(NETWORK_FAILURE.search(output or ''))
+
+
+def git(args, cwd=None, extra_config=None, env_config=None, strip=True, run=subprocess.run, sleep=time.sleep):
     """Run one git command; return stdout, stripped unless strip=False.
 
     strip=False is required for -z output: porcelain entries begin with a status column that may be a space
@@ -22,7 +36,10 @@ def git(args, cwd=None, extra_config=None, env_config=None, strip=True):
 
     extra_config: 'key=value' items passed as -c - on the command line, so never for a secret.
     env_config: (key, value) pairs passed through GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n in the
-    child's environment only - readable by the same OS user, not by every process listing argv."""
+    child's environment only - readable by the same OS user, not by every process listing argv.
+
+    run / sleep: how the command runs and how a retry waits - subprocess.run and time.sleep; a network-class failure
+    (is_network_failure) is run again after each of RETRY_DELAYS."""
     cmd = ['git']
     for kv in extra_config or []:
         cmd += ['-c', kv]
@@ -34,11 +51,21 @@ def git(args, cwd=None, extra_config=None, env_config=None, strip=True):
         for i, (k, v) in enumerate(env_config):
             env['GIT_CONFIG_KEY_' + str(i)] = k
             env['GIT_CONFIG_VALUE_' + str(i)] = v
-    r = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, encoding='utf-8', check=False)
-    if r.returncode != 0:
-        raise GitError('git ' + ' '.join(args) + ' failed with exit ' + str(r.returncode) + ': '
-                       + (r.stderr or r.stdout).strip())
-    return r.stdout.strip() if strip else r.stdout
+    attempt = 0
+    while True:
+        r = run(cmd, cwd=cwd, env=env, capture_output=True, text=True, encoding='utf-8', check=False)
+        attempt += 1
+        if r.returncode == 0:
+            return r.stdout.strip() if strip else r.stdout
+        output = (r.stderr or r.stdout or '').strip()
+        if attempt <= len(RETRY_DELAYS) and is_network_failure(r.returncode, output):
+            delay = RETRY_DELAYS[attempt - 1]
+            print('nrvv_git: git ' + (args[0] if args else '') + ' failed with a network error on attempt '
+                  + str(attempt) + ', retried in ' + str(delay) + ' s: ' + output, file=sys.stderr)
+            sleep(delay)
+            continue
+        raise GitError('git ' + ' '.join(args) + ' failed with exit ' + str(r.returncode)
+                       + (' after ' + str(attempt) + ' attempts' if attempt > 1 else '') + ': ' + output)
 
 
 def resolve_ref(url, ref):
