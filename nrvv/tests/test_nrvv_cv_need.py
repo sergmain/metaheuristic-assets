@@ -6,6 +6,7 @@ import json
 import pytest
 
 import nrvv_cv_need as cv
+import nrvv_cv_need_backtrace as backtrace
 import nrvv_cv_need_contradiction as contradiction
 import nrvv_cv_need_feasibility as feasibility
 import nrvv_cv_need_quality as quality
@@ -184,3 +185,149 @@ def test_feasibility_check_refuses_a_non_object():
     with pytest.raises(ValueError) as e:
         feasibility.verdict_of('["DETERMINED"]', NEEDS)
     assert 'no {"verdict"' in str(e.value)
+
+
+# ==================== BACKTRACE (plan 047, Phase 17) ====================
+
+BT_CONTEXT = {
+    'snapshotId': 249,
+    'needs': [
+        {'reqId': 'GAS-2', 'revision': 2, 'title': 'Settle within a minute',
+         'statement': 'Each station must settle on the latest price,\nand the pricing team knows within one minute.',
+         'kind': 'OBLIGATION'},
+        {'reqId': 'GAS-7', 'revision': 1, 'title': 'Costs', 'statement': 'Sending has a cost.', 'kind': 'COST_OBJECTIVE'},
+    ],
+    'subjects': [
+        {'reqId': 'GAS-10', 'liveReqId': 'GAS-10', 'held': False, 'sectionReqId': None, 'title': 'Latest price',
+         'statement': 'The service shall make every station display the latest price.',
+         'rationale': 'need: GAS-2 r1\nrestates GAS-2', 'citations': ['GAS-2 r1'],
+         'superseded': [{'needReqId': 'GAS-2', 'revision': 1, 'title': 'Settle',
+                         'statement': 'Each station must settle on the latest price.'}],
+         'tracedFrom': ['GAS-2']},
+        {'reqId': 'GAS-11', 'liveReqId': 'GAS-14', 'held': False, 'sectionReqId': None, 'title': 'Resend spacing',
+         'statement': 'The service shall send a price at most once every 60 seconds.', 'rationale': '',
+         'citations': [], 'superseded': [], 'tracedFrom': []},
+        {'reqId': 'GAS-12', 'liveReqId': 'GAS-12', 'held': False, 'sectionReqId': None, 'title': 'Old cite',
+         'statement': 'The service shall log every send.', 'rationale': 'need: GAS-3 r1', 'citations': ['GAS-3 r1'],
+         'superseded': [{'needReqId': 'GAS-3', 'revision': 1, 'title': None, 'statement': None}], 'tracedFrom': []},
+        {'reqId': 'GAS-20', 'liveReqId': 'GAS-20', 'held': True, 'sectionReqId': 'GAS-19', 'title': 'Periodic resend',
+         'statement': 'The service shall resend the latest price to every station every 10 seconds.', 'rationale': '',
+         'citations': [], 'superseded': [], 'tracedFrom': ['GAS-7']},
+    ],
+}
+BT_CHUNK = ['GAS-10', 'GAS-11', 'GAS-20']
+
+
+def bt_verdict(subject, verdict, text='why', **fields):
+    v = {'subject': subject, 'verdict': verdict, 'text': text}
+    v.update(fields)
+    return v
+
+
+def bt_answer(*verdicts):
+    return json.dumps({'verdicts': list(verdicts)})
+
+
+def test_backtrace_prompt_ends_with_the_answer_instruction():
+    lines = backtrace.compose(BT_CONTEXT, BT_CHUNK).split('\n')
+    assert lines[-1] == cv.ANSWER_TAIL.replace('the findings', 'the verdicts')
+    assert lines[-2] == backtrace.ANSWER_SHAPE
+    assert lines[-4].startswith('Answer by calling the mh_cc_store_result tool exactly once')
+    assert 'Print nothing' in lines[-1]
+
+
+def test_backtrace_prompt_lists_the_needs_and_the_chunk_only():
+    prompt = backtrace.compose(BT_CONTEXT, BT_CHUNK)
+    assert 'NEED GAS-2 (revision 2, OBLIGATION): Settle within a minute' in prompt
+    assert '  and the pricing team knows within one minute.' in prompt, 'a multi-line statement keeps its lines'
+    assert 'NEED GAS-7 (revision 1, COST_OBJECTIVE): Costs' in prompt
+    assert 'Owned requirement GAS-10 (top-level - JUSTIFIED, OVER_REACH, CONTRADICTS_NEED or RESTS_ON_SUPERSEDED):' in prompt
+    assert 'Owned requirement GAS-11 (now GAS-14)' in prompt, 'a lineage read at its live row says so'
+    assert 'Held requirement GAS-20 (imposed through section GAS-19 - JUSTIFIED, CONTRADICTS_NEED or UNNEEDED):' in prompt
+    assert '    Rationale: need: GAS-2 r1 | restates GAS-2' in prompt
+    assert '    Cites GAS-2 r1, no longer in force - it read then: Settle: Each station must settle on the latest price.' in prompt
+    assert '    Traced from: no NEED' in prompt
+    assert '    Traced from: GAS-7' in prompt
+    assert 'GAS-12' not in prompt, 'a subject of another chunk is not listed'
+    assert prompt.index('Held requirement GAS-20') < prompt.index('mh_cc_store_result'), 'the instruction is LAST'
+    for rule in ('OVER_REACH (owned requirements only)', 'UNNEEDED (held requirements only)',
+                 'a fixed bound on that cost', 'it obliges nothing', 'A NEED without a kind is an OBLIGATION.'):
+        assert rule in prompt, rule
+
+
+def test_backtrace_prompt_superseded_revision_off_the_line():
+    prompt = backtrace.compose(BT_CONTEXT, ['GAS-12'])
+    assert "    Cites GAS-3 r1, no longer in force - its text is not on the project's line" in prompt
+
+
+def test_backtrace_verdicts_canonical_in_chunk_order():
+    raw = '```json\n' + bt_answer(
+        bt_verdict('GAS-20', 'UNNEEDED', 'no NEED asks for periodic resends', needReqIds=[], needReqId=None),
+        bt_verdict(' GAS-10 ', 'RESTS_ON_SUPERSEDED', ' rests on "settle" ', needReqId='GAS-2'),
+        bt_verdict('GAS-11', 'JUSTIFIED', 'GAS-7 weighs sends', needReqIds=['GAS-7', 'GAS-2'])) + '\n```'
+    assert backtrace.verdicts_of(raw, BT_CONTEXT, BT_CHUNK) == {'verdicts': [
+        {'subject': 'GAS-10', 'verdict': 'RESTS_ON_SUPERSEDED', 'text': 'rests on "settle"', 'needReqId': 'GAS-2'},
+        {'subject': 'GAS-11', 'verdict': 'JUSTIFIED', 'text': 'GAS-7 weighs sends', 'needReqIds': ['GAS-7', 'GAS-2']},
+        {'subject': 'GAS-20', 'verdict': 'UNNEEDED', 'text': 'no NEED asks for periodic resends'},
+    ]}
+    other = backtrace.verdicts_of(bt_answer(
+        bt_verdict('GAS-10', 'CONTRADICTS_NEED', 'a stale price', needReqId='GAS-2'),
+        bt_verdict('GAS-11', 'OVER_REACH', '"at most once every 60 seconds"'),
+        bt_verdict('GAS-20', 'CONTRADICTS_NEED', 'resends cost', needReqId='GAS-7')), BT_CONTEXT, BT_CHUNK)
+    assert [v['verdict'] for v in other['verdicts']] == ['CONTRADICTS_NEED', 'OVER_REACH', 'CONTRADICTS_NEED']
+    assert 'needReqId' not in other['verdicts'][1]
+
+
+@pytest.mark.parametrize('verdicts, message', [
+    ([bt_verdict('GAS-10', 'OVER_REACH'), bt_verdict('GAS-11', 'OVER_REACH')], 'no verdict on GAS-20'),
+    ([bt_verdict('GAS-12', 'OVER_REACH')], 'not a requirement of this chunk'),
+    ([bt_verdict('GAS-10', 'OVER_REACH'), bt_verdict('GAS-10', 'OVER_REACH')], 'a second time'),
+    ([bt_verdict('GAS-10', 'MAYBE')], 'unknown verdict'),
+    ([bt_verdict('GAS-10', 'OVER_REACH', text=' ')], 'no text'),
+    ([bt_verdict('GAS-10', 'OVER_REACH', kind='x')], 'unknown field'),
+    ([bt_verdict('GAS-10', 'JUSTIFIED')], 'names no NEED'),
+    ([bt_verdict('GAS-10', 'JUSTIFIED', needReqIds=['GAS-9'])], 'not one of the agreed NEEDs'),
+    ([bt_verdict('GAS-10', 'JUSTIFIED', needReqIds=['GAS-2', 'GAS-2'])], 'twice'),
+    ([bt_verdict('GAS-10', 'JUSTIFIED', needReqIds='GAS-2')], 'not a list'),
+    ([bt_verdict('GAS-10', 'OVER_REACH', needReqIds=['GAS-2'])], 'only JUSTIFIED does'),
+    ([bt_verdict('GAS-10', 'OVER_REACH', needReqId='GAS-2')], 'only CONTRADICTS_NEED and RESTS_ON_SUPERSEDED do'),
+    ([bt_verdict('GAS-10', 'CONTRADICTS_NEED')], 'names no agreed NEED'),
+    ([bt_verdict('GAS-10', 'CONTRADICTS_NEED', needReqId='GAS-3')], 'names no agreed NEED'),
+    ([bt_verdict('GAS-10', 'CONTRADICTS_NEED', needReqId=7)], 'not a reqId'),
+    ([bt_verdict('GAS-11', 'RESTS_ON_SUPERSEDED', needReqId='GAS-2')], 'no NEED it cites at a revision no longer in force'),
+    ([bt_verdict('GAS-10', 'RESTS_ON_SUPERSEDED', needReqId='GAS-7')], 'no NEED it cites at a revision no longer in force'),
+    ([bt_verdict('GAS-10', 'UNNEEDED')], "a held requirement's verdict only"),
+    ([bt_verdict('GAS-20', 'OVER_REACH')], "an owned requirement's verdict only"),
+])
+def test_backtrace_check_refuses(verdicts, message):
+    with pytest.raises(ValueError) as e:
+        backtrace.verdicts_of(bt_answer(*verdicts), BT_CONTEXT, BT_CHUNK)
+    assert message in str(e.value)
+
+
+def test_backtrace_check_refuses_a_non_object():
+    with pytest.raises(ValueError) as e:
+        backtrace.verdicts_of(json.dumps({'findings': []}), BT_CONTEXT, BT_CHUNK)
+    assert 'no {"verdicts"' in str(e.value)
+
+
+@pytest.mark.parametrize('raw, message', [
+    ('', 'the chunk names no subject'),
+    ('GAS-10\nGAS-99', "'GAS-99', which is not a subject"),
+    ('GAS-10\n\nGAS-10', 'twice'),
+])
+def test_backtrace_chunk_of_refuses(raw, message):
+    with pytest.raises(ValueError) as e:
+        backtrace.chunk_of(raw, BT_CONTEXT)
+    assert message in str(e.value)
+
+
+def test_backtrace_context_of():
+    assert backtrace.chunk_of(' GAS-10 \n\nGAS-20\n', BT_CONTEXT) == ['GAS-10', 'GAS-20'], 'blank lines are skipped'
+    assert backtrace.context_of(json.dumps(BT_CONTEXT))['snapshotId'] == 249
+    for raw, message in (('not json', 'not JSON'), ('{"needs": []}', 'no needs and subjects'),
+                         ('{"needs": [], "subjects": [{"held": true}]}', 'with no reqId')):
+        with pytest.raises(ValueError) as e:
+            backtrace.context_of(raw)
+        assert message in str(e.value)
+    assert backtrace.CHUNK_SIZE == 40

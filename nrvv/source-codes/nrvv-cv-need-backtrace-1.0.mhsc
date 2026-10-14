@@ -1,0 +1,108 @@
+// NRVV cv-need-backtrace 1.0 (plan 047, Phase 17): back-validation - is every requirement in force justified by the
+// NEEDs in force? The subjects are every owned top-level requirement (read at its live row, with its citations and the
+// cited NEED revisions no longer in force) and every ACTIVE member of the live IMPOSED held sections. Per subject CC
+// answers exactly one verdict: JUSTIFIED (no finding), OVER_REACH (an owned requirement obliges what no NEED states -
+// hard), CONTRADICTS_NEED (hard), RESTS_ON_SUPERSEDED (it rests on a NEED revision no longer in force - hard), UNNEEDED
+// (a held requirement no NEED needs - soft). One NEEDS_CV run of workflow BACKTRACE; run 3 times per gate (decision 13).
+// Started by the Dispatcher (POST /rest/v1/nrvv/projects/{id}/needs-cv with workflow BACKTRACE, or the chain), never by
+// hand: the run record NRVV_RUN #runId exists before this ExecContext does and names its snapshot, and
+// mhdg-nrvv.finish-run closes it.
+//
+//   read     internal mhdg-nrvv.read-backtrace-input        the subjects at the run's snapshot, one per line
+//                                                            (nullified when there is none: no chunk, no finding), and
+//                                                            the context: agreed NEEDs and every subject's text
+//   split    internal mh.batch-line-splitter                one branch per chunk of at most 40 subjects
+//     bprompt  mh.asset.nrvv-cv-need-backtrace-prompt_1.0   the prompt for the chunk
+//     cc       mh.asset.call-cc_1.2                         CC answers {"verdicts": [...]}, one per subject of the chunk
+//     bcheck   mh.asset.nrvv-cv-need-backtrace-check_1.0    the answer checked - every subject of the chunk once, known
+//                                                            verdicts, the NEEDs each verdict names, UNNEEDED held only,
+//                                                            OVER_REACH owned only
+//     store    internal mhdg-nrvv.store-findings             one finding per verdict other than JUSTIFIED; checked again
+//                                                            against what the Dispatcher reads itself; a chunk is
+//                                                            written once
+//   finish   internal mhdg-nrvv.finish-run                  the run record FINISHED, or ERROR when any Task failed
+//
+// No STAGE: the run reads RG and writes NRVV only. No checkout, no workspace, no credential.
+//
+// Inputs: exactly NrvvRunUtils.needsCvVariables (MH refuses a missing or an undeclared name). `model` is declared
+// without '?': NrvvRunService refuses a blank model (06.004.620).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; inside a branch the steps run in
+// order; finish runs last, after failures too (tag terminal). No cache on cc: each attempt of a group is asked again.
+
+source "nrvv-cv-need-backtrace-1.0" {
+
+    variables {
+        <- production?
+        <- runId
+        <- model
+        <- effort?
+    }
+
+    read := internal mhdg-nrvv.read-backtrace-input {
+        name "Read the subjects and the agreed NEEDs at the run's snapshot"
+        <- runId
+        -> subjects: ext=".txt",
+           backtraceContext: ext=".json"
+        timeout 120
+    }
+
+    split := internal mh.batch-line-splitter {
+        name "One branch per chunk of at most 40 subjects"
+        meta number-of-lines-per-task = "40",
+             variable-for-splitting = "subjects",
+             output-is-dynamic = "true",
+             output-variable = "subjectChunk",
+             is-array = "false"
+        <- subjects
+        sequential {
+            bprompt := mh.asset.nrvv-cv-need-backtrace-prompt_1.0 {
+                name "Build the BACKTRACE prompt for the chunk: the agreed NEEDs and the chunk's subjects"
+                meta variable-for-backtrace-context = "backtraceContext",
+                     variable-for-subjects = "subjectChunk",
+                     variable-for-prompt = "backtracePrompt"
+                <- backtraceContext, subjectChunk
+                -> backtracePrompt: ext=".txt"
+                timeout 60
+            }
+
+            cc := mh.asset.call-cc_1.2 {
+                name "Ask CC for one verdict per subject of the chunk"
+                // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+                meta variable-for-prompt = "backtracePrompt",
+                     variable-for-output = "backtraceResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
+                     timeout-sec = "900"
+                <- backtracePrompt, model, effort?
+                -> backtraceResult: ext=".txt"
+                timeout 1200
+                tries 2
+            }
+
+            bcheck := mh.asset.nrvv-cv-need-backtrace-check_1.0 {
+                name "Check CC's verdicts and hand them on in canonical form"
+                meta variable-for-cc-result = "backtraceResult",
+                     variable-for-backtrace-context = "backtraceContext",
+                     variable-for-subjects = "subjectChunk",
+                     variable-for-findings = "findings"
+                <- backtraceResult, backtraceContext, subjectChunk
+                -> findings: ext=".json"
+                timeout 60
+            }
+
+            store := internal mhdg-nrvv.store-findings {
+                name "Store one finding per verdict other than JUSTIFIED in NRVV_FINDING - checked again by the Dispatcher"
+                <- runId, findings
+                timeout 120
+            }
+        }
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
