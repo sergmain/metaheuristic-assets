@@ -49,6 +49,16 @@ def test_env_prompt_carries_the_interface_the_environment_and_the_rules():
     assert '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}' in prompt
 
 
+def test_env_prompt_ends_with_the_answer_instruction():
+    prompt = ne.compose_env_prompt(ne.parse_design(json.dumps(DESIGN)))
+    # CT Green-1 (plan 047 Phase 20): the answer instruction came before the Interface and the Environment
+    # CT Red (plan 047 Phase 20): the answer instruction is the LAST part, after the Environment, as every v5 prompt's
+    assert 'Store your answer with the result tool' not in prompt
+    assert prompt.index('X-4:') < prompt.index('Answer by calling the mh_cc_store_result tool exactly once')
+    assert '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}' in prompt[prompt.index('X-4:'):]
+    assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
+
+
 @pytest.mark.parametrize('bad', [
     'not json',
     '[]',

@@ -5,6 +5,9 @@
 # Inputs  (process metas variable-for-<role>):
 #   req-id       the requirement's current reqId - the splitter's line
 #   requirement  the requirement as mhdg-rg.read-req read it at the run's STAGE (RG document markup)
+#   constraints  optional (plan 047 Phase 20, decision 15): every ACTIVE requirement of the scope's snapshot as
+#                "<reqId>: <requirement content>" blocks (mhdg-nrvv.list-scope's scopeRequirements) - read-only; a flow
+#                without the meta passes none
 # Output:
 #   prompt       the prompt for mh.asset.call-cc_1.1
 #
@@ -31,7 +34,21 @@ FUNCTION_CODE = 'mh.asset.nrvv-criterion-prompt_1.0'
 ASKED_MAX_CHARS = 600
 
 
-def compose(req_id, content):
+def constraints_section(constraints):
+    """Plan 047 Phase 20 (decision 15): the scope's requirements as read-only constraints; none when there are none."""
+    text = (constraints or '').strip()
+    if not text:
+        return []
+    return [
+        'The requirements in force in this scope - read-only constraints. No criterion may expect behaviour one of',
+        'them forbids; they are context, not requirements to derive a criterion for:',
+        '',
+        text,
+        '',
+    ]
+
+
+def compose(req_id, content, constraints=None):
     """The prompt for requirement req_id, or a ValueError when there is nothing to derive a criterion from."""
     req = (req_id or '').strip()
     if not req:
@@ -39,6 +56,18 @@ def compose(req_id, content):
     text = rt.plain_text(content)
     if not text:
         raise ValueError('requirement ' + req + ' has no text')
+    # plan 047 Phase 20 (by its characterization test): the "recovered from code in one language" framing is said only
+    # of a requirement recovered from code - one with a "source:" line; a defined requirement is language-neutral already
+    recovered = rt.source_citation(content) is not None
+    recovery_rules = [
+        '- The requirement was recovered from code in one language and will be implemented in another. Word the',
+        '  criterion so it holds in ANY implementation language: when the requirement is about a construct of the',
+        '  source language - a class or method declaration, an access modifier, a parameter list or a return type,',
+        '  compiling, a particular printing call - state the observable behaviour it implies (a named unit exists',
+        '  and can be called; calling it produces the stated output or result), never the construct itself.',
+        '- The Rationale\'s "source:" line says where the requirement was recovered from; it is not part of the',
+        '  criterion.',
+    ] if recovered else []
     return '\n'.join([
         'You derive the verification criterion of ONE requirement of a software system.',
         '',
@@ -52,13 +81,7 @@ def compose(req_id, content):
         '  literal the requirement names.',
         '- When the Acceptance item states a condition (anything but "Not applicable"), base the criterion on it.',
         '- Name no test framework, no file and no programming language.',
-        '- The requirement was recovered from code in one language and will be implemented in another. Word the',
-        '  criterion so it holds in ANY implementation language: when the requirement is about a construct of the',
-        '  source language - a class or method declaration, an access modifier, a parameter list or a return type,',
-        '  compiling, a particular printing call - state the observable behaviour it implies (a named unit exists',
-        '  and can be called; calling it produces the stated output or result), never the construct itself.',
-        '- The Rationale\'s "source:" line says where the requirement was recovered from; it is not part of the',
-        '  criterion.',
+    ] + recovery_rules + [
         '',
         # plan 045 Phase 36 (2026-10-10, by CT): the answer instruction moved to the END - after reading the requirement
         # last, haiku reasoned about it and printed {"criterion": ...} instead of calling the result tool (acceptance
@@ -66,6 +89,7 @@ def compose(req_id, content):
         #   'Store your answer with the result tool as exactly this JSON object, and nothing else:',
         #   '{"criterion": "<the criterion>"}',
         #   '',
+    ] + constraints_section(constraints) + [
         'Requirement ' + req + ':',
         text,
         '',
@@ -76,7 +100,9 @@ def compose(req_id, content):
 
 
 def run(task):
-    prompt = compose(io.read_role(task, 'req-id'), io.read_role(task, 'requirement'))
+    # plan 047 Phase 20: the constraints role is optional - nrvv-criteria-1.0 does not pass it, nrvv-criteria-1.1 does
+    constraints = io.read_role(task, 'constraints') if io.meta_value(task.get('metas') or [], 'variable-for-constraints') else None
+    prompt = compose(io.read_role(task, 'req-id'), io.read_role(task, 'requirement'), constraints)
     io.write_text(io.output_role(task, 'prompt'), prompt)
     print(FUNCTION_CODE + ': ' + str(len(prompt)) + ' chars')
 

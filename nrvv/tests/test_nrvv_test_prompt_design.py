@@ -16,8 +16,11 @@ RECOVERED = ('{{METADATA}}INFO_BANK_DOCUMENT_NUMBER=3{{/METADATA}}\n{{M=1}}TMPSN
 CRITERION = 'Running main prints "Hello, NRVV" exactly once.'
 
 # the v1 prompt for RECOVERED, pinned BEFORE Phase 10 changed nrvv_test_prompt (043 savepoint): sha256 and length
-V1_SHA256 = 'd3d0ea2f8846d5b2f41a8c4c87f1a6c659f62b21c1650951efc8a26152e2d4c9'
-V1_LENGTH = 1689
+# plan 047 Phase 20: re-taken deliberately - the answer instruction moved to the END of the prompt (by its
+# characterization test, test_the_answer_instruction_comes_last); the pin before it was
+# 'd3d0ea2f8846d5b2f41a8c4c87f1a6c659f62b21c1650951efc8a26152e2d4c9', 1689. The design roles still leave it unchanged.
+V1_SHA256 = '0493b995d89b2cc134e7a6de2dcc57f9250523d7257ffaeaf0638b23accd72c6'
+V1_LENGTH = 1819
 
 
 def v1_prompt():
@@ -60,6 +63,19 @@ def test_a_design_without_env_files_is_refused():
         tp.compose('X-1', DEFINED, 'c', 'X_1', 'X-9', INTERFACE, {})
 
 
+def test_the_answer_instruction_comes_last():
+    # CT Green-1 (plan 047 Phase 20): in both modes the answer instruction came before the criterion and the requirement
+    # CT Red (plan 047 Phase 20): the answer instruction is the LAST part, as every v5 prompt's (the criterion prompt's
+    # since plan 045 Phase 36) - after the requirement, and in design mode after the Interface and nrvv_env
+    for prompt in (v1_prompt(), design_prompt()):
+        assert 'Store your answer with the result tool' not in prompt
+        tail = prompt[prompt.index('Requirement '):]
+        assert 'Answer by calling the mh_cc_store_result tool exactly once' in tail
+        assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
+    design = design_prompt()
+    assert design.index('--- tests/nrvv_env/world.py') < design.index('mh_cc_store_result'), 'after nrvv_env in full'
+
+
 def test_interface_items():
     assert tp.interface_items(None) == []
     assert tp.interface_items('  ') == []
@@ -68,6 +84,30 @@ def test_interface_items():
     for bad in ('not json', '[]', '{"environment": []}'):
         with pytest.raises(ValueError):
             tp.interface_items(bad)
+
+
+SCOPE = ('X-1: Latest price\n1.1) The service shall make every station display the latest desired price.\n\n'
+         'X-2: No repeats\n1.1) The service shall never resend a price a station already displays.')
+
+
+def test_design_mode_states_the_four_rules_of_decision_15():
+    prompt = design_prompt()
+    assert 'no test expects behaviour that another requirement in force forbids' in prompt
+    assert '`pytest.skip("precondition not reached: <what>")`' in prompt and 'never an assert' in prompt
+    assert 'a test never calls the ports `nrvv_env` sets on `app`' in prompt
+    assert 'ordered by `nrvv_env`\'s event index, never by list position or wall-clock time' in prompt
+    assert 'pytest.skip' not in v1_prompt(), 'the v1 prompt is not design mode'
+
+
+def test_design_mode_shows_the_scope_as_read_only_constraints():
+    prompt = tp.compose('X-1', DEFINED, 'The station displays 7.', 'X_1', 'X-9', INTERFACE, ENV_FILES, SCOPE)
+    assert 'The requirements in force in this scope - read-only constraints' in prompt
+    assert 'X-2: No repeats\n1.1) The service shall never resend' in prompt
+    assert prompt.index('Requirement X-1:') < prompt.index('read-only constraints, not') < prompt.index('The Interface of `app`:')
+    assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
+    assert 'read-only constraints, not' not in design_prompt(), 'no constraints given: no section'
+    assert tp.compose('TMPSN3F36BJ-3', RECOVERED, CRITERION, 'TMPSN3F36BJ_3', 'TMPSN3F36BJ-9', None, None, SCOPE) == v1_prompt(), \
+        'the v1 prompt ignores them'
 
 
 def test_read_env_files(tmp_path):
@@ -141,3 +181,19 @@ def test_run_in_design_mode_reads_nrvv_env_from_the_checkout(tmp_path):
     tp.run(task_with_inputs(w, metas, values, ['testPrompt']))
 
     assert prompt_of(w) == tp.compose('X-1', DEFINED, 'The station displays 7.', 'X_1', 'X-9', INTERFACE, ENV_FILES)
+
+
+def test_run_in_design_mode_reads_the_constraints_role_when_the_flow_names_it(tmp_path):
+    ts = tmp_path / 'ws' / 'test-suite'
+    (ts / 'tests' / 'nrvv_env').mkdir(parents=True)
+    for name, source in ENV_FILES.items():
+        (ts / 'tests' / 'nrvv_env' / name).write_text(source, encoding='utf-8')
+    metas = V1_METAS + [{'variable-for-design': 'design'}, {'variable-for-env-dir': 'testSuiteDir'},
+                        {'variable-for-constraints': 'scopeRequirements'}]
+    values = {'reqId': 'X-1', 'requirementContent': DEFINED, 'testCaseCriterion': 'The station displays 7.',
+              'suiteName': 'X_1', 'testCaseReqId': 'X-9',
+              'design': json.dumps({'interface': INTERFACE, 'environment': []}), 'testSuiteDir': str(ts) + '\n',
+              'scopeRequirements': SCOPE}
+    w = str(tmp_path / 'design')
+    tp.run(task_with_inputs(w, metas, values, ['testPrompt']))
+    assert prompt_of(w) == tp.compose('X-1', DEFINED, 'The station displays 7.', 'X_1', 'X-9', INTERFACE, ENV_FILES, SCOPE)

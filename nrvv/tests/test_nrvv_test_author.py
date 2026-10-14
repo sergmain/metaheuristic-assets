@@ -102,6 +102,23 @@ def test_the_criterion_prompt_carries_the_requirement_text_and_the_answer_shape(
     assert '{{M=' not in prompt and 'METADATA' not in prompt
 
 
+# plan 047 Phase 20: E1 without its "source:" line - a requirement a definition wrote, not one recovered from code
+E1_DEFINED = E1_REQUIREMENT.replace(
+    "\n\n{{M=4}}2.2) source: C:\\_mh\\mhbp_home-PostgreSQL-disk-storage\\nrvv\\_recovery\\1\\source\\nrvv\\synthetic\\source"
+    "\\NrvvSample.java", '')
+
+
+def test_the_criterion_prompt_frames_language_constructs_for_a_recovered_requirement_only():
+    assert rt.source_citation(E1_DEFINED) is None, 'SETUP: no source line'
+    # CT Green-1 (plan 047 Phase 20): every requirement got the "recovered from code in one language" framing
+    # CT Red (plan 047 Phase 20): only a requirement with a "source:" line was recovered from code - a defined one is
+    # language-neutral already, and the framing would tell CC something false about it
+    defined = cp.compose('GASV5A1-11', E1_DEFINED)
+    assert 'ANY implementation language' not in defined and 'recovered from code' not in defined, defined
+    assert 'Name no test framework, no file and no programming language.' in defined, 'the common rules stay'
+    assert 'ANY implementation language' in cp.compose('TMPSN3F36BJ-3', E1_REQUIREMENT)
+
+
 def test_the_criterion_prompt_ends_with_how_the_answer_is_stored():
     # plan 045 Phase 36 (by CT): acceptance runs CRITERIA #96 and #99 - haiku reasoned about the requirement, the prompt's
     # LAST part, then printed {"criterion": ...} instead of calling the result tool, and call-cc failed the Task
@@ -113,6 +130,30 @@ def test_the_criterion_prompt_ends_with_how_the_answer_is_stored():
     assert '{"criterion": "<the criterion>"}' in tail
     assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
     assert prompt.index('Requirement GASV4ACCC-5:') < prompt.index('mh_cc_store_result')
+
+
+SCOPE_REQUIREMENTS = ('GASV5A1-11: Latest price\n1.1) The service shall make every station display the latest price.\n\n'
+                      'GASV5A1-12: Send cost\n1.1) The service shall never resend a price a station already displays.')
+
+
+def test_the_criterion_prompt_shows_the_scope_as_read_only_constraints():
+    # plan 047 Phase 20 (decision 15): every ACTIVE requirement of the scope's snapshot, before the requirement itself
+    prompt = cp.compose('GASV5A1-11', E1_DEFINED, SCOPE_REQUIREMENTS)
+    assert 'read-only constraints. No criterion may expect behaviour one of' in prompt
+    assert 'GASV5A1-12: Send cost' in prompt and 'never resend a price a station already displays' in prompt
+    assert prompt.index('read-only constraints') < prompt.index('Requirement GASV5A1-11:') < prompt.index('mh_cc_store_result')
+    assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.'), 'the answer instruction stays last'
+    for none in (None, '', '  \n'):
+        assert 'read-only constraints' not in cp.compose('GASV5A1-11', E1_DEFINED, none)
+
+
+def test_run_criterion_prompt_reads_the_constraints_role_when_the_flow_names_it(tmp_path):
+    w1 = str(tmp_path / 'with')
+    cp.run(task_with_inputs(w1, [{'variable-for-req-id': 'reqId'}, {'variable-for-requirement': 'requirementContent'},
+                                 {'variable-for-constraints': 'scopeRequirements'}, {'variable-for-prompt': 'criterionPrompt'}],
+                            {'reqId': 'GASV5A1-11', 'requirementContent': E1_DEFINED, 'scopeRequirements': SCOPE_REQUIREMENTS},
+                            ['criterionPrompt']))
+    assert 'GASV5A1-12: Send cost' in artifact(w1, 101)
 
 
 @pytest.mark.parametrize('req_id, content', [('', E1_REQUIREMENT), ('X-1', ''), ('X-1', '{{M=1}}  \n')])

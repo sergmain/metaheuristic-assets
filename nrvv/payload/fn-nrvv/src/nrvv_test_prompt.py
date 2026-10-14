@@ -31,6 +31,11 @@
 # whose files the prompt gives in full; every test is deterministic. Without one (the role undeclared, the Variable
 # NULLIFIED, or a design with no Interface item) the prompt is byte-identical to the v1 prompt.
 #
+# CONSTRAINTS (plan 047 Phase 20, decision 15) - an OPTIONAL role, read only when the process declares it:
+#   constraints   every ACTIVE requirement of the scope's snapshot as "<reqId>: <requirement content>" blocks
+#                 (mhdg-nrvv.list-scope's scopeRequirements); the design-mode prompt shows them as read-only constraints
+#                 and states the four test rules of decision 15
+#
 # Pure but for run()/main().
 
 import json
@@ -46,6 +51,22 @@ FUNCTION_CODE = 'mh.asset.nrvv-test-prompt_1.0'
 SUITE_NAME = re.compile(r'[a-zA-Z][a-zA-Z0-9]*(?:_[a-zA-Z0-9]+)*')
 MAX_TESTS = 10
 ENV_DIR = ('tests', 'nrvv_env')
+
+
+def answer_instruction(path):
+    """Plan 047 Phase 20 (by its characterization test): the LAST part of both prompts, as every v5 prompt's. It was, in
+    the middle of the prompt, before the criterion and the requirement:
+        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
+        '{"testFile": "<the whole content of ' + path + '>"}',
+        'Every module-level test_ function of the file becomes part of the suite.',
+    """
+    return [
+        '',
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"testFile": "<the whole content of ' + path + '>"}',
+        'Every module-level test_ function of the file becomes part of the suite.',
+        'Print nothing - neither the test file nor any explanation: only what the tool stores reaches the pipeline.',
+    ]
 
 
 def test_file(suite_name):
@@ -88,9 +109,9 @@ def read_env_files(env_dir):
     return files
 
 
-def compose(req_id, content, criterion, suite_name, test_case_req_id, interface=None, env_files=None):
+def compose(req_id, content, criterion, suite_name, test_case_req_id, interface=None, env_files=None, constraints=None):
     """The prompt, or a ValueError naming the input that cannot make one. `interface` and `env_files` given: the
-    design-mode prompt; not given: the v1 prompt, unchanged."""
+    design-mode prompt (with `constraints`, plan 047 Phase 20); not given: the v1 prompt, unchanged."""
     req = (req_id or '').strip()
     tc = (test_case_req_id or '').strip()
     crit = ' '.join((criterion or '').split())
@@ -105,7 +126,7 @@ def compose(req_id, content, criterion, suite_name, test_case_req_id, interface=
     if not text:
         raise ValueError('requirement ' + req + ' has no text')
     if interface:
-        return compose_design_mode(req, text, crit, suite, tc, interface, env_files)
+        return compose_design_mode(req, text, crit, suite, tc, interface, env_files, constraints)
     module = rt.module_name(content)
     path = test_file(suite)
     return '\n'.join([
@@ -126,19 +147,15 @@ def compose(req_id, content, criterion, suite_name, test_case_req_id, interface=
         '- tests are module-level functions named test_<what it checks>; no classes;',
         '- the standard library and pytest only; no network; files only under pytest\'s tmp_path.',
         '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"testFile": "<the whole content of ' + path + '>"}',
-        'Every module-level test_ function of the file becomes part of the suite.',
-        '',
         'TEST_CASE ' + tc + ', criterion:',
         crit,
         '',
         'Requirement ' + req + ':',
         text,
-    ])
+    ] + answer_instruction(path))
 
 
-def compose_design_mode(req, text, crit, suite, tc, interface, env_files):
+def compose_design_mode(req, text, crit, suite, tc, interface, env_files, constraints=None):
     """The prompt for a requirement of a definition snapshot: the module `app`, its Interface, and nrvv_env in full."""
     if not env_files:
         raise ValueError('a design is given but no nrvv_env file')
@@ -163,10 +180,14 @@ def compose_design_mode(req, text, crit, suite, tc, interface, env_files):
         '- every test drives `app` only through `nrvv_env` - no other fake, stub or mock of anything;',
         '- every test is deterministic: fixed seeds only (several seeds per property are allowed), no clock, no threads;',
         '- the standard library, pytest, `app` and `nrvv_env` only; no network; files only under pytest\'s tmp_path.',
-        '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"testFile": "<the whole content of ' + path + '>"}',
-        'Every module-level test_ function of the file becomes part of the suite.',
+        # plan 047 Phase 20 (decision 15): the four test rules
+        '- no test expects behaviour that another requirement in force forbids - those listed below are read-only',
+        '  constraints;',
+        '- a precondition a test cannot reach through `nrvv_env` is `pytest.skip("precondition not reached: <what>")`,',
+        '  never an assert;',
+        '- a test never calls the ports `nrvv_env` sets on `app` (the callables it hands `app` when connecting): they are',
+        '  `app`\'s to call;',
+        '- events at one instant are ordered by `nrvv_env`\'s event index, never by list position or wall-clock time.',
         '',
         'TEST_CASE ' + tc + ', criterion:',
         crit,
@@ -174,22 +195,29 @@ def compose_design_mode(req, text, crit, suite, tc, interface, env_files):
         'Requirement ' + req + ':',
         text,
         '',
-        'The Interface of `app`:',
     ]
+    scope = (constraints or '').strip()
+    if scope:
+        lines += ['The requirements in force in this scope - read-only constraints, not requirements to test here:', '',
+                  scope, '']
+    lines += ['The Interface of `app`:']
     for item in interface:
         lines += ['', str(item.get('reqId')) + ':', rt.plain_text(item.get('content'))]
     lines += ['', 'The package `nrvv_env` (tests/nrvv_env/):']
     for name, source in env_files.items():
         lines += ['', '--- tests/nrvv_env/' + name, source.rstrip('\n')]
-    return '\n'.join(lines)
+    return '\n'.join(lines + answer_instruction(path))
 
 
 def run(task):
     metas = task.get('metas') or []
     interface = interface_items(io.read_role(task, 'design')) if io.meta_value(metas, 'variable-for-design') else []
     env_files = read_env_files((io.read_role(task, 'env-dir') or '').strip()) if interface else None
+    # plan 047 Phase 20: the constraints role is optional - nrvv-suite-author-1.1 does not pass it, 1.2 does
+    constraints = io.read_role(task, 'constraints') if io.meta_value(metas, 'variable-for-constraints') else None
     prompt = compose(io.read_role(task, 'req-id'), io.read_role(task, 'requirement'), io.read_role(task, 'criterion'),
-                     io.read_role(task, 'suite-name'), io.read_role(task, 'test-case-req-id'), interface, env_files)
+                     io.read_role(task, 'suite-name'), io.read_role(task, 'test-case-req-id'), interface, env_files,
+                     constraints)
     io.write_text(io.output_role(task, 'prompt'), prompt)
     print(FUNCTION_CODE + ': ' + str(len(prompt)) + ' chars')
 

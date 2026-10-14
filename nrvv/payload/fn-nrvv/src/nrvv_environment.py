@@ -93,9 +93,11 @@ def compose_env_prompt(design):
         '  the package lives next to the tests and must not be collected as one. __init__.py is optional.',
         '- No tests: the tests are written separately, against your package.',
         '',
-        'Store your answer with the result tool as exactly this JSON object, and nothing else:',
-        '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}',
-        '',
+        # plan 047 Phase 20 (by its characterization test): the answer instruction moved to the END, as every v5
+        # prompt's. It was here:
+        #   'Store your answer with the result tool as exactly this JSON object, and nothing else:',
+        #   '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}',
+        #   '',
         'The Interface - the boundary of the server side:',
         '',
         items_text(design['interface']),
@@ -103,6 +105,10 @@ def compose_env_prompt(design):
         'The Environment - what you simulate:',
         '',
         items_text(design['environment']),
+        '',
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}',
+        'Print nothing - neither the files nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
 
