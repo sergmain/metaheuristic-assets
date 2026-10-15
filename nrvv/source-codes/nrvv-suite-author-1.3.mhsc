@@ -1,4 +1,4 @@
-// NRVV suite-author 1.2 (plan 045, Phase 12): one implementation's tests - one pytest suite per TEST_CASE of the CRITERIA
+// NRVV suite-author 1.3 (plan 045, Phase 12): one implementation's tests - one pytest suite per TEST_CASE of the CRITERIA
 // snapshot the run names - written into the implementation's test-suite repository, committed and pushed. Nothing is
 // written to RG: the TEST_CASEs were written once on the project line by the CRITERIA run (nrvv-criteria), and this run
 // reads them. Started by the Dispatcher (a TEST_AUTHOR run - by hand on a CRITERIA snapshot, or by the chain after a
@@ -39,13 +39,15 @@
 // not on hasDesign. A scoped run - a re-run, which re-authors only the affected suites - keeps the nrvv_env its checkout
 // holds: 1.0 wrote a new one from the design items inside the scope, and every suite outside the scope, still importing
 // it, failed (plan 045 Phase 19 development run, VERIFICATION #86). Needs a Dispatcher whose list-scope writes writeEnv.
-// 1.2 against 1.1 (plan 047 Phase 20, decision 15): list-scope also writes scopeRequirements - every ACTIVE requirement
+// 1.3 against 1.1 (plan 047 Phase 20, decision 15): list-scope also writes scopeRequirements - every ACTIVE requirement
 // of the scope's snapshot as "<reqId>: <requirement content>" blocks - and the test prompt receives it as read-only
 // constraints, with the four test rules of decision 15 in design mode; CC is called through call-cc 1.2, as by every v5
 // flow. Needs a Dispatcher whose list-scope writes scopeRequirements (plan 047 Phase 20).
 // Plan 047 Phase 21: ewrite also gets the design and refuses an nrvv_env exposing a public method or function named as
 // an Interface operation or port (the ports are closures inside connect).
-source "nrvv-suite-author-1.2" {
+// Plan 047 Phase 28: version 1.3, not 1.2 - the production copy already holds nrvv-suite-author-1.2, so a development
+// 1.2 never reached a Dispatcher holding both bundles (the import of an existing uid answers 560.300 and changes nothing).
+source "nrvv-suite-author-1.3" {
 
     variables {
         <- production?

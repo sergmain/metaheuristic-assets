@@ -100,7 +100,7 @@ def compose(req_id, content, constraints=None):
 
 
 def run(task):
-    # plan 047 Phase 20: the constraints role is optional - nrvv-criteria-1.0 does not pass it, nrvv-criteria-1.1 does
+    # plan 047 Phase 20: the constraints role is optional - nrvv-criteria-1.0 does not pass it, nrvv-criteria-1.2 does
     constraints = io.read_role(task, 'constraints') if io.meta_value(task.get('metas') or [], 'variable-for-constraints') else None
     prompt = compose(io.read_role(task, 'req-id'), io.read_role(task, 'requirement'), constraints)
     io.write_text(io.output_role(task, 'prompt'), prompt)

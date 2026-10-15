@@ -1,4 +1,4 @@
-// NRVV criteria 1.1 (plan 045, Phase 12, decision 5): the TEST_CASEs of a project's requirement set, written ONCE on
+// NRVV criteria 1.2 (plan 045, Phase 12, decision 5): the TEST_CASEs of a project's requirement set, written ONCE on
 // the project's line for every implementation. A COMMITTED child of the baseline out, holding one ACTIVE TEST_CASE per
 // requirement in scope, each verifying its requirement's lineage root (VERIFICATION edge). Started by the Dispatcher
 // (NrvvRunService.startCriteria, POST /rest/v1/nrvv/projects/{id}/criteria), never by hand: the run record NRVV_RUN
@@ -31,11 +31,13 @@
 //
 // ORDER is declaration order: each process is chained to the one declared before it; inside a branch the steps run in
 // order; close waits for every branch; finish runs last, after failures too (tag terminal).
-// 1.1 against 1.0 (plan 047 Phase 20, decision 15): list-scope also writes scopeRequirements - every ACTIVE requirement
+// 1.2 against 1.0 (plan 047 Phase 20, decision 15): list-scope also writes scopeRequirements - every ACTIVE requirement
 // of the scope's snapshot as "<reqId>: <requirement content>" blocks - and the criterion prompt receives it as read-only
 // constraints (no criterion may expect behaviour another requirement forbids); CC is called through call-cc 1.2, as by
 // every v5 flow. Needs a Dispatcher whose list-scope writes scopeRequirements (plan 047 Phase 20).
-source "nrvv-criteria-1.1" {
+// Plan 047 Phase 28: version 1.2, not 1.1 - the production copy already holds nrvv-criteria-1.1, so a development 1.1
+// never reached a Dispatcher holding both bundles (the import of an existing uid answers 560.300 and changes nothing).
+source "nrvv-criteria-1.2" {
 
     variables {
         <- production?
