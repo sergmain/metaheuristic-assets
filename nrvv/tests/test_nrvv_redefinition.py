@@ -420,6 +420,20 @@ def test_check_top_level_leaves_no_agreed_need_uncited():
     assert top_valid()['topLevel'][1] == KEEP_2, 'R-2 KEPT keeps N-2 cited; N-4 is served by a held section only'
 
 
+NO_NEED_LEFT_UNCITED = ('- Every NEED a top-level requirement cites now stays cited by at least one KEEP, CHANGE or ADD:'
+                        ' obsolete the last requirement citing a NEED only together with a CHANGE or ADD that cites it.')
+
+
+def test_top_level_prompt_states_the_rule_its_check_enforces():
+    # plan 047 Phase 28 (#63, REDEFINITION #493): the check refused an answer leaving GASV5D6-10 uncited - a rule the
+    # prompt did not state
+    for ctx in (context(), context_with(reason(7, 'OVER_REACH', 'R-2'))):
+        p = rd.compose_top_level(ctx)
+        assert NO_NEED_LEFT_UNCITED in p, p
+        assert p.index(NO_NEED_LEFT_UNCITED) < p.index('The agreed NEEDs:'), 'a rule, before the data'
+        assert p.split('\n')[-1].startswith('Print nothing'), 'the answer instruction stays LAST'
+
+
 # plan 047 Phase 28 (A runs 4 and 5, #59 and #60): the automatic REDEFINITION's reasons were REQ_CONTRADICTIONs between
 # design and Environment items, shown only in the top-level prompt; the re-design - where those items are answered - did
 # not see them, and two re-definitions in a row reproduced them

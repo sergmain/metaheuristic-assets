@@ -125,6 +125,9 @@ def compose_top_level(context):
         '',
         'Rules:',
         '- Every NEED of the delta is cited, at its current revision, by at least one CHANGE or ADD.',
+        # plan 047 Phase 28 (#63, REDEFINITION #493): the rule check_top_level enforces since defect 8
+        '- Every NEED a top-level requirement cites now stays cited by at least one KEEP, CHANGE or ADD:'
+        ' obsolete the last requirement citing a NEED only together with a CHANGE or ADD that cites it.',
         '- Cite only the NEEDs listed below, each at the revision shown, each at most once per requirement.',
         '- Verifiable and language-neutral: no programming language, module, file, class, framework or library.',
         # plan 047 Phase 14 (decision 14): was 'Begin a rationale with "assumed: <what you decided and why>" where you
