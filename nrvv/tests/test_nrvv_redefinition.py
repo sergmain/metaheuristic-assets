@@ -418,3 +418,30 @@ def test_check_top_level_leaves_no_agreed_need_uncited():
     assert str(e.value) == ("the answer leaves agreed NEED(s) ['N-2'] cited by no top-level requirement - KEEP or CHANGE"
                             " a requirement citing each, or add one")
     assert top_valid()['topLevel'][1] == KEEP_2, 'R-2 KEPT keeps N-2 cited; N-4 is served by a held section only'
+
+
+# plan 047 Phase 28 (A runs 4 and 5, #59 and #60): the automatic REDEFINITION's reasons were REQ_CONTRADICTIONs between
+# design and Environment items, shown only in the top-level prompt; the re-design - where those items are answered - did
+# not see them, and two re-definitions in a row reproduced them
+CHANGES_BOTH = {
+    'topLevel': [
+        {'reqId': 'R-1', 'action': 'CHANGE', 'needs': ['N-1 r2'], 'statement': 'The service shall publish within a minute.',
+         'rationale': 'Restates N-1 r2.'},
+        {'reqId': 'R-2', 'action': 'CHANGE', 'needs': ['N-2 r1'], 'statement': 'The service shall record every ack.',
+         'rationale': 'Restates N-2 r1.'}],
+    'add': [{'key': 'A1', 'needs': ['N-3 r1', 'N-5 r1'], 'title': 'New', 'statement': 'The service shall do the new thing.',
+             'rationale': 'Restates N-3 and N-5.'}],
+}
+
+
+def test_design_prompt_lists_the_reasons_it_resolves():
+    ctx = context_with(reason(8, 'REQ_CONTRADICTION', 'D-2', 'E-1'))
+    p = rd.compose_design(ctx, rd.check_top_level(json.dumps(CHANGES_BOTH), ctx))
+    head = ('Findings this re-design resolves - CHANGE or OBSOLETE the items they name, and ADD nothing that restates'
+            ' them, so that no finding below holds any more:')
+    assert head in p, p
+    assert 'finding #8 REQ_CONTRADICTION on D-2 and E-1: REQ_CONTRADICTION on D-2' in p
+    assert p.index('Items to answer:') < p.index(head) < p.index('Answer by calling the mh_cc_store_result')
+    assert p.splitlines()[-1].startswith('Print nothing'), 'the answer instruction stays LAST'
+    assert head not in rd.compose_design(context_v5(), rd.check_top_level(json.dumps(TOP_VALID), context_v5())), \
+        'a person\'s REDEFINITION has no reasons'

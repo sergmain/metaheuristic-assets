@@ -205,6 +205,15 @@ def compose_design(context, top):
             item_blocks.append(i['reqId'] + ' [' + i['kind'] + '] under ' + ', '.join(i.get('parents') or []) + ' - '
                                + (i.get('title') or '') + '\n' + (i.get('statement') or ''))
     others = [i['reqId'] + ' [' + i['kind'] + '] ' + (i.get('title') or '') for i in context['items'] if i['reqId'] not in answer]
+    # plan 047 Phase 28 (A runs 4 and 5): an automatic REDEFINITION's reasons are mostly contradictions between design
+    # and Environment items - the re-design answers those items, so it must see the findings too
+    reason_lines = []
+    for r in context.get('reasons') or []:
+        counterpart = r.get('counterpartRef')
+        reason_lines.append('finding #' + str(r.get('findingId')) + ' ' + str(r.get('kind')) + ' on ' + str(r.get('subjectRef'))
+                            + (' and ' + str(counterpart) if counterpart else '') + ': ' + str(r.get('text') or '').strip())
+    reason_section = ['Findings this re-design resolves - CHANGE or OBSOLETE the items they name, and ADD nothing that'
+                      ' restates them, so that no finding below holds any more:', ''] + reason_lines + [''] if reason_lines else []
     return '\n'.join([
         'Top-level requirements of a software system were changed and added. You carry the change into its DESIGN.',
         '',
@@ -243,6 +252,7 @@ def compose_design(context, top):
         '',
         '\n'.join(others) or 'none',
         '',
+    ] + reason_section + [
         'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
         '{"items": [{"reqId": "<reqId>", "action": "KEEP"},',
         '           {"reqId": "<reqId>", "action": "CHANGE", "statement": "...", "rationale": "..."},',
