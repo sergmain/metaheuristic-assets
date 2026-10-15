@@ -375,3 +375,15 @@ def test_top_level_prompt_lists_the_reasons_before_the_answer():
     assert prompt.split('\n')[-1].startswith('Print nothing'), 'the answer instruction is LAST'
     assert 'Findings this re-definition resolves' not in rd.compose_top_level(context()), 'a person\'s REDEFINITION'
     assert 'rests on NEED text no longer in' in rd.compose_top_level(context())
+
+
+def test_top_level_prompt_names_the_top_level_requirements_the_reasons_bind():
+    # plan 047 Phase 28 (D run 2, REDEFINITION #332): a reason naming design items binds their top-level parents, and
+    # the top-level prompt shows no design item - CC must be told which top-level requirements may not be KEEP
+    prompt = rd.compose_top_level(context_with(reason(8, 'REQ_CONTRADICTION', 'D-2', 'E-1')))
+    bound = ('The top-level requirements these findings bind - by naming them or an item under them; none of them'
+             ' may be KEEP: R-1, R-2.')
+    assert bound in prompt, prompt
+    assert prompt.index(bound) < prompt.index('Answer by calling the mh_cc_store_result')
+    assert prompt.split('\n')[-1].startswith('Print nothing'), 'the answer instruction is LAST'
+    assert 'none of them may be KEEP' not in rd.compose_top_level(context()), 'a person\'s REDEFINITION'

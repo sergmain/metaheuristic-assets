@@ -164,6 +164,11 @@ def compose_top_level(context):
             lines.append('finding #' + str(r.get('findingId')) + ' ' + str(r.get('kind')) + ' on ' + str(r.get('subjectRef'))
                          + (' and ' + str(counterpart) if counterpart else '') + ': ' + str(r.get('text') or '').strip())
         lines.append('')
+        # plan 047 Phase 28: this prompt shows no design item, so CC cannot tell which top-level requirement an item
+        # named by a finding sits under - the requirements the check refuses to see KEPT are listed by name
+        bound = reasoned_top_level(context)
+        lines += ['The top-level requirements these findings bind - by naming them or an item under them; none of them'
+                  ' may be KEEP: ' + ', '.join(t['reqId'] for t in context['topLevel'] if t['reqId'] in bound) + '.', '']
     return '\n'.join(lines + [
         'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
         '{"topLevel": [{"reqId": "<reqId>", "action": "KEEP"},',
