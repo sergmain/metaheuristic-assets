@@ -82,7 +82,7 @@ def test_the_v5_flows_name_call_cc_1_2():
                  'nrvv-definition-baseline-1.2.mhsc', 'nrvv-redefinition-1.2.mhsc',
                  'nrvv-cv-need-backtrace-1.0.mhsc',
                  # plan 047 Phase 20
-                 'nrvv-criteria-1.1.mhsc', 'nrvv-suite-author-1.2.mhsc',
+                 'nrvv-criteria-1.2.mhsc', 'nrvv-suite-author-1.3.mhsc',
                  # plan 047 Phase 23
                  'nrvv-triage-1.0.mhsc',
                  # plan 047 Phase 26
