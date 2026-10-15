@@ -311,6 +311,17 @@ def check_top_level(cc_result, context):
                          + ' uncited - each is cited at its current revision by a CHANGE or an add')
     if all(d['action'] == 'OBSOLETE' for d in decisions) and not added:
         raise ValueError('the answer obsoletes every top-level requirement and adds none')
+    # plan 047 Phase 28 (#61, REDEFINITION #428): no agreed NEED that a top-level requirement cites at its current
+    # revision is left uncited - otherwise the drift gate finds a gap and the chain ends. A NEED no top-level requirement
+    # cites and outside the delta is served by a held section only, and stays out of this rule (Java's needDelta).
+    current = {n + ' r' + str(r) for n, r in revisions.items()}
+    required = {str(c).rpartition(' r')[0] for t in context['topLevel'] for c in t.get('citations') or [] if str(c) in current}
+    kept = {str(c).rpartition(' r')[0] for d in decisions if d['action'] == 'KEEP'
+            for c in by_req_id[d['reqId']].get('citations') or []}
+    orphaned = [n['reqId'] for n in context['needs'] if n['reqId'] in required and n['reqId'] not in cited | kept]
+    if orphaned:
+        raise ValueError('the answer leaves agreed NEED(s) ' + str(orphaned) + ' cited by no top-level requirement - KEEP'
+                         ' or CHANGE a requirement citing each, or add one')
     return {'topLevel': decisions, 'add': added}
 
 

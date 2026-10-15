@@ -398,3 +398,23 @@ def test_top_level_prompt_names_the_top_level_requirements_the_reasons_bind():
     assert prompt.index(bound) < prompt.index('Answer by calling the mh_cc_store_result')
     assert prompt.split('\n')[-1].startswith('Print nothing'), 'the answer instruction is LAST'
     assert 'none of them may be KEEP' not in rd.compose_top_level(context()), 'a person\'s REDEFINITION'
+
+
+# plan 047 Phase 28 (D run 4, #61, automatic REDEFINITION #428): the answer obsoleted the only top-level requirement
+# citing a NEED outside the delta; the NEED was left uncited, the drift gate found a gap and the chain ended silently
+OBSOLETES_THE_ONLY_CITER_OF_N2 = {
+    'topLevel': [
+        {'reqId': 'R-1', 'action': 'CHANGE', 'needs': ['N-1 r2'], 'statement': 'The service shall publish within a minute.',
+         'rationale': 'Restates N-1 r2.'},
+        {'reqId': 'R-2', 'action': 'OBSOLETE', 'reason': 'No NEED requires acknowledgements.'}],
+    'add': [{'key': 'A1', 'needs': ['N-3 r1', 'N-5 r1'], 'title': 'New', 'statement': 'The service shall do the new thing.',
+             'rationale': 'Restates N-3 and N-5.'}],
+}
+
+
+def test_check_top_level_leaves_no_agreed_need_uncited():
+    with pytest.raises(ValueError) as e:
+        rd.check_top_level(json.dumps(OBSOLETES_THE_ONLY_CITER_OF_N2), context())
+    assert str(e.value) == ("the answer leaves agreed NEED(s) ['N-2'] cited by no top-level requirement - KEEP or CHANGE"
+                            " a requirement citing each, or add one")
+    assert top_valid()['topLevel'][1] == KEEP_2, 'R-2 KEPT keeps N-2 cited; N-4 is served by a held section only'
