@@ -179,6 +179,10 @@ def verdicts_of(cc_result, context, chunk):
     agreed = {str(n['reqId']) for n in context['needs']}
     subjects = {str(s['reqId']): s for s in context['subjects']}
     wanted = set(chunk)
+    # plan 047 Phase 28: the prompt lists a requirement read at its live row as "<reqId> (now <liveReqId>)" - a
+    # verdict naming the live reqId is the verdict on that subject
+    live_of = {str(subjects[r].get('liveReqId')): r for r in chunk
+               if subjects[r].get('liveReqId') and str(subjects[r].get('liveReqId')) != r}
     by_subject = {}
     for i, v in enumerate(data['verdicts']):
         where = 'verdict #' + str(i)
@@ -188,6 +192,7 @@ def verdicts_of(cc_result, context, chunk):
         if extra:
             raise ValueError(where + ' has an unknown field ' + repr(extra[0]))
         subject = str(v.get('subject') or '').strip()
+        subject = live_of.get(subject, subject)
         if subject not in wanted:
             raise ValueError(where + ' names subject ' + repr(subject) + ', which is not a requirement of this chunk')
         if subject in by_subject:

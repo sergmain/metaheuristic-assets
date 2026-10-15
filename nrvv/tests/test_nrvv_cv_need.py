@@ -260,6 +260,20 @@ def test_backtrace_prompt_superseded_revision_off_the_line():
     assert "    Cites GAS-3 r1, no longer in force - its text is not on the project's line" in prompt
 
 
+def test_backtrace_verdict_naming_the_live_row_of_its_subject():
+    # plan 047 Phase 28 (A run 3, #54 BACKTRACE #358, #361, #363): after a REDEFINITION the prompt lists a CHANGED
+    # requirement as "GAS-11 (now GAS-14)", and CC answered with the live reqId as the subject
+    answer = bt_answer(bt_verdict('GAS-10', 'OVER_REACH'), bt_verdict('GAS-14', 'OVER_REACH'),
+                       bt_verdict('GAS-20', 'UNNEEDED'))
+    assert [v['subject'] for v in backtrace.verdicts_of(answer, BT_CONTEXT, BT_CHUNK)['verdicts']] == \
+        ['GAS-10', 'GAS-11', 'GAS-20'], 'the live row names its subject'
+    with pytest.raises(ValueError) as e:
+        backtrace.verdicts_of(bt_answer(bt_verdict('GAS-11', 'OVER_REACH'), bt_verdict('GAS-14', 'OVER_REACH'),
+                                        bt_verdict('GAS-10', 'OVER_REACH'), bt_verdict('GAS-20', 'UNNEEDED')),
+                              BT_CONTEXT, BT_CHUNK)
+    assert 'names GAS-11 a second time' in str(e.value), 'the subject and its live row are one subject'
+
+
 def test_backtrace_verdicts_canonical_in_chunk_order():
     raw = '```json\n' + bt_answer(
         bt_verdict('GAS-20', 'UNNEEDED', 'no NEED asks for periodic resends', needReqIds=[], needReqId=None),
