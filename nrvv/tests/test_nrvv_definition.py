@@ -313,6 +313,18 @@ def test_design_prompt_v5_keeps_assumed_and_answers_last():
     assert lines.index(V5_ANSWER) == len(lines) - 5, 'the instruction, the three-line shape, the tail'
 
 
+# plan 047 Phase 28 (section 3.4: the Environment models reordering and neither loss nor outages): D runs 1 and 2 and
+# A run 3 simulated lost or dropped sends no NEED states
+ENV_ONLY_STATED = 'A loss, a duplicate, an outage or a crash that no NEED states is not simulated'
+
+
+def test_design_prompt_environment_simulates_only_what_the_needs_state():
+    prompt = nd.compose_design_prompt(AGREED_V5, checked_decomposition_v5())
+    assert ENV_ONLY_STATED in prompt
+    assert prompt.index(ENV_ONLY_STATED) < prompt.index('The NEEDs:'), 'a rule, before the data'
+    assert prompt.splitlines()[-1].startswith('Print nothing'), 'the answer instruction stays LAST'
+
+
 # Phase 15 (decision 14): the check mirrors the Dispatcher's refusal of a top-level assumed: (06.015.130)
 
 @pytest.mark.parametrize('rationale', ['restates GAS-1\nassumed: latest means requested', 'restates GAS-1 (Assumed: one price)'])

@@ -300,6 +300,17 @@ def test_design_prompt_v5_keeps_assumed_and_answers_last():
     assert p.index('The other items of the design') < p.index(V5_ANSWER), 'the answer instruction is the LAST part'
 
 
+# plan 047 Phase 28 (section 3.4): the re-design keeps the Environment to what the NEEDs state, as the definition does
+ENV_ONLY_STATED = 'A loss, a duplicate, an outage or a crash that no NEED states is not simulated'
+
+
+def test_design_prompt_environment_simulates_only_what_the_needs_state():
+    p = rd.compose_design(context_v5(), rd.check_top_level(json.dumps(TOP_VALID), context_v5()))
+    assert ENV_ONLY_STATED in p
+    assert p.index(ENV_ONLY_STATED) < p.index('The changed and added top-level requirements:'), 'a rule, before the data'
+    assert p.splitlines()[-1].startswith('Print nothing'), 'the answer instruction stays LAST'
+
+
 # Phase 15 (decision 14): the check mirrors the Dispatcher's refusal of an added top-level assumed: (06.015.130)
 
 def top_with_add_rationale(rationale):

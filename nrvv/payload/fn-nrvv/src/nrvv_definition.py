@@ -165,6 +165,10 @@ def compose_design_prompt(needs, decomposition):
         # check refuses that (DERIVATION is a tree, decision 6); the rule is now stated where the answer is written
         '- "parent" is ONE obligation key, exactly as written (for example "R1") - never a list and never several keys.',
         '  An item that serves several obligations goes under the one it serves most directly.',
+        # plan 047 Phase 28 (section 3.4): runs simulated lost and dropped sends that no NEED states
+        '- The environment simulates only what the NEEDs state about what lies outside the server side.',
+        '  A loss, a duplicate, an outage or a crash that no NEED states is not simulated - neither in the base',
+        '  scenario nor in a separate one.',
         '- You decide alone - nobody answers questions. Begin the rationale of an item that resolves an ambiguity with',
         '  "assumed: <what you decided and why>".',
         '- A title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters.',

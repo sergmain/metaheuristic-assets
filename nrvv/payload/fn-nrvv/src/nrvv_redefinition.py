@@ -222,6 +222,10 @@ def compose_design(context, top):
         'Rules:',
         '- After your answer at least one interface and one environment item remain in the whole design.',
         '- Language-neutral: no programming language, module, file, class, framework or library.',
+        # plan 047 Phase 28 (section 3.4): the re-design keeps the Environment to what the NEEDs state
+        '- The environment simulates only what the NEEDs state about what lies outside the server side.',
+        '  A loss, a duplicate, an outage or a crash that no NEED states is not simulated - neither in the base',
+        '  scenario nor in a separate one.',
         '- You decide alone. Begin a rationale with "assumed: ..." where you resolve an ambiguity.',
         '- Never use the characters \u00ab or \u00bb.',
         '- Added keys: D1, D2, ... for design, I1, ... for interface, E1, ... for environment; titles of at most '
