@@ -96,6 +96,25 @@ def test_prompt_names_the_four_verdicts_and_their_order_of_precedence():
     assert 'Judge each NEED against ITS OWN clause only' in prompt
 
 
+
+# plan 048 Phase 14 (acceptance, #69 GASV6B1): the analysis words every clause "The <stakeholder> needs ...", so an
+# ENVIRONMENT_FACT clause becomes "The pricing team needs to account for <the fact>" - four of them were judged OVER_STATES
+# and the BEFORE_DEFINITION gate declined
+def test_prompt_an_environment_fact_need_in_the_stakeholders_voice():
+    prompt = expectation.compose(NEEDS, CHUNK)
+    # was (Green-1): only "a NEED that turns it into something the system shall do - OVER_STATES"; nothing on the voice
+    rules = prompt.split('Rules:')[1]
+    assert ('- Every NEED is written in the stakeholder\'s voice ("The <stakeholder> needs ..."): the analysis words every\n'
+            '  clause that way, so "needs" alone adds nothing to a clause.') in rules
+    assert ('- A clause that states how the world behaves (an ENVIRONMENT_FACT) obliges nothing. A NEED that says the\n'
+            '  stakeholder needs that fact accounted for, taken into account or handled states its clause - FAITHFUL. It\n'
+            '  states more than its clause - OVER_STATES - only when it names what the system shall do about the fact: a\n'
+            '  behaviour, a mechanism, a bound or a guarantee the clause does not state.') in rules
+    assert 'turns it into\n  something the system shall do' not in prompt
+    assert prompt.splitlines()[-1].startswith(expectation.cv.ANSWER_TAIL.replace('the findings', 'the verdicts')[:20]), \
+        'the answer instruction stays LAST'
+
+
 # ==================== the check ====================
 
 def test_verdicts_canonical_in_chunk_order():

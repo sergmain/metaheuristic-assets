@@ -92,8 +92,14 @@ def compose(needs, chunk):
         '  OVER_STATES, UNDER_STATES.',
         '- A clause that states a cost states an objective to weigh; a NEED that turns it into a fixed bound states a',
         '  limit the clause does not - OVER_STATES.',
-        '- A clause that states how the world behaves (an ENVIRONMENT_FACT) obliges nothing; a NEED that turns it into',
-        '  something the system shall do states more than its clause - OVER_STATES.',
+        # plan 048 Phase 14 (#69 GASV6B1): the analysis words every clause "The <stakeholder> needs ..." - an
+        # ENVIRONMENT_FACT's NEED "needs to account for <the fact>" was judged an obligation and the gate declined
+        '- Every NEED is written in the stakeholder\'s voice ("The <stakeholder> needs ..."): the analysis words every',
+        '  clause that way, so "needs" alone adds nothing to a clause.',
+        '- A clause that states how the world behaves (an ENVIRONMENT_FACT) obliges nothing. A NEED that says the',
+        '  stakeholder needs that fact accounted for, taken into account or handled states its clause - FAITHFUL. It',
+        '  states more than its clause - OVER_STATES - only when it names what the system shall do about the fact: a',
+        '  behaviour, a mechanism, a bound or a guarantee the clause does not state.',
         '- One verdict per listed NEED, its reqId as subject, exactly as written. Never rewrite a NEED or a clause.',
         '',
     ]
