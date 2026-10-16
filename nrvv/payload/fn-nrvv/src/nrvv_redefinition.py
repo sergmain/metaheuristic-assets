@@ -8,6 +8,11 @@
 #   items      [{reqId, liveReqId, kind: design|interface|environment, parents: [top-level reqId], title, statement,
 #                rationale}]
 #   delta      [NEED reqId]
+#   reasons    [{findingId, kind, subjectRef, counterpartRef, text}]   an automatic REDEFINITION's findings to resolve
+#   history    [{runId, state, reasons, decisions: [{reqId, action, statement}], failureReason, recurredReasonIds}]
+#              plan 048 (decision 11): the earlier rounds of an automatic REDEFINITION's lineage, oldest first; both
+#              prompts show them before the answer instruction ("Earlier rounds of this re-definition"); a person's
+#              REDEFINITION has none
 #
 # Answer 1, the top-level requirements:
 #   {"topLevel": [{"reqId", "action": "KEEP"},
@@ -53,6 +58,8 @@ ACTIONS = ('KEEP', 'CHANGE', 'OBSOLETE')
 KINDS = {'D': 'design', 'I': 'interface', 'E': 'environment'}
 REASON_MAX_BYTES = 2000
 ASKED_MAX_TITLE_CHARS = 80
+HISTORY_HEAD = ('Earlier rounds of this re-definition - what each was given, what it answered and which findings came'
+                ' back. Do not repeat an answer that brought a finding back; keep what the earlier rounds fixed:')
 
 
 # ---------------------------------------------------------------------------------------------------------- inputs
@@ -70,6 +77,12 @@ def context_of(raw):
             raise ValueError('the definition context has an entry of ' + k + ' with no reqId')
     if not data['topLevel']:
         raise ValueError('the definition context holds no top-level requirement')
+    # plan 048 Phase 10: the earlier rounds - absent in a context written before v6
+    history = data.get('history')
+    if history is None:
+        data['history'] = []
+    elif not isinstance(history, list) or any(not isinstance(h, dict) for h in history):
+        raise ValueError('the definition context has a history that is not a list of rounds: ' + na.excerpt(raw))
     return data
 
 
@@ -103,6 +116,42 @@ def _top_level_text(context):
                       + 'statement: ' + (t.get('statement') or '') + '\n'
                       + 'rationale: ' + (t.get('rationale') or '').replace('\n', ' / '))
     return '\n\n'.join(blocks)
+
+
+def _finding_text(r):
+    """A reason as the prompts show it: finding #<id> <kind> on <subject>[ and <counterpart>]: <text>."""
+    counterpart = r.get('counterpartRef')
+    return ('finding #' + str(r.get('findingId')) + ' ' + str(r.get('kind')) + ' on ' + str(r.get('subjectRef'))
+            + (' and ' + str(counterpart) if counterpart else '') + ': ' + str(r.get('text') or '').strip())
+
+
+def _history_section(context):
+    """Plan 048 Phase 10 (decision 11): the post-mortem of the earlier rounds - per round, oldest first, what it was given
+    (the findings that came back after it marked), what it answered (its top-level decisions) or why its answer was
+    refused (an ERROR round's failure reason). No lines when the context has no history (a first round, a person's
+    REDEFINITION)."""
+    rounds = context.get('history') or []
+    if not rounds:
+        return []
+    lines = [HISTORY_HEAD, '']
+    for n, h in enumerate(rounds, 1):
+        lines.append('Round ' + str(n) + ' - REDEFINITION run #' + str(h.get('runId')) + ', ' + str(h.get('state')))
+        recurred = set(h.get('recurredReasonIds') or [])
+        for r in h.get('reasons') or []:
+            lines.append('- given ' + _finding_text(r)
+                         + (' - FOUND AGAIN after this round' if r.get('findingId') in recurred else ''))
+        if h.get('state') == 'ERROR':
+            lines.append('- its answer was refused: ' + (str(h.get('failureReason') or '').strip() or 'no reason recorded'))
+        else:
+            decisions = h.get('decisions') or []
+            for d in decisions:
+                statement = d.get('statement')
+                lines.append('- answered ' + str(d.get('reqId')) + ' ' + str(d.get('action'))
+                             + (': ' + statement.strip() if isinstance(statement, str) and statement.strip() else ''))
+            if not decisions:
+                lines.append('- its answer is not on record')
+        lines.append('')
+    return lines
 
 
 def compose_top_level(context):
@@ -172,6 +221,8 @@ def compose_top_level(context):
         bound = reasoned_top_level(context)
         lines += ['The top-level requirements these findings bind - by naming them or an item under them; none of them'
                   ' may be KEEP: ' + ', '.join(t['reqId'] for t in context['topLevel'] if t['reqId'] in bound) + '.', '']
+    # plan 048 Phase 10 (decision 11): the earlier rounds of this re-definition, before the answer instruction
+    lines += _history_section(context)
     return '\n'.join(lines + [
         'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
         '{"topLevel": [{"reqId": "<reqId>", "action": "KEEP"},',
@@ -255,7 +306,7 @@ def compose_design(context, top):
         '',
         '\n'.join(others) or 'none',
         '',
-    ] + reason_section + [
+    ] + reason_section + _history_section(context) + [
         'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
         '{"items": [{"reqId": "<reqId>", "action": "KEEP"},',
         '           {"reqId": "<reqId>", "action": "CHANGE", "statement": "...", "rationale": "..."},',

@@ -459,3 +459,75 @@ def test_design_prompt_lists_the_reasons_it_resolves():
     assert p.splitlines()[-1].startswith('Print nothing'), 'the answer instruction stays LAST'
     assert head not in rd.compose_design(context_v5(), rd.check_top_level(json.dumps(TOP_VALID), context_v5())), \
         'a person\'s REDEFINITION has no reasons'
+
+
+# plan 048 Phase 10 (decision 11): an automatic REDEFINITION's context carries the earlier rounds of its lineage
+# (NrvvData.RedefinitionRound) - both prompts show them before the answer instruction; a person's has none
+ROUND_1 = {'runId': 501, 'state': 'FINISHED',
+           'reasons': [reason(7, 'REQ_CONTRADICTION', 'R-1', 'R-2'), reason(8, 'OVER_REACH', 'D-2')],
+           'decisions': [{'reqId': 'R-1', 'action': 'CHANGE', 'statement': 'The service shall publish prices in order.'},
+                         {'reqId': 'R-2', 'action': 'KEEP', 'statement': None},
+                         {'reqId': 'R-9', 'action': 'ADD', 'statement': 'The service shall log every price.'}],
+           'failureReason': None, 'recurredReasonIds': [7]}
+ROUND_2 = {'runId': 502, 'state': 'ERROR', 'reasons': [reason(12, 'REQ_CONTRADICTION', 'R-5', 'R-2')], 'decisions': [],
+           'failureReason': '06.038.020 the re-definition was not written: R-5 is named twice', 'recurredReasonIds': []}
+
+
+HISTORY_HEAD = ('Earlier rounds of this re-definition - what each was given, what it answered and which findings came'
+                ' back. Do not repeat an answer that brought a finding back; keep what the earlier rounds fixed:')
+ROUND_LINES = [
+    'Round 1 - REDEFINITION run #501, FINISHED',
+    '- given finding #7 REQ_CONTRADICTION on R-1 and R-2: REQ_CONTRADICTION on R-1 - FOUND AGAIN after this round',
+    '- given finding #8 OVER_REACH on D-2: OVER_REACH on D-2',
+    '- answered R-1 CHANGE: The service shall publish prices in order.',
+    '- answered R-2 KEEP',
+    '- answered R-9 ADD: The service shall log every price.',
+    'Round 2 - REDEFINITION run #502, ERROR',
+    '- given finding #12 REQ_CONTRADICTION on R-5 and R-2: REQ_CONTRADICTION on R-5',
+    '- its answer was refused: 06.038.020 the re-definition was not written: R-5 is named twice',
+]
+
+
+def context_with_history(*rounds):
+    return rd.context_of(json.dumps(dict(CONTEXT, reasons=[reason(12, 'REQ_CONTRADICTION', 'R-5', 'R-2')],
+                                         history=list(rounds))))
+
+
+def test_top_level_prompt_shows_the_earlier_rounds():
+    p = rd.compose_top_level(context_with_history(ROUND_1, ROUND_2))
+    # was (Green-1): the prompt ignored the context's history
+    assert HISTORY_HEAD in p, p
+    lines = p.splitlines()
+    for line in ROUND_LINES:
+        assert line in lines, line
+    assert p.index('Round 1 - ') < p.index('Round 2 - ')
+    assert p.index('Findings this re-definition resolves') < p.index(HISTORY_HEAD) < p.index('Answer by calling the mh_cc_store_result')
+    assert lines[-1].startswith('Print nothing'), 'the answer instruction stays LAST'
+    assert 'Earlier rounds of this re-definition' not in rd.compose_top_level(context_with_history()), 'a first round'
+    assert 'Earlier rounds of this re-definition' not in rd.compose_top_level(context()), 'a person\'s REDEFINITION'
+
+
+def test_design_prompt_shows_the_earlier_rounds():
+    ctx = context_with_history(ROUND_1, ROUND_2)
+    p = rd.compose_design(ctx, rd.check_top_level(json.dumps(CHANGES_BOTH), ctx))
+    # was (Green-1): the prompt ignored the context's history
+    assert HISTORY_HEAD in p, p
+    lines = p.splitlines()
+    for line in ROUND_LINES:
+        assert line in lines, line
+    assert p.index('Findings this re-design resolves') < p.index(HISTORY_HEAD) < p.index('Answer by calling the mh_cc_store_result')
+    assert lines[-1].startswith('Print nothing'), 'the answer instruction stays LAST'
+    first = context_with_history()
+    assert 'Earlier rounds of this re-definition' not in rd.compose_design(first, rd.check_top_level(json.dumps(CHANGES_BOTH), first))
+    assert 'Earlier rounds of this re-definition' not in rd.compose_design(
+        context_v5(), rd.check_top_level(json.dumps(TOP_VALID), context_v5())), 'a person\'s REDEFINITION'
+
+
+def test_context_of_reads_the_history():
+    assert rd.context_of(json.dumps(CONTEXT))['history'] == [], 'a context written before v6 has none'
+    assert rd.context_of(json.dumps(dict(CONTEXT, history=None)))['history'] == []
+    assert [h['runId'] for h in context_with_history(ROUND_1, ROUND_2)['history']] == [501, 502]
+    for history in ('round 1', {'runId': 1}, [ROUND_1, 'round 2']):
+        with pytest.raises(ValueError) as e:
+            rd.context_of(json.dumps(dict(CONTEXT, history=history)))
+        assert str(e.value).startswith('the definition context has a history that is not a list of rounds: '), str(e.value)
