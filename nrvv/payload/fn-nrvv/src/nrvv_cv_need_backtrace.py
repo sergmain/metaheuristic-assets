@@ -107,6 +107,12 @@ def compose(context, chunk):
         '- An "ambiguity:" line of a Rationale records what the NEEDs leave open; it obliges nothing.',
         '- "Traced from" names the NEEDs a person or the definition linked to the requirement; it is a claim to check, not',
         '  a verdict.',
+        '- An interpretation item is judged by its kind.',
+        '  An ASSUMPTION is JUSTIFIED when a NEED it cites states the fact it states, and OVER_REACH when it assumes more than the NEEDs state.',
+        '  A READING or an OPEN_CHOICE is OVER_REACH when it adds an obligation no NEED states or narrows what the NEEDs allow,',
+        '  and JUSTIFIED when it reads the NEEDs it cites together without adding to them.',
+        '- A requirement is judged together with the items it is read under and its evidence quotes: what such an item',
+        '  says the NEEDs mean is what the requirement may oblige, and a quote shows the NEED words a clause rests on.',
         '- One verdict per listed requirement, its reqId as subject, exactly as written. Never invent a NEED, never',
         '  rewrite a requirement.',
         '',
@@ -134,8 +140,13 @@ def compose(context, chunk):
         else:
             live = s.get('liveReqId')
             name = req_id if not live or live == req_id else req_id + ' (now ' + str(live) + ')'
-            lines.append('Owned requirement ' + name + ' (top-level - JUSTIFIED, OVER_REACH, CONTRADICTS_NEED or'
-                         + ' RESTS_ON_SUPERSEDED):')
+            kind = s.get('interpretationKind')
+            if kind:
+                lines.append('Interpretation item ' + name + ' (' + str(kind) + ' - JUSTIFIED, OVER_REACH, CONTRADICTS_NEED or'
+                             + ' RESTS_ON_SUPERSEDED):')
+            else:
+                lines.append('Owned requirement ' + name + ' (top-level - JUSTIFIED, OVER_REACH, CONTRADICTS_NEED or'
+                             + ' RESTS_ON_SUPERSEDED):')
         title = str(s.get('title') or '').strip()
         if title:
             lines.append('    Title: ' + title)
@@ -144,6 +155,14 @@ def compose(context, chunk):
         rationale = str(s.get('rationale') or '').strip()
         if rationale:
             lines.append('    Rationale: ' + rationale.replace('\n', ' | '))
+        governs = s.get('governs') or []
+        if governs:
+            lines.append('    Governs: ' + ', '.join(str(x) for x in governs))
+        for r in s.get('readings') or []:
+            lines.append('    Read under: ' + str(r.get('kind') or 'item') + ' ' + str(r.get('reqId')) + ': '
+                         + ' '.join(str(r.get('statement') or '').split()))
+        for e in s.get('evidence') or []:
+            lines.append('    Evidence: ' + str(e.get('source')) + ' "' + str(e.get('quote') or '') + '"')
         traced = s.get('tracedFrom') or []
         lines.append('    Traced from: ' + (', '.join(str(x) for x in traced) if traced else 'no NEED'))
         for x in s.get('superseded') or []:
