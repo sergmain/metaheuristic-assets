@@ -28,6 +28,7 @@ Pure apart from run_prompt / run_check.
 """
 
 import json
+import re
 
 import mh_task_io as io
 import nrvv_assessment as na
@@ -36,6 +37,8 @@ import nrvv_cv_need as cv
 import nrvv_evidence as ev
 
 ACTIONS = ('KEEP', 'CHANGE', 'OBSOLETE')
+# A NEED as the context lists it - "NEED <reqId> r<revision> (...)" - so an answer may cite it with the revision.
+NEED_REF_WITH_REVISION = re.compile(r'(\S+)\s+r\d+')
 KINDS = ('TOP_LEVEL', 'DESIGN', 'INTERFACE', 'ENVIRONMENT', 'INTERPRETATION')
 UPPER = ('TOP_LEVEL', 'INTERPRETATION')
 ANSWER_FIELDS = ('decisions', 'add')
@@ -260,6 +263,12 @@ def answer_of(cc_result, context, component):
         it = known.get(ref)
         return str(it['reqId']) if it else ref
 
+    def need_ref(ref):
+        # Plan 049 Phase 24 (b), project #77 REPAIR #977: "GASV7B1-5 r1", copied from the context's NEED list, is
+        # NEED GASV7B1-5; a ref whose reqId is no NEED of this component stays as written, for the rule to name it.
+        m = NEED_REF_WITH_REVISION.fullmatch(ref)
+        return m.group(1) if m and m.group(1) in needs else ref
+
     decisions = {}
     raw_decisions = data.get('decisions') or []
     if not isinstance(raw_decisions, list):
@@ -286,8 +295,8 @@ def answer_of(cc_result, context, component):
             'rationale': _string(d, 'rationale', req_id, False),
             'evidence': _evidence(d.get('evidence'), req_id),
             'readings': [root(r) for r in _strings(d.get('readings'), req_id + ': readings')],
-            'needs': None if d.get('needs') is None else _strings(d.get('needs'), req_id + ': needs'),
-            'governs': None if d.get('governs') is None else _strings(d.get('governs'), req_id + ': governs'),
+            'needs': None if d.get('needs') is None else [need_ref(n) for n in _strings(d.get('needs'), req_id + ': needs')],
+            'governs': None if d.get('governs') is None else [need_ref(g) for g in _strings(d.get('governs'), req_id + ': governs')],
             'reason': _string(d, 'reason', req_id, action == 'OBSOLETE'),
         }
     undecided = [r for r in items if r not in decisions]
@@ -309,8 +318,10 @@ def answer_of(cc_result, context, component):
             raise ValueError(key + ': kind ' + repr(kind) + ' is none of ' + str(KINDS))
         interpretation = _string(a, 'interpretation', key, False).upper()
         added.append({'key': key, 'kind': kind, 'parent': _string(a, 'parent', key, False) or None,
-                      'needs': _strings(a.get('needs'), key + ': needs'), 'interpretation': interpretation or None,
-                      'governs': _strings(a.get('governs'), key + ': governs'), 'title': _string(a, 'title', key, True),
+                      'needs': [need_ref(n) for n in _strings(a.get('needs'), key + ': needs')],
+                      'interpretation': interpretation or None,
+                      'governs': [need_ref(g) for g in _strings(a.get('governs'), key + ': governs')],
+                      'title': _string(a, 'title', key, True),
                       'statement': _string(a, 'statement', key, True), 'rationale': _string(a, 'rationale', key, False),
                       'evidence': _evidence(a.get('evidence'), key),
                       'readings': [root(r) for r in _strings(a.get('readings'), key + ': readings')]})

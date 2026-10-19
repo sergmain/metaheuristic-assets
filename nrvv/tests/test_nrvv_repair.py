@@ -172,6 +172,17 @@ def test_rule_citations_and_readings_within_the_component():
     assert ok['decisions'][0]['readings'] == ['GASR-21'], ok
 
 
+def test_a_need_cited_as_the_context_shows_it_with_its_revision():
+    # Plan 049 Phase 24 (b), project #77, REPAIR #977: the context lists a NEED as "NEED <reqId> r<revision> (...)";
+    # an answer citing it so ("GASV7B1-5 r1") was refused as "no NEED of this component" although the NEED is one.
+    ok = wf.checked(answer([dict(CHANGE_T1, needs=['GASR-1 r1']), KEEP_D1]), CONTEXT, 'C1\n')
+    assert ok['decisions'][0]['needs'] == ['GASR-1'], ok
+    add = {'kind': 'INTERPRETATION', 'interpretation': 'READING', 'needs': ['GASR-3'], 'governs': ['GASR-3 r1'],
+           'title': 'r', 'statement': 'Arrival order is read as the order sends reach the station.',
+           'evidence': [{'source': 'GASR-3', 'quote': 'out of order'}]}
+    ok = wf.checked(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [add]), CONTEXT, 'C2\n')
+    assert ok['add'][0]['governs'] == ['GASR-3'], ok
+
 def test_rule_governs_of_an_interpretation_item():
     change = {'reqId': 'GASR-20', 'action': 'CHANGE', 'statement': 'Sends can arrive out of order at a station.',
               'evidence': [{'source': 'GASR-3', 'quote': 'arriving out of order'}]}
