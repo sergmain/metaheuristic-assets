@@ -269,6 +269,11 @@ def answer_of(cc_result, context, component):
         m = NEED_REF_WITH_REVISION.fullmatch(ref)
         return m.group(1) if m and m.group(1) in needs else ref
 
+    def sourced(evidence):
+        # Plan 049 Phase 24 (b) repeat, project #79 REPAIR #1124: an evidence source copied in the same form
+        # ("GASV7B2-6 r1") names that NEED as well.
+        return [(need_ref(source), quote) for source, quote in evidence]
+
     decisions = {}
     raw_decisions = data.get('decisions') or []
     if not isinstance(raw_decisions, list):
@@ -293,7 +298,7 @@ def answer_of(cc_result, context, component):
             'reqId': req_id, 'action': action,
             'statement': _string(d, 'statement', req_id, action == 'CHANGE'),
             'rationale': _string(d, 'rationale', req_id, False),
-            'evidence': _evidence(d.get('evidence'), req_id),
+            'evidence': sourced(_evidence(d.get('evidence'), req_id)),
             'readings': [root(r) for r in _strings(d.get('readings'), req_id + ': readings')],
             'needs': None if d.get('needs') is None else [need_ref(n) for n in _strings(d.get('needs'), req_id + ': needs')],
             'governs': None if d.get('governs') is None else [need_ref(g) for g in _strings(d.get('governs'), req_id + ': governs')],
@@ -323,7 +328,7 @@ def answer_of(cc_result, context, component):
                       'governs': [need_ref(g) for g in _strings(a.get('governs'), key + ': governs')],
                       'title': _string(a, 'title', key, True),
                       'statement': _string(a, 'statement', key, True), 'rationale': _string(a, 'rationale', key, False),
-                      'evidence': _evidence(a.get('evidence'), key),
+                      'evidence': sourced(_evidence(a.get('evidence'), key)),
                       'readings': [root(r) for r in _strings(a.get('readings'), key + ': readings')]})
     if all(d['action'] == 'KEEP' for d in decisions.values()) and not added:
         raise ValueError('the answer changes nothing - every decision is KEEP and nothing is added')

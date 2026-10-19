@@ -183,6 +183,13 @@ def test_a_need_cited_as_the_context_shows_it_with_its_revision():
     ok = wf.checked(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [add]), CONTEXT, 'C2\n')
     assert ok['add'][0]['governs'] == ['GASR-3'], ok
 
+def test_an_evidence_source_given_as_the_context_shows_the_need():
+    # Plan 049 Phase 24 (b) repeat, project #79, REPAIR #1124: "evidence source GASV7B2-6 r1 is neither a NEED it
+    # cites nor an item it names in reading" - the source copied from the context's "NEED <reqId> r<revision>".
+    sourced = dict(CHANGE_T1, evidence=[{'source': 'GASR-1 r1', 'quote': 'publish gas price updates'}])
+    ok = wf.checked(answer([sourced, KEEP_D1]), CONTEXT, 'C1\n')
+    assert ok['decisions'][0]['evidence'] == [{'source': 'GASR-1', 'quote': 'publish gas price updates'}], ok
+
 def test_rule_governs_of_an_interpretation_item():
     change = {'reqId': 'GASR-20', 'action': 'CHANGE', 'statement': 'Sends can arrive out of order at a station.',
               'evidence': [{'source': 'GASR-3', 'quote': 'arriving out of order'}]}
