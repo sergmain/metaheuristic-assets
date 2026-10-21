@@ -256,6 +256,11 @@ def answer_of(cc_result, context, component):
         known[str(it['reqId'])] = it
         if it.get('liveReqId'):
             known[str(it['liveReqId'])] = it
+    # Plan 049 Phase 24 (a), project #84 REPAIR #1482: a superseded row of a component's lineage - the context's
+    # "aliases", row -> lineage root - names that item; the readers of a changed item keep its earlier row.
+    for alias, lineage in (component.get('aliases') or {}).items():
+        if str(lineage) in known and str(alias) not in known:
+            known[str(alias)] = known[str(lineage)]
     needs = {str(n['reqId']): n for n in component.get('needs') or []}
     only_items = context.get('gateStage') == 'AFTER_INTERPRETATION'
 
@@ -272,7 +277,9 @@ def answer_of(cc_result, context, component):
     def sourced(evidence):
         # Plan 049 Phase 24 (b) repeat, project #79 REPAIR #1124: an evidence source copied in the same form
         # ("GASV7B2-6 r1") names that NEED as well.
-        return [(need_ref(source), quote) for source, quote in evidence]
+        # Plan 049 Phase 24 (a), project #84: an item named by its live or a superseded row is that item, as in its
+        # readings (root), so the source matches the reading it quotes.
+        return [(root(need_ref(source)), quote) for source, quote in evidence]
 
     decisions = {}
     raw_decisions = data.get('decisions') or []

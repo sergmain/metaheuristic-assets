@@ -172,6 +172,20 @@ def test_rule_citations_and_readings_within_the_component():
     assert ok['decisions'][0]['readings'] == ['GASR-21'], ok
 
 
+def test_a_reading_and_an_evidence_source_by_a_superseded_row_of_a_governing_item():
+    # Plan 049 Phase 24 (a), project #84 REPAIR #1482 (R#2710): GASV7A6-30 reads under GASV7A6-25, an EDITION of the READING
+    # lineage GASV7A6-19 that GASV7A6-79 superseded - the readers of a changed item keep its earlier row. The context names
+    # such a row in the component's "aliases" (row -> lineage root); here GASR-19 is a superseded row of the READING GASR-21.
+    context = dict(CONTEXT, components=[dict(C1, aliases={'GASR-19': 'GASR-21'}), C2, C3])
+    change = dict(CHANGE_T1, readings=['GASR-19'],
+                  evidence=[{'source': 'GASR-1', 'quote': 'publish gas price updates'},
+                            {'source': 'GASR-19', 'quote': 'ends on the latest price'}])
+    ok = wf.checked(answer([change, KEEP_D1]), context, 'C1\n')
+    assert set(ok.keys()) != {'refused'}, ok
+    assert ok['decisions'][0]['readings'] == ['GASR-21'], 'the superseded row names its lineage: ' + str(ok)
+    assert [e['source'] for e in ok['decisions'][0]['evidence']] == ['GASR-1', 'GASR-21'], ok
+
+
 def test_a_need_cited_as_the_context_shows_it_with_its_revision():
     # Plan 049 Phase 24 (b), project #77, REPAIR #977: the context lists a NEED as "NEED <reqId> r<revision> (...)";
     # an answer citing it so ("GASV7B1-5 r1") was refused as "no NEED of this component" although the NEED is one.
