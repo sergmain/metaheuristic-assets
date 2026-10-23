@@ -29,6 +29,8 @@ import shutil
 import subprocess
 import sys
 
+import mh_api_call
+
 # Timeout for the CC process itself, in seconds. Overridable per process with meta 'timeout-sec',
 # because how long an answer takes is a property of the prompt, which this Function does not own.
 DEFAULT_TIMEOUT_SEC = 300
@@ -100,6 +102,17 @@ MCP_UNAVAILABLE_PLACEHOLDER = '<the error you saw>'
 # as 255.
 MCP_UNAVAILABLE_EXIT_CODE = -1
 
+# How the model is reached - process meta 'llm_provider', the same meta and values mhdg-rg.call-cc reads:
+#   'cc'          the Claude Code CLI with this Function's MCP server (the default - absent or blank means this)
+#   'claude_api'  one Anthropic Messages API call (mh_api_call): the same mh_cc_store_result contract, offered as a
+#                 forced tool, and the key handed over by the Processor from the Vault (mh-function.yaml api.keyCode)
+LLM_PROVIDER_META = 'llm_provider'
+PROVIDER_CC = 'cc'
+PROVIDER_CLAUDE_API = 'claude_api'
+
+# The raw API response, kept in the task dir for diagnosis. It never holds the key: the key goes out in a header.
+API_RESPONSE_FILE = 'api-response.json'
+
 # What CC must do when this Function's result channel is gone. The Function owns this much and no more: it is
 # the contract of its own MCP server, not a word about the task - which is why it rides on the system prompt.
 # Keep the template line the only line here that starts with MCP_UNAVAILABLE_MARKER.
@@ -162,6 +175,19 @@ def require_meta(metas, key):
 def variable_name(metas, logical_name):
     """The actual Variable name bound to a logical role, via meta 'variable-for-<logical_name>'."""
     return require_meta(metas, 'variable-for-' + logical_name)
+
+
+def llm_provider(metas):
+    """Meta 'llm_provider': PROVIDER_CC when absent or blank, else one of the two known values - anything else fails,
+    because a typo that silently fell back to CC would run the wrong environment without a word."""
+    value = meta_value(metas, LLM_PROVIDER_META)
+    if value is None or not value.strip():
+        return PROVIDER_CC
+    value = value.strip()
+    if value not in (PROVIDER_CC, PROVIDER_CLAUDE_API):
+        raise ValueError("meta '" + LLM_PROVIDER_META + "' must be '" + PROVIDER_CC + "' or '" + PROVIDER_CLAUDE_API
+                         + "', got '" + value + "'")
+    return value
 
 
 def optional_cli_value(metas, logical_name, read_variable):
@@ -450,6 +476,11 @@ def main(argv):
     effort = optional_cli_value(metas, 'effort', read_input_variable)
     print('model: ' + (model or '(CC default)') + ', effort: ' + (effort or '(CC default)'))
 
+    provider = llm_provider(metas)
+    print('llm_provider: ' + provider)
+    if provider == PROVIDER_CLAUDE_API:
+        return run_claude_api(params, metas, work_dir, prompt, output_var, model, effort)
+
     env_params = yaml.load(read_text(os.path.join(work_dir, ARTIFACTS_DIR, MH_ENV_FILE)),
                            Loader=yaml.FullLoader)
     claude_code = resolve_env(env_params.get('envs'), CLAUDE_CODE_ENV_CODE)
@@ -543,6 +574,63 @@ def main(argv):
     os.makedirs(os.path.join(work_dir, ARTIFACTS_DIR), exist_ok=True)
     target = output_path(work_dir, output_var)
     shutil.copyfile(result_file, target)
+    print('stored ' + str(os.path.getsize(target)) + ' bytes into output variable "'
+          + str(output_var.get('name')) + '" at ' + target)
+    return 0
+
+
+def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, api_url=mh_api_call.API_URL):
+    """The claude_api path: one Messages API call; the answer is the `result` of the forced mh_cc_store_result call,
+    copied verbatim into the output Variable. Returns the Function's exit code: 0, or 1 with a FAILED line.
+
+    params is the task block of the params file - its secretPort and checkCode locate the Processor's secret channel.
+    api_url is a parameter so a test can point the one POST at a local server; main() passes nothing.
+    """
+    if model is None:
+        print("FAILED: no model for llm_provider=" + PROVIDER_CLAUDE_API + " - wire meta 'variable-for-model' to a "
+              'Variable carrying a model id. The API has no default model.')
+        return 1
+    if effort is not None:
+        print('effort ' + effort + ' is ignored on the ' + PROVIDER_CLAUDE_API + ' path')
+    body = mh_api_call.request_body(model, prompt, mh_api_call.max_tokens(meta_value(metas, 'max-tokens')))
+    seconds = timeout_sec(metas)
+
+    data_dir = os.path.join(work_dir, CC_DATA_DIR)
+    os.makedirs(data_dir, exist_ok=True)
+    write_text(os.path.join(work_dir, PROMPT_FILE), prompt)
+
+    port, check_code = params.get('secretPort'), params.get('checkCode')
+    if port is None or check_code is None or not str(check_code).strip():
+        print('FAILED: no API key was handed over by the Processor. mh-function.yaml must declare api.keyCode '
+              '(ANTHROPIC_API_KEY) and a Vault must hold that key.')
+        return 1
+    key = mh_api_call.read_secret(port, check_code)
+    try:
+        print('API key received from the Processor (' + str(len(key)) + ' bytes)')
+        print('POST ' + api_url + ', model ' + body['model'] + ', max_tokens ' + str(body['max_tokens'])
+              + ', timeout ' + str(seconds) + 's')
+        status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
+    finally:
+        mh_api_call.zero(key)
+
+    write_text(os.path.join(data_dir, API_RESPONSE_FILE), text or '')
+    print('API response status: ' + str(status))
+    if status < 200 or status >= 300:
+        print('FAILED: ' + mh_api_call.api_failure_line(status, text))
+        return 1
+    envelope = json.loads(text)
+    print('usage: ' + json.dumps(envelope.get('usage')) + ', stop_reason: ' + str(envelope.get('stop_reason')))
+    try:
+        answer = mh_api_call.answer_from_response(envelope)
+    except ValueError as e:
+        print('FAILED: ' + str(e))
+        return 1
+
+    os.makedirs(os.path.join(work_dir, ARTIFACTS_DIR), exist_ok=True)
+    target = output_path(work_dir, output_var)
+    # newline='' - verbatim: text mode would turn every \n of the answer into \r\n on a Windows Processor
+    with open(target, 'w', encoding='utf-8', newline='') as f:
+        f.write(answer)
     print('stored ' + str(os.path.getsize(target)) + ' bytes into output variable "'
           + str(output_var.get('name')) + '" at ' + target)
     return 0

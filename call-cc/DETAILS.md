@@ -57,8 +57,11 @@ its variables freely.
 |---|---|---|
 | `variable-for-prompt` | yes | name of the INPUT Variable holding the complete prompt |
 | `variable-for-output` | yes | name of the OUTPUT Variable receiving the answer |
-| `model` | no | CC model (`opus`, `sonnet`, a full model code). Absent means CC's own default |
-| `timeout-sec` | no | seconds allowed to the CC process. Absent means 300 |
+| `variable-for-model` | no (yes on `claude_api`) | name of an optional INPUT Variable holding the model id (`opus`, `sonnet`, a full model code). Absent means CC's own default; the API has no default (§8) |
+| `variable-for-effort` | no | name of an optional INPUT Variable holding the CC effort; ignored on `claude_api` |
+| `llm_provider` | no | `cc` (absent means this) or `claude_api` (§8). Any other value fails the Task |
+| `max-tokens` | no | `claude_api` only: the output budget of the one call. Absent means 8192 |
+| `timeout-sec` | no | seconds allowed to the CC process - or to the HTTP call on `claude_api`. Absent means 300 |
 
 ⚠️ `variable-for-prompt` and `variable-for-output` have **no fallback**. An absent meta fails the
 Task rather than guessing a name, because a guess that happens to hit an existing variable is a wrong
@@ -91,6 +94,7 @@ Inside the task dir only. Nothing is written outside it, and nothing survives th
 | `cc-data/cc-result.out` | the answer, written by the MCP server |
 | `cc-data/cc-console.log` | CC's console, whole |
 | `cc-data/mcp-server.log` | the MCP server's own log |
+| `cc-data/api-response.json` | `claude_api` only: the raw API response (never the key - it goes out in a header) |
 | `artifacts/<output id>` | the answer, copied verbatim |
 
 ---
@@ -163,3 +167,36 @@ A user-level `"ultracode": true` on the Processor box would otherwise start ever
 - ⚠️ **The outage report depends on the model obeying the rule.** A model that holds the work or
   retries instead leaves no line; the run then fails as an ordinary "no result" (exit `1`) or at the
   timeout. A wedged MCP client can also hold the CC process open whatever the model decides.
+
+---
+
+## 8. The `claude_api` path
+
+Process meta `llm_provider = "claude_api"` replaces the CC CLI with ONE Anthropic Messages API call
+(`mh_api_call.py`, beside the entry in the same payload). Everything above the model is unchanged: the prompt Variable
+in, the answer Variable out, every name through a meta.
+
+❗ **The same result channel, as a forced tool.** The request offers the tool `mh_cc_store_result` (one string
+parameter `result`) and forces it with `tool_choice`. The answer is that one call's `result`, copied verbatim - never
+the model's free text. A prompt written for the CC path ("store your answer with `mh_cc_store_result`") therefore
+works unchanged on this path.
+
+❗ **Its own Function code.** The key arrives only for a code whose `mh-function.yaml` declares `api.keyCode`:
+`mh.asset.call-cc-api_1.0` (`functions/fn-call-cc-api`), the same payload with `api.keyCode: ANTHROPIC_API_KEY`. The
+CC codes never declare it - MH launches no Task whose sealed key is unavailable, so a Vault without the key would
+withhold every CC run. A SourceCode on the API path names the API code AND sets `llm_provider = "claude_api"`:
+`source-codes/mh-call-cc-api-1.0.mhsc` is the one-call check.
+
+| failure | exit | what the console says |
+|---|---|---|
+| no model Variable | 1 | `no model for llm_provider=claude_api` - the API has no default model |
+| no key handed over | 1 | `no API key was handed over` - the code declares no `api.keyCode`, or no Vault holds it |
+| non-2xx response | 1 | `Anthropic API call failed with status <code>; body=...` - the analyzers match this line |
+| `stop_reason` `max_tokens` | 1 | `hit max_tokens` - the answer was cut off; raise meta `max-tokens` |
+| not exactly one store call, or an empty `result` | 1 | `expected exactly one mh_cc_store_result call` / `empty result` |
+
+- ⚠️ **The key is zeroed after the call** (`mh_api_call.zero`), and is never printed, logged or written.
+- ⚠️ **The model id goes to the API as given.** CC aliases (`opus`, `sonnet`) are CLI conventions; on this path a run
+  passes a full model id (`claude-haiku-5-5`), and an unknown one comes back as a non-2xx response.
+- ⚠️ **One call, no agent loop.** The model has no tools but the store tool, so a prompt that needs to read files or
+  run commands is a CC-path prompt.

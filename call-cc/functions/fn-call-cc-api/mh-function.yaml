@@ -1,0 +1,63 @@
+version: 3
+function:
+  # mh.asset.call-cc on the Anthropic API path: the same payload as fn-call-cc (call-cc/payload/fn-call-cc), whose
+  # mh_call_cc.py runs the claude_api path when the process meta llm_provider = "claude_api" (mh_api_call.py), under
+  # its OWN code because it carries the api block below.
+  #
+  # Why a separate code: needing a key is a property of the CALL SITE, api.keyCode a property of the Function code.
+  # MH copies function.api into every Task of the code and launches none whose sealed secret is unavailable - so the
+  # CC-path codes (fn-call-cc, fn-call-cc-1.1, fn-call-cc-1.2) must never declare it, or a Vault without the key would
+  # withhold every CC run. A SourceCode that wants the API path names this code AND sets llm_provider = "claude_api".
+  code: mh.asset.call-cc-api_1.0
+  type: mh.asset.call-cc
+  env: python-3
+  sourcing: git
+  # HEAD, never a tag: the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task
+  # of that run. The whole payload dir is copied into {task.home}/asset, so mh_api_call.py travels with the entry.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: call-cc/payload/fn-call-cc
+  targets:
+    mh-default:
+      src: src
+      file: mh_call_cc.py
+  metas:
+    # 2, not 1: every input is named by a process meta, and task.metas does not exist before params version 2
+    - mh.task-params-version: 2
+  # The Processor seals this Vault entry and hands it over its loopback secret channel (task.secretPort,
+  # task.checkCode in the params file); mh_api_call.read_secret takes it and the Function zeroes it after the call.
+  api:
+    keyCode: ANTHROPIC_API_KEY
+  # Matched against a failed Task's console. Anchored on mh_api_call.api_failure_line, which run_claude_api prints on
+  # a non-2xx response:   FAILED: Anthropic API call failed with status <code>; body=<first 2000 chars>
+  analyzers:
+    # Quota exhausted: every Task using this key would hit the same wall, so the block is on the KEY.
+    - name: api-quota-exhausted
+      regex:
+        - 'Anthropic API call failed with status 429'
+        - '"type":\s*"rate_limit_error"'
+      timeout: 20min
+      incrementTries: false
+      scope: api
+    # Provider-side transient trouble: 529 overloaded, 500 internal - clears on its own in minutes.
+    - name: api-provider-unavailable
+      regex:
+        - 'Anthropic API call failed with status 529'
+        - 'Anthropic API call failed with status 500'
+        - '"type":\s*"overloaded_error"'
+        - '"type":\s*"api_error"'
+      timeout: 5min
+      incrementTries: false
+      scope: api
+    # A rejected credential is not transient: the Task spends its retries and lands in ERROR, where a human sees it.
+    - name: api-credentials-rejected
+      regex:
+        - 'Anthropic API call failed with status 401'
+        - 'Anthropic API call failed with status 403'
+        - '"type":\s*"authentication_error"'
+        - '"type":\s*"permission_error"'
+      timeout: 30min
+      incrementTries: true
+      scope: api
