@@ -1,0 +1,32 @@
+// Ask the Anthropic Messages API one question and keep the answer - the claude_api twin of mh-call-cc-1.0.
+// Nothing about the question appears below.
+//
+// Launch it with mh_create_exec_context_with_variables (it declares source-level inputs):
+//   ccPrompt   comes IN, the complete prompt text, used verbatim as the one user turn
+//   model      comes IN, the API model id (e.g. claude-haiku-5-5) - the API has no default model
+//   ccResult   goes OUT at ExecContext level: the `result` of the model's one mh_cc_store_result call, verbatim
+//
+// The key is not in here and never is: mh.asset.call-cc-api_1.0 declares api.keyCode ANTHROPIC_API_KEY, so the
+// Processor hands it over from the Vault. llm_provider = "claude_api" is what selects the API path inside the payload.
+
+source "mh-call-cc-api-1.0" {
+
+    variables {
+        <- ccPrompt
+        <- model
+        -> ccResult
+    }
+
+    call := mh.asset.call-cc-api_1.0 {
+        name "Ask the Anthropic API ccPrompt and store what it returns"
+        // timeout-sec bounds the HTTP call; the process timeout below is what MH allows the Function - the LARGER one
+        meta llm_provider = "claude_api",
+             variable-for-prompt = "ccPrompt",
+             variable-for-output = "ccResult",
+             variable-for-model = "model",
+             timeout-sec = "300"
+        <- ccPrompt, model
+        -> ccResult: ext=".txt"
+        timeout 600
+    }
+}
