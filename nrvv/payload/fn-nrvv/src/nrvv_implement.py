@@ -45,13 +45,21 @@
 # and every file of <test-suite dir>/tests/nrvv_env/ - the simulated environment the test author wrote - as fixed parts
 # of the tests. Without one, the prompt is byte-identical to the v1 prompt. The guard is unchanged: tests/nrvv_env/ lies
 # in the test-suite checkout, outside the target dir, so the implementer cannot change the world it is tested in.
+#
+# THE claude_api PATH (plan 052, Phase 3) - process meta llm_provider = "claude_api", on the code
+# mh.asset.nrvv-implement-api_1.0 (the one that declares api.keyCode ANTHROPIC_API_KEY): the same prompt, byte for byte,
+# driven through the Anthropic Messages API by nrvv_api_agent.run_loop, whose tools are this session's confinement -
+# list/read/write/edit inside the target dir and run_tests (the prompt's pytest command). Metas: max-turns (default 60),
+# max-tokens (default 16000), timeout-sec as above. The model is required there: the API has no default model.
 
 import json
 import os
 import subprocess
 import sys
+import time
 
 import mh_task_io as io
+import nrvv_api_agent as api
 import nrvv_paths
 import nrvv_requirement_text as rt
 from nrvv_checkout import parse_location
@@ -326,6 +334,11 @@ def run(task, claude=None):
     settings_file = os.path.join(work_dir, SETTINGS_FILE)
     io.write_text(settings_file, '{\n  "ultracode": false\n}')
 
+    if api.llm_provider(io.meta_value(task.get('metas') or [], api.LLM_PROVIDER_META)) == api.PROVIDER_CLAUDE_API:
+        print(FUNCTION_CODE + ': ' + str(len(suites)) + ' suite(s) aimed at, ' + str(len(others)) + ' other(s), '
+              + str(len(texts)) + ' test file(s), target dir ' + target_dir)
+        return run_api(task, prompt, target_dir, test_suite_dir, model, effort, summary_path)
+
     command = cc_command(claude if claude is not None else claude_from_processor(task), settings_file, model, effort)
     seconds = timeout_sec(task.get('metas') or [])
     print(FUNCTION_CODE + ': ' + str(len(suites)) + ' suite(s) aimed at, ' + str(len(others)) + ' other(s), '
@@ -349,6 +362,46 @@ def run(task, claude=None):
         print('FAILED: the session exited with code ' + str(completed.returncode))
         return 1
     io.write_text(summary_path, console.strip() or NO_SUMMARY)
+    return 0
+
+
+def run_api(task, prompt, target_dir, test_suite_dir, model, effort, summary_path, api_url=api.API_URL):
+    """The claude_api path: the prompt through nrvv_api_agent.run_loop; 0 when the model ended its turn and the summary
+    was written, 1 otherwise (the reason printed). api_url is a parameter so a test can point the loop at a local server.
+    """
+    metas = task.get('metas') or []
+    if model is None:
+        print("FAILED: no model for llm_provider=claude_api - wire meta 'variable-for-model' to a Variable carrying a "
+              'model id. The API has no default model.')
+        return 1
+    if effort is not None:
+        print('effort ' + effort + ' is ignored on the claude_api path')
+    seconds = timeout_sec(metas)
+    max_turns = api.positive_int(io.meta_value(metas, 'max-turns'), api.DEFAULT_MAX_TURNS, 'max-turns')
+    max_tokens = api.positive_int(io.meta_value(metas, 'max-tokens'), api.DEFAULT_MAX_TOKENS, 'max-tokens')
+    body = api.first_request(model, prompt, max_tokens)
+    port, check_code = task.get('secretPort'), task.get('checkCode')
+    if port is None or check_code is None or not str(check_code).strip():
+        print('FAILED: no API key was handed over by the Processor. mh-function.yaml must declare api.keyCode '
+              '(ANTHROPIC_API_KEY) and a Vault must hold that key.')
+        return 1
+    run_tests = api.pytest_runner(sys.executable, test_suite_dir, target_dir,
+                                  session_env(os.environ, target_dir, sys.executable))
+    print('claude_api: model ' + body['model'] + ', max_turns ' + str(max_turns) + ', max_tokens ' + str(max_tokens)
+          + ', timeout ' + str(seconds) + 's')
+    key = api.read_secret(port, check_code)
+    try:
+        print('API key received from the Processor (' + str(len(key)) + ' bytes)')
+        api_key = key.decode('utf-8')
+        summary = api.run_loop(lambda b, s: api.post_messages(api_url, api_key, b, s), body, target_dir, run_tests,
+                               max_turns, time.monotonic() + seconds)
+    except api.AgentError as e:
+        print('FAILED: ' + str(e))
+        return 1
+    finally:
+        api.zero(key)
+    io.write_text(summary_path, summary.strip() or NO_SUMMARY)
+    print('summary: ' + str(len(summary)) + ' chars')
     return 0
 
 
