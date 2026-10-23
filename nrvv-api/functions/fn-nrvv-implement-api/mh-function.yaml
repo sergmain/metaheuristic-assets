@@ -1,0 +1,58 @@
+version: 3
+function:
+  # The implementation session on the Anthropic API path (plan 052, Phase 3): the same script as
+  # mh.asset.nrvv-implement_1.1 (nrvv_implement.py), whose process meta llm_provider = "claude_api" drives the prompt
+  # through nrvv_api_agent.run_loop - a tool loop confined to the target dir, run_tests running the prompt's command.
+  # Its OWN code because it declares the api block below: a CC-path code never may, or a Vault without the key would
+  # withhold every CC implementation run. A flow on the API path names this code AND sets llm_provider = "claude_api".
+  code: mh.asset.nrvv-implement-api_1.0
+  type: mh.asset.nrvv-implement
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
+  # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
+  # Every Function of this capability shares the payload directory; each names its own script.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: nrvv/payload/fn-nrvv
+  targets:
+    mh-default:
+      src: src
+      file: nrvv_implement.py
+  metas:
+    # 2: every variable is named by a process meta
+    - mh.task-params-version: 2
+  # The Processor seals this Vault entry and hands it over its loopback secret channel (task.secretPort,
+  # task.checkCode); nrvv_api_agent.read_secret takes it and run_api zeroes it after the loop.
+  api:
+    keyCode: ANTHROPIC_API_KEY
+  # Matched against a failed Task's console; anchored on nrvv_api_agent.api_failure_line, which run_api prints as
+  #   FAILED: Anthropic API call failed with status <code>; body=<first 2000 chars>
+  analyzers:
+    - name: api-quota-exhausted
+      regex:
+        - 'Anthropic API call failed with status 429'
+        - '"type":\s*"rate_limit_error"'
+      timeout: 20min
+      incrementTries: false
+      scope: api
+    - name: api-provider-unavailable
+      regex:
+        - 'Anthropic API call failed with status 529'
+        - 'Anthropic API call failed with status 500'
+        - '"type":\s*"overloaded_error"'
+        - '"type":\s*"api_error"'
+      timeout: 5min
+      incrementTries: false
+      scope: api
+    - name: api-credentials-rejected
+      regex:
+        - 'Anthropic API call failed with status 401'
+        - 'Anthropic API call failed with status 403'
+        - '"type":\s*"authentication_error"'
+        - '"type":\s*"permission_error"'
+      timeout: 30min
+      incrementTries: true
+      scope: api
