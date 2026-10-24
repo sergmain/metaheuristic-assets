@@ -165,6 +165,11 @@ def compose(context, component):
         lines.append('- ' + str(r.get('kind')) + ' on ' + str(r.get('subject'))
                      + (' against ' + str(r['counterpart']) if r.get('counterpart') else '') + ': '
                      + str(r.get('text') or '').strip())
+        # plan 050 Phase 9 (decision 11): the change the text supports, shown beside its finding
+        if str(r.get('direction') or '').strip():
+            lines.append('  direction: ' + one_line(r['direction']))
+        if str(r.get('counterexample') or '').strip():
+            lines.append('  counterexample (allowed by the NEEDs, forbidden by it): ' + one_line(r['counterexample']))
     items = component.get('items') or []
     lines += ['', 'Items:' if items else 'Items: none - resolve the findings by additions.']
     for it in items:

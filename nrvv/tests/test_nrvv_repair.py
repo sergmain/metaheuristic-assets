@@ -96,6 +96,16 @@ def test_prompt_shows_the_component_the_table_and_ends_with_the_answer_instructi
     assert 'interpretation items only' not in prompt
 
 
+def test_prompt_shows_a_reasons_direction_and_counterexample():
+    # plan 050 Phase 9 (decision 11): a finding is a textual gradient - the REPAIR sees the change the text supports
+    directed = dict(C2, reasons=[dict(C2['reasons'][0], direction='Sends can arrive at a station out of order.',
+                                      counterexample='two sends arriving in order')])
+    prompt = wf.compose(CONTEXT, directed)
+    assert '  direction: Sends can arrive at a station out of order.' in prompt
+    assert '  counterexample (allowed by the NEEDs, forbidden by it): two sends arriving in order' in prompt
+    assert 'direction:' not in wf.compose(CONTEXT, C1), 'a reason without a direction shows none'
+
+
 def test_prompt_states_the_order_of_resolution():
     # plan 050 Phase 8 (decision 5): the prompt states the rule the check enforces
     prompt = wf.compose(CONTEXT, C1)

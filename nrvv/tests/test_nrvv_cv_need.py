@@ -263,7 +263,8 @@ def test_backtrace_prompt_superseded_revision_off_the_line():
 def test_backtrace_verdict_naming_the_live_row_of_its_subject():
     # plan 047 Phase 28 (A run 3, #54 BACKTRACE #358, #361, #363): after a REDEFINITION the prompt lists a CHANGED
     # requirement as "GAS-11 (now GAS-14)", and CC answered with the live reqId as the subject
-    answer = bt_answer(bt_verdict('GAS-10', 'OVER_REACH'), bt_verdict('GAS-14', 'OVER_REACH'),
+    # plan 050 Phase 9 (fixture change): an OVER_REACH names its counterexample, or it is dropped
+    answer = bt_answer(bt_verdict('GAS-10', 'OVER_REACH', counterexample='c'), bt_verdict('GAS-14', 'OVER_REACH', counterexample='c'),
                        bt_verdict('GAS-20', 'UNNEEDED'))
     assert [v['subject'] for v in backtrace.verdicts_of(answer, BT_CONTEXT, BT_CHUNK)['verdicts']] == \
         ['GAS-10', 'GAS-11', 'GAS-20'], 'the live row names its subject'
@@ -286,7 +287,7 @@ def test_backtrace_verdicts_canonical_in_chunk_order():
     ]}
     other = backtrace.verdicts_of(bt_answer(
         bt_verdict('GAS-10', 'CONTRADICTS_NEED', 'a stale price', needReqId='GAS-2'),
-        bt_verdict('GAS-11', 'OVER_REACH', '"at most once every 60 seconds"'),
+        bt_verdict('GAS-11', 'OVER_REACH', '"at most once every 60 seconds"', counterexample='two prices 10 s apart'),
         bt_verdict('GAS-20', 'CONTRADICTS_NEED', 'resends cost', needReqId='GAS-7')), BT_CONTEXT, BT_CHUNK)
     assert [v['verdict'] for v in other['verdicts']] == ['CONTRADICTS_NEED', 'OVER_REACH', 'CONTRADICTS_NEED']
     assert 'needReqId' not in other['verdicts'][1]
@@ -319,6 +320,24 @@ def test_backtrace_check_refuses(verdicts, message):
     assert message in str(e.value)
 
 
+def test_backtrace_an_over_reach_and_its_counterexample():
+    # plan 050 Phase 9 (decision 11) - characterization test: Green-1 pinned v7 (an OVER_REACH with no counterexample was in
+    # the canonical answer); an OVER_REACH ("not necessary") needs a NEED-compliant situation the requirement forbids - the
+    # check drops one without it; the subject still counts as answered
+    out = backtrace.verdicts_of(bt_answer(bt_verdict('GAS-10', 'OVER_REACH', '"every station"'), bt_verdict('GAS-11', 'JUSTIFIED',
+                                                    needReqIds=['GAS-2']), bt_verdict('GAS-20', 'UNNEEDED')), BT_CONTEXT, BT_CHUNK)
+    assert [v['subject'] for v in out['verdicts']] == ['GAS-11', 'GAS-20'], 'the OVER_REACH without a counterexample is dropped'
+    kept = backtrace.verdicts_of(bt_answer(
+        bt_verdict('GAS-10', 'OVER_REACH', '"every station"', direction=' each station that is sent a price ',
+                   counterexample=' a station that is never sent a price '),
+        bt_verdict('GAS-11', 'JUSTIFIED', needReqIds=['GAS-2']),
+        bt_verdict('GAS-20', 'CONTRADICTS_NEED', 'resends cost', needReqId='GAS-7', direction='resend on change only')),
+        BT_CONTEXT, BT_CHUNK)['verdicts']
+    assert kept[0] == {'subject': 'GAS-10', 'verdict': 'OVER_REACH', 'text': '"every station"',
+                       'direction': 'each station that is sent a price', 'counterexample': 'a station that is never sent a price'}
+    assert kept[2]['direction'] == 'resend on change only' and 'counterexample' not in kept[2]
+
+
 def test_backtrace_check_refuses_a_non_object():
     with pytest.raises(ValueError) as e:
         backtrace.verdicts_of(json.dumps({'findings': []}), BT_CONTEXT, BT_CHUNK)
@@ -329,11 +348,11 @@ def test_backtrace_justified_without_text():
     # development run 244 (project #48): CC answered every JUSTIFIED with needReqIds only - the prompt asks for "only the
     # fields its verdict uses", and a JUSTIFIED verdict stores nothing
     raw = bt_answer({'subject': 'GAS-10', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-2']},
-                    bt_verdict('GAS-11', 'OVER_REACH', '"at most once every 60 seconds"'),
+                    bt_verdict('GAS-11', 'OVER_REACH', '"at most once every 60 seconds"', counterexample='two prices 10 s apart'),
                     {'subject': 'GAS-20', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-7'], 'text': None})
     assert backtrace.verdicts_of(raw, BT_CONTEXT, BT_CHUNK) == {'verdicts': [
         {'subject': 'GAS-10', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-2']},
-        {'subject': 'GAS-11', 'verdict': 'OVER_REACH', 'text': '"at most once every 60 seconds"'},
+        {'subject': 'GAS-11', 'verdict': 'OVER_REACH', 'text': '"at most once every 60 seconds"', 'counterexample': 'two prices 10 s apart'},
         {'subject': 'GAS-20', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-7']},
     ]}, 'a JUSTIFIED verdict needs no text; every other verdict still does'
 

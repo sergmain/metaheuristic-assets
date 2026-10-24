@@ -26,7 +26,7 @@ import nrvv_cc_answer as ca
 import nrvv_cv_need as cv
 
 FIELDS = ('subject', 'contradictions')
-CONTRADICTION_FIELDS = ('counterpart', 'text')
+CONTRADICTION_FIELDS = ('counterpart', 'text', 'direction')
 
 SECTION_NAMES = {
     'NRVV:INTERPRETATION': 'interpretation item',
@@ -35,7 +35,8 @@ SECTION_NAMES = {
 }
 
 ANSWER_SHAPE = ('{"subject": "<the reqId judged>", "contradictions": [{"counterpart": "<candidate reqId>", '
-                '"text": "<the situation in which the two cannot both hold>"}]}')
+                '"text": "<the situation in which the two cannot both hold>", '
+                '"direction": "<which of the two the governing items support>"}]}')
 
 
 def context_of(raw):
@@ -97,6 +98,8 @@ def compose(subject):
         '  system.',
         '- Name only candidates, each once, by its reqId exactly as written. The text describes the situation and why the',
         '  two cannot both hold, quoting the words of both.',
+        '- "direction": which of the two the governing items support - the interpretation items and NEEDs they are read',
+        '  under - and so which one a repair should change.',
         '- When the requirement holds together with every candidate, the list is empty.',
         '',
     ]
@@ -164,7 +167,14 @@ def contradictions_of(cc_result, subject):
         reason = (reason or '').strip()
         if not reason:
             raise ValueError(where + ' (' + counterpart + ') names no situation in which the two cannot both hold')
-        out.append({'counterpart': counterpart, 'text': reason})
+        item = {'counterpart': counterpart, 'text': reason}
+        # plan 050 Phase 9 (decision 11): which side the governing items support - optional
+        direction = c.get('direction')
+        if direction is not None and not isinstance(direction, str):
+            raise ValueError(where + ' (' + counterpart + ') has a direction that is not a string')
+        if (direction or '').strip():
+            item['direction'] = direction.strip()
+        out.append(item)
     return {'subject': req_id, 'contradictions': out}
 
 

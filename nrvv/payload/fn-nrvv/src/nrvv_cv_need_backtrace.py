@@ -23,6 +23,11 @@
 # Dispatcher's mhdg-nrvv.store-findings checks the same rules again (NrvvFindingUtils.parseBacktrace) and stores one
 # finding per verdict other than JUSTIFIED.
 #
+# Plan 050 Phase 9 (decision 11 - a finding carries its direction): OVER_REACH and CONTRADICTS_NEED may give "direction",
+# the wording the cited NEEDs support; an OVER_REACH ("not necessary") gives "counterexample", a situation the agreed
+# NEEDs allow that the requirement forbids - an OVER_REACH without one is DROPPED from the canonical answer (its subject
+# still counts as answered), so it stores no finding. The Dispatcher refuses an OVER_REACH without a counterexample.
+#
 # Pure but for run_prompt() / run_check().
 
 import json
@@ -33,12 +38,14 @@ import nrvv_cc_answer as ca
 import nrvv_cv_need as cv
 
 VERDICTS = ('JUSTIFIED', 'OVER_REACH', 'CONTRADICTS_NEED', 'RESTS_ON_SUPERSEDED', 'UNNEEDED')
-FIELDS = ('subject', 'verdict', 'needReqIds', 'needReqId', 'text')
+FIELDS = ('subject', 'verdict', 'needReqIds', 'needReqId', 'text', 'direction', 'counterexample')
 CHUNK_SIZE = 40
 
 ANSWER_SHAPE = ('{"verdicts": [{"subject": "<requirement reqId>", '
                 '"verdict": "<JUSTIFIED|OVER_REACH|CONTRADICTS_NEED|RESTS_ON_SUPERSEDED|UNNEEDED>", '
-                '"needReqIds": ["<NEED reqId>"], "needReqId": "<NEED reqId or null>", "text": "<why>"}]}')
+                '"needReqIds": ["<NEED reqId>"], "needReqId": "<NEED reqId or null>", "text": "<why>", '
+                '"direction": "<OVER_REACH, CONTRADICTS_NEED: the wording the NEEDs support>", '
+                '"counterexample": "<OVER_REACH: a situation the NEEDs allow that the requirement forbids>"}]}')
 
 
 def context_of(raw):
@@ -90,9 +97,11 @@ def compose(context, chunk):
         '  rests on (at least one).',
         '- OVER_REACH (owned requirements only): the requirement obliges something no agreed NEED states - a number, a',
         '  duration, a rate, a limit or a behaviour the NEEDs never mention or leave open. The text quotes that obligation',
-        '  from the requirement.',
+        '  from the requirement. "counterexample": a situation the agreed NEEDs allow that the requirement forbids - an',
+        '  OVER_REACH without one is not an OVER_REACH; "direction": the wording the cited NEEDs support instead.',
         '- CONTRADICTS_NEED: in some situation the world can actually present, meeting the requirement violates an agreed',
-        '  NEED. needReqId names that NEED; the text gives the situation, quoting the words of both.',
+        '  NEED. needReqId names that NEED; the text gives the situation, quoting the words of both. "direction": the',
+        '  wording that NEED supports instead.',
         '- RESTS_ON_SUPERSEDED: the requirement cites a NEED revision that is no longer in force (shown under it as "no',
         '  longer in force"), and what it obliges follows from that old text but not from the NEED as it reads now.',
         '  needReqId names that NEED; the text quotes the superseded words it rests on.',
@@ -266,11 +275,33 @@ def verdicts_of(cc_result, context, chunk):
             item['needReqIds'] = ids
         if need is not None:
             item['needReqId'] = need
-        by_subject[subject] = item
+        # plan 050 Phase 9 (decision 11): the direction of OVER_REACH / CONTRADICTS_NEED, an OVER_REACH's counterexample
+        direction = _optional_text(v.get('direction'), where, 'direction')
+        counterexample = _optional_text(v.get('counterexample'), where, 'counterexample')
+        if direction is not None and verdict not in ('OVER_REACH', 'CONTRADICTS_NEED'):
+            raise ValueError(where + ' is ' + verdict + ' and names a direction: only OVER_REACH and CONTRADICTS_NEED do')
+        if counterexample is not None and verdict != 'OVER_REACH':
+            raise ValueError(where + ' is ' + verdict + ' and names a counterexample: only OVER_REACH does')
+        if direction is not None:
+            item['direction'] = direction
+        if counterexample is not None:
+            item['counterexample'] = counterexample
+        # an OVER_REACH ("not necessary") without a NEED-compliant situation it forbids is no finding: dropped, the
+        # subject answered
+        by_subject[subject] = None if verdict == 'OVER_REACH' and counterexample is None else item
     missing = [s for s in chunk if s not in by_subject]
     if missing:
         raise ValueError('CC gave no verdict on ' + ', '.join(missing) + ': every requirement of the chunk gets one')
-    return {'verdicts': [by_subject[s] for s in chunk]}
+    return {'verdicts': [by_subject[s] for s in chunk if by_subject[s] is not None]}
+
+
+def _optional_text(value, where, field):
+    """Plan 050 Phase 9: an optional text field - None when absent, null or blank; stripped; a non-string is refused."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(where + ' has a ' + field + ' that is not a string')
+    return value.strip() or None
 
 
 def run_prompt(task, function_code):
@@ -287,6 +318,8 @@ def run_check(task, function_code):
     chunk = chunk_of(io.read_role(task, 'subjects'), context)
     answer = verdicts_of(io.read_role(task, 'cc-result'), context, chunk)
     io.write_text(io.output_role(task, 'findings'), json.dumps(answer, ensure_ascii=False))
+    dropped = [s for s in chunk if s not in {v['subject'] for v in answer['verdicts']}]
     print(function_code + ': ' + str(len(answer['verdicts'])) + ' verdict(s): '
           + ', '.join(v['verdict'] + '/' + v['subject'] + ('/' + v['needReqId'] if 'needReqId' in v else '')
-                      for v in answer['verdicts']))
+                      for v in answer['verdicts'])
+          + ('; dropped (an OVER_REACH without a counterexample): ' + ', '.join(dropped) if dropped else ''))

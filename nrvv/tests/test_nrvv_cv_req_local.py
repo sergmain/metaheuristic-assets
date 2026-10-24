@@ -94,6 +94,20 @@ def test_no_contradiction_and_a_subject_without_candidates():
     assert wf.checked(answer('GASL-40'), CONTEXT, 'GASL-40') == {'subject': 'GASL-40', 'contradictions': []}
 
 
+def test_a_contradiction_carries_its_direction():
+    # plan 050 Phase 9 (decision 11): which side the items the two are read under support - optional, a string
+    raw = json.dumps({'subject': 'GASL-10', 'contradictions': [
+        {'counterpart': 'GASL-12', 'text': 'a first price, then a later one', 'direction': ' GASL-20 supports GASL-10 '},
+        {'counterpart': 'GASL-11', 'text': 'a resend'}]})
+    out = wf.checked(raw, CONTEXT, 'GASL-10\n')
+    assert out['contradictions'][0] == {'counterpart': 'GASL-12', 'text': 'a first price, then a later one',
+                                        'direction': 'GASL-20 supports GASL-10'}
+    assert 'direction' not in out['contradictions'][1], 'no direction given - none'
+    bad = json.dumps({'subject': 'GASL-10', 'contradictions': [{'counterpart': 'GASL-12', 'text': 't', 'direction': 7}]})
+    assert 'has a direction that is not a string' in refusal(bad)
+    assert '"direction"' in wf.ANSWER_SHAPE and 'which of the two the governing items support' in wf.compose(SUBJECT)
+
+
 def test_one_markdown_fence_is_unwrapped():
     out = wf.checked('```json\n' + answer('GASL-10', 'GASL-20', 'the reading drops a superseded price') + '\n```',
                      CONTEXT, 'GASL-10')
