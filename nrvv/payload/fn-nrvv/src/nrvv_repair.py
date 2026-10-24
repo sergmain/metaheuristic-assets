@@ -41,6 +41,9 @@ ACTIONS = ('KEEP', 'CHANGE', 'OBSOLETE')
 NEED_REF_WITH_REVISION = re.compile(r'(\S+)\s+r\d+')
 KINDS = ('TOP_LEVEL', 'DESIGN', 'INTERFACE', 'ENVIRONMENT', 'INTERPRETATION')
 UPPER = ('TOP_LEVEL', 'INTERPRETATION')
+# the reason kinds that name a missing part - the only ones a TOP_LEVEL or interpretation addition may answer; every
+# other reason (a contradiction, OVER_REACH, CONTRADICTS_NEED, RESTS_ON_SUPERSEDED) is resolved by subtraction
+MISSING_PART = ('NEED_NOT_MET', 'DESIGN_MISSING', 'ANSWER_REFUSED')
 ANSWER_FIELDS = ('decisions', 'add')
 DECISION_FIELDS = ('reqId', 'action', 'title', 'statement', 'rationale', 'evidence', 'readings', 'needs', 'governs', 'reason')
 ADD_FIELDS = ('kind', 'parent', 'needs', 'interpretation', 'governs', 'title', 'statement', 'rationale', 'evidence', 'readings')
@@ -147,6 +150,10 @@ def compose(context, component):
         '  (or *). A top-level requirement names in readings every READING or OPEN_CHOICE it follows.',
         '- OBSOLETE an item only when every NEED it cites stays covered - by a requirement listed under "Covered by", by',
         '  another item of your answer, or by an addition.',
+        '- Resolve by subtraction, in this order: OBSOLETE (when every NEED it cites stays covered), else a CHANGE that',
+        '  narrows what the statement claims. Add a top-level requirement or an interpretation item ONLY for a missing',
+        '  part - a ' + ', '.join(MISSING_PART) + ' finding below; a contradiction, OVER_REACH, CONTRADICTS_NEED or',
+        '  RESTS_ON_SUPERSEDED is never resolved by an addition.',
     ]
     if context.get('gateStage') == 'AFTER_INTERPRETATION':
         lines.append('- This loop repairs the interpretation: change, obsolete and add interpretation items only.')
@@ -339,6 +346,11 @@ def answer_of(cc_result, context, component):
                       'readings': [root(r) for r in _strings(a.get('readings'), key + ': readings')]})
     if all(d['action'] == 'KEEP' for d in decisions.values()) and not added:
         raise ValueError('the answer changes nothing - every decision is KEEP and nothing is added')
+    if not any(str(r.get('kind')) in MISSING_PART for r in component.get('reasons') or []):
+        for a in added:
+            if a['kind'] in UPPER:
+                raise ValueError(a['key'] + ' adds a ' + a['kind'] + ' item, but no reason of this component is a missing part '
+                                 + str(list(MISSING_PART)) + ' - resolve it by OBSOLETE or a narrowing CHANGE')
     obsoleted = {r for r, d in decisions.items() if d['action'] == 'OBSOLETE'}
 
     def needs_after(r):

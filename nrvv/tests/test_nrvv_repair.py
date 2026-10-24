@@ -52,6 +52,11 @@ C3 = {'id': 'C3',
       'reasons': [{'id': 9, 'kind': 'NEED_NOT_MET', 'subject': 'GASR-2', 'counterpart': None, 'text': 'nothing settles'}],
       'items': [], 'governing': [], 'needs': [need('GASR-2', N2, None, [])], 'history': []}
 CONTEXT = {'snapshotId': 7, 'gateStage': 'BEFORE_CRITERIA', 'components': [C1, C2, C3]}
+# plan 050 Phase 8 (decision 5; fixture change): C1 and C2 also holding a missing part, so that a top-level or interpretation
+# addition there reaches the other rules of the check instead of decision 5's
+MISSING = {'id': 11, 'kind': 'NEED_NOT_MET', 'subject': 'GASR-2', 'counterpart': None, 'text': 'a missing part'}
+CONTEXT_MISSING = dict(CONTEXT, components=[dict(C1, reasons=C1['reasons'] + [MISSING]),
+                                            dict(C2, reasons=C2['reasons'] + [MISSING]), C3])
 
 CHANGE_T1 = {'reqId': 'GASR-15', 'action': 'CHANGE', 'statement': 'The service shall publish gas price updates to stations.',
              'rationale': 'publishes to stations', 'evidence': [{'source': 'GASR-1', 'quote': 'publish gas price updates'}],
@@ -89,6 +94,14 @@ def test_prompt_shows_the_component_the_table_and_ends_with_the_answer_instructi
     assert prompt.rstrip().endswith(wf.cv.ANSWER_TAIL.replace('the findings', 'the repair'))
     assert prompt.index(wf.ANSWER_SHAPE) > prompt.index('Earlier iterations of this loop:')
     assert 'interpretation items only' not in prompt
+
+
+def test_prompt_states_the_order_of_resolution():
+    # plan 050 Phase 8 (decision 5): the prompt states the rule the check enforces
+    prompt = wf.compose(CONTEXT, C1)
+    assert '- Resolve by subtraction, in this order: OBSOLETE (when every NEED it cites stays covered), else a CHANGE that' in prompt
+    assert 'part - a NEED_NOT_MET, DESIGN_MISSING, ANSWER_REFUSED finding below' in prompt
+    assert wf.MISSING_PART == ('NEED_NOT_MET', 'DESIGN_MISSING', 'ANSWER_REFUSED'), 'one rule with the Java re-check'
 
 
 def test_prompt_of_a_component_with_no_item_and_of_an_interpretation_loop():
@@ -148,6 +161,25 @@ def test_rule_every_item_decided_exactly_once_and_nothing_else():
     assert 'none of' in refusal(answer([dict(CHANGE_T1, action='REWRITE'), KEEP_D1]))
 
 
+def test_rule_an_upper_addition_only_for_a_missing_part():
+    # plan 050 Phase 8 (decision 5) - characterization test: Green-1 pinned v7 (a TOP_LEVEL addition in a component whose
+    # only reason is a REQ_CONTRADICTION passed); a TOP_LEVEL or interpretation addition needs a missing part among the
+    # component's reasons - NEED_NOT_MET, DESIGN_MISSING or ANSWER_REFUSED
+    top = {'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 'Settle',
+           'statement': 'The service shall make a station settle on the latest price.',
+           'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}
+    why = refusal(answer([CHANGE_T1, KEEP_D1], [top]))
+    assert 'A1 adds a TOP_LEVEL item, but no reason of this component is a missing part' in why, why
+    reading = {'kind': 'INTERPRETATION', 'interpretation': 'ASSUMPTION', 'needs': ['GASR-3'], 'title': 'Order',
+               'statement': 'Sends can reach a station out of order.',
+               'evidence': [{'source': 'GASR-3', 'quote': 'sends arriving out of order'}]}
+    assert 'A1 adds a INTERPRETATION item' in refusal(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [reading]), 'C2')
+    refused_part = dict(C1, reasons=C1['reasons'] + [{'id': 10, 'kind': 'ANSWER_REFUSED', 'subject': 'GASR-2',
+                                                      'counterpart': None, 'text': 'the TOP_LEVEL part was refused'}])
+    out = wf.checked(answer([CHANGE_T1, KEEP_D1], [top]), dict(CONTEXT, components=[refused_part, C2, C3]), 'C1\n')
+    assert 'refused' not in out, out
+
+
 def test_rule_the_answer_changes_something():
     assert 'changes nothing' in refusal(answer([{'reqId': 'GASR-10', 'action': 'KEEP'}, KEEP_D1]))
 
@@ -194,7 +226,7 @@ def test_a_need_cited_as_the_context_shows_it_with_its_revision():
     add = {'kind': 'INTERPRETATION', 'interpretation': 'READING', 'needs': ['GASR-3'], 'governs': ['GASR-3 r1'],
            'title': 'r', 'statement': 'Arrival order is read as the order sends reach the station.',
            'evidence': [{'source': 'GASR-3', 'quote': 'out of order'}]}
-    ok = wf.checked(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [add]), CONTEXT, 'C2\n')
+    ok = wf.checked(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [add]), CONTEXT_MISSING, 'C2\n')
     assert ok['add'][0]['governs'] == ['GASR-3'], ok
 
 def test_an_evidence_source_given_as_the_context_shows_the_need():
@@ -211,8 +243,9 @@ def test_rule_governs_of_an_interpretation_item():
     assert 'an ASSUMPTION governs nothing' in refusal(answer([dict(change, governs=['GASR-3'])]), 'C2')
     add = {'kind': 'INTERPRETATION', 'interpretation': 'READING', 'needs': ['GASR-3'], 'title': 'r',
            'statement': 'Arrival order is read as any order.', 'evidence': [{'source': 'GASR-3', 'quote': 'out of order'}]}
-    assert 'names what it governs' in refusal(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [add]), 'C2')
-    assert 'names its kind' in refusal(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [dict(add, interpretation='GUESS')]), 'C2')
+    assert 'names what it governs' in refusal(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [add]), 'C2', CONTEXT_MISSING)
+    assert 'names its kind' in refusal(answer([{'reqId': 'GASR-20', 'action': 'KEEP'}], [dict(add, interpretation='GUESS')]), 'C2',
+                                       CONTEXT_MISSING)
 
 
 def test_rule_an_obsolete_keeps_its_needs_covered():
@@ -221,7 +254,7 @@ def test_rule_an_obsolete_keeps_its_needs_covered():
            'statement': 'The service shall publish gas price updates.',
            'evidence': [{'source': 'GASR-1', 'quote': 'publish gas price updates'}]}
     out = wf.checked(answer([{'reqId': 'GASR-10', 'action': 'OBSOLETE', 'reason': 'r'}, {'reqId': 'GASR-11', 'action': 'OBSOLETE',
-                                                                                         'reason': 'r'}], [add]), CONTEXT, 'C1\n')
+                                                                                         'reason': 'r'}], [add]), CONTEXT_MISSING, 'C1\n')
     assert len(out['add']) == 1, out
     assert 'leaves NEED GASR-3 uncovered' in refusal(answer([{'reqId': 'GASR-20', 'action': 'OBSOLETE', 'reason': 'r'}]), 'C2')
 
@@ -235,7 +268,7 @@ def test_rule_the_parent_of_a_design_addition():
         [{'reqId': 'GASR-10', 'action': 'OBSOLETE', 'reason': 'r'}, KEEP_D1],
         [dict(design, parent='GASR-10'), {'kind': 'TOP_LEVEL', 'needs': ['GASR-1'], 'title': 't',
                                           'statement': 'The service shall publish gas price updates.',
-                                          'evidence': [{'source': 'GASR-1', 'quote': 'publish gas price updates'}]}]))
+                                          'evidence': [{'source': 'GASR-1', 'quote': 'publish gas price updates'}]}]), 'C1', CONTEXT_MISSING)
     assert 'is added after it' in refusal(answer([], [dict(design, parent='A2'), {
         'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 't', 'statement': 'The service shall make a station settle on the latest price.',
         'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}]), 'C3')
