@@ -51,7 +51,13 @@ C2 = {'id': 'C2',
 C3 = {'id': 'C3',
       'reasons': [{'id': 9, 'kind': 'NEED_NOT_MET', 'subject': 'GASR-2', 'counterpart': None, 'text': 'nothing settles'}],
       'items': [], 'governing': [], 'needs': [need('GASR-2', N2, None, [])], 'history': []}
-CONTEXT = {'snapshotId': 7, 'gateStage': 'BEFORE_CRITERIA', 'components': [C1, C2, C3]}
+# plan 050 Phase 14 (decision 3; fixture change): the default stage is AFTER_DEFINITION - the loop that repairs top-level
+# requirements and interpretation items in v8 (it was BEFORE_CRITERIA, which repairs the design only since then)
+CONTEXT = {'snapshotId': 7, 'gateStage': 'AFTER_DEFINITION', 'components': [C1, C2, C3]}
+# a design addition is BEFORE_CRITERIA's; an answer adding both a top-level requirement and its design is no v8 stage's - the
+# parent rules it reaches are checked in a context that names no gate stage
+CRITERIA = dict(CONTEXT, gateStage='BEFORE_CRITERIA')
+NO_STAGE = dict(CONTEXT, gateStage=None)
 # plan 050 Phase 8 (decision 5; fixture change): C1 and C2 also holding a missing part, so that a top-level or interpretation
 # addition there reaches the other rules of the check instead of decision 5's
 MISSING = {'id': 11, 'kind': 'NEED_NOT_MET', 'subject': 'GASR-2', 'counterpart': None, 'text': 'a missing part'}
@@ -141,17 +147,17 @@ def test_a_need_not_met_is_repaired_by_an_addition():
 
 def test_a_design_addition_under_the_component_top_level_or_an_earlier_top_level_addition():
     design = {'kind': 'DESIGN', 'parent': 'GASR-15', 'title': 'Latest', 'statement': 'The service sends only the latest price.'}
-    assert wf.checked(answer([KEEP_D1, {'reqId': 'GASR-10', 'action': 'KEEP'}], [design]), CONTEXT, 'C1\n')['add'][0]['parent'] == 'GASR-15'
+    assert wf.checked(answer([KEEP_D1, {'reqId': 'GASR-10', 'action': 'KEEP'}], [design]), CRITERIA, 'C1\n')['add'][0]['parent'] == 'GASR-15'
     top = {'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 'Settle',
            'statement': 'The service shall make a station settle on the latest price.',
            'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}
-    out = wf.checked(answer([], [top, dict(design, parent='A1')]), CONTEXT, 'C3\n')
+    out = wf.checked(answer([], [top, dict(design, parent='A1')]), NO_STAGE, 'C3\n')
     assert [a['kind'] for a in out['add']] == ['TOP_LEVEL', 'DESIGN'], out
 
 
 def test_an_obsolete_whose_needs_stay_covered_passes():
     # GASR-2 is covered by GASR-13 outside the component; the READING GASR-21 is no item of C1, so only GASR-10 and 11
-    ctx = {'gateStage': 'BEFORE_CRITERIA', 'components': [dict(C1, items=[dict(T1, needs=['GASR-2']), D1])]}
+    ctx = {'gateStage': 'AFTER_DEFINITION', 'components': [dict(C1, items=[dict(T1, needs=['GASR-2']), D1])]}
     out = wf.checked(answer([{'reqId': 'GASR-10', 'action': 'OBSOLETE', 'reason': 'duplicate'}, KEEP_D1]), ctx, 'C1\n')
     assert out['decisions'][0]['action'] == 'OBSOLETE', out
 
@@ -263,8 +269,8 @@ def test_rule_an_obsolete_keeps_its_needs_covered():
     add = {'kind': 'TOP_LEVEL', 'needs': ['GASR-1'], 'title': 'Publish',
            'statement': 'The service shall publish gas price updates.',
            'evidence': [{'source': 'GASR-1', 'quote': 'publish gas price updates'}]}
-    out = wf.checked(answer([{'reqId': 'GASR-10', 'action': 'OBSOLETE', 'reason': 'r'}, {'reqId': 'GASR-11', 'action': 'OBSOLETE',
-                                                                                         'reason': 'r'}], [add]), CONTEXT_MISSING, 'C1\n')
+    # plan 050 Phase 14 (fixture change): D1 KEEP - an AFTER_DEFINITION loop changes no design item; the coverage rule is the subject
+    out = wf.checked(answer([{'reqId': 'GASR-10', 'action': 'OBSOLETE', 'reason': 'r'}, KEEP_D1], [add]), CONTEXT_MISSING, 'C1\n')
     assert len(out['add']) == 1, out
     assert 'leaves NEED GASR-3 uncovered' in refusal(answer([{'reqId': 'GASR-20', 'action': 'OBSOLETE', 'reason': 'r'}]), 'C2')
 
@@ -272,27 +278,49 @@ def test_rule_an_obsolete_keeps_its_needs_covered():
 def test_rule_the_parent_of_a_design_addition():
     design = {'kind': 'DESIGN', 'title': 'Latest', 'statement': 'The service sends only the latest price.'}
     keep = [{'reqId': 'GASR-10', 'action': 'KEEP'}, KEEP_D1]
-    assert 'names its top-level requirement as parent' in refusal(answer(keep, [design]))
-    assert 'no top-level requirement of this component' in refusal(answer(keep, [dict(design, parent='GASR-11')]))
+    assert 'names its top-level requirement as parent' in refusal(answer(keep, [design]), context=CRITERIA)
+    assert 'no top-level requirement of this component' in refusal(answer(keep, [dict(design, parent='GASR-11')]), context=CRITERIA)
     assert 'is OBSOLETE in this answer' in refusal(answer(
         [{'reqId': 'GASR-10', 'action': 'OBSOLETE', 'reason': 'r'}, KEEP_D1],
         [dict(design, parent='GASR-10'), {'kind': 'TOP_LEVEL', 'needs': ['GASR-1'], 'title': 't',
                                           'statement': 'The service shall publish gas price updates.',
-                                          'evidence': [{'source': 'GASR-1', 'quote': 'publish gas price updates'}]}]), 'C1', CONTEXT_MISSING)
+                                          'evidence': [{'source': 'GASR-1', 'quote': 'publish gas price updates'}]}]), 'C1',
+        dict(CONTEXT_MISSING, gateStage=None))
     assert 'is added after it' in refusal(answer([], [dict(design, parent='A2'), {
         'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 't', 'statement': 'The service shall make a station settle on the latest price.',
-        'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}]), 'C3')
+        'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}]), 'C3', NO_STAGE)
     assert 'a top-level requirement has no parent' in refusal(answer([], [{
         'kind': 'TOP_LEVEL', 'parent': 'GASR-10', 'needs': ['GASR-2'], 'title': 't',
         'statement': 'The service shall make a station settle on the latest price.',
         'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}]), 'C3')
-    assert 'rule 5 (language)' in refusal(answer(keep, [dict(design, parent='GASR-10', statement='Written in Java.')]))
+    assert 'rule 5 (language)' in refusal(answer(keep, [dict(design, parent='GASR-10', statement='Written in Java.')]), context=CRITERIA)
 
 
 def test_rule_an_environment_addition_names_assumptions_only():
     env = {'kind': 'ENVIRONMENT', 'parent': 'GASR-10', 'title': 'Order', 'statement': 'The tests deliver sends out of order.',
            'readings': ['GASR-21']}
     assert 'is no ASSUMPTION item' in refusal(answer([{'reqId': 'GASR-10', 'action': 'KEEP'}, KEEP_D1], [env]))
+
+
+def test_rule_the_stage_decides_which_items_a_repair_changes():
+    # plan 050 Phase 14 (decision 3) - characterization test: Green-1 pinned v7 (a BEFORE_CRITERIA loop CHANGEd a top-level
+    # requirement, an AFTER_DEFINITION loop added a design item); the top-level set is judged before any design exists, so an
+    # AFTER_DEFINITION loop changes and adds no design item, and a BEFORE_CRITERIA loop changes and adds design items only
+    criteria = dict(CONTEXT, gateStage='BEFORE_CRITERIA')
+    assert 'GASR-10 is a TOP_LEVEL item: a BEFORE_CRITERIA loop changes design items only' in \
+        refusal(answer([CHANGE_T1, KEEP_D1]), context=criteria)
+    design = {'kind': 'DESIGN', 'parent': 'GASR-15', 'title': 'Latest', 'statement': 'The service sends only the latest price.'}
+    definition = dict(CONTEXT, gateStage='AFTER_DEFINITION')
+    assert 'A1 adds a DESIGN item: an AFTER_DEFINITION loop adds no design item' in \
+        refusal(answer([KEEP_D1, {'reqId': 'GASR-10', 'action': 'KEEP'}], [design]), context=definition)
+    assert 'GASR-11 is a DESIGN item: an AFTER_DEFINITION loop changes no design item' in \
+        refusal(answer([{'reqId': 'GASR-10', 'action': 'KEEP'}, {'reqId': 'GASR-11', 'action': 'OBSOLETE', 'reason': 'r'}]),
+                context=definition)
+    assert 'A1 adds a TOP_LEVEL item: a BEFORE_CRITERIA loop adds design items only' in refusal(answer([], [{
+        'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 't', 'statement': 'The service shall make a station settle on the latest price.',
+        'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}]), 'C3', criteria)
+    assert 'change, obsolete and add no design item' in wf.compose(definition, C1)
+    assert 'change, obsolete and add design items only' in wf.compose(criteria, C1)
 
 
 def test_rule_an_interpretation_loop_changes_interpretation_items_only():

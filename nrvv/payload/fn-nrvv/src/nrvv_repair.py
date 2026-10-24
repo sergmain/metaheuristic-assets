@@ -157,6 +157,13 @@ def compose(context, component):
     ]
     if context.get('gateStage') == 'AFTER_INTERPRETATION':
         lines.append('- This loop repairs the interpretation: change, obsolete and add interpretation items only.')
+    # plan 050 Phase 14 (decision 3)
+    if context.get('gateStage') == 'AFTER_DEFINITION':
+        lines.append('- This loop repairs the top-level requirements, the interpretation and the Interface and Environment:'
+                     ' change, obsolete and add no design item - the design is written after this gate passes.')
+    if context.get('gateStage') == 'BEFORE_CRITERIA':
+        lines.append('- This loop repairs the design: change, obsolete and add design items only - the top-level'
+                     ' requirements passed their gate already.')
     lines += ['', 'Which side a repair changes:']
     for finding, change in WHICH_SIDE:
         lines.append('- ' + finding + ': ' + change + '.')
@@ -275,6 +282,10 @@ def answer_of(cc_result, context, component):
             known[str(alias)] = known[str(lineage)]
     needs = {str(n['reqId']): n for n in component.get('needs') or []}
     only_items = context.get('gateStage') == 'AFTER_INTERPRETATION'
+    # plan 050 Phase 14 (decision 3): the top-level set is judged before any design exists - an AFTER_DEFINITION loop
+    # changes and adds no design item, a BEFORE_CRITERIA loop design items only
+    no_design = context.get('gateStage') == 'AFTER_DEFINITION'
+    only_design = context.get('gateStage') == 'BEFORE_CRITERIA'
 
     def root(ref):
         it = known.get(ref)
@@ -415,6 +426,10 @@ def answer_of(cc_result, context, component):
         it = items[r]
         if only_items and d['action'] != 'KEEP' and it['type'] != 'INTERPRETATION':
             raise ValueError(r + ' is a ' + it['type'] + ' item: an AFTER_INTERPRETATION loop changes interpretation items only')
+        if no_design and d['action'] != 'KEEP' and it['type'] == 'DESIGN':
+            raise ValueError(r + ' is a DESIGN item: an AFTER_DEFINITION loop changes no design item')
+        if only_design and d['action'] != 'KEEP' and it['type'] != 'DESIGN':
+            raise ValueError(r + ' is a ' + it['type'] + ' item: a BEFORE_CRITERIA loop changes design items only')
         if d['action'] != 'CHANGE':
             continue
         statement = one_line(d['statement'])
@@ -432,6 +447,10 @@ def answer_of(cc_result, context, component):
         key = a['key']
         if only_items and a['kind'] != 'INTERPRETATION':
             raise ValueError(key + ' adds a ' + a['kind'] + ' item: an AFTER_INTERPRETATION loop adds interpretation items only')
+        if no_design and a['kind'] == 'DESIGN':
+            raise ValueError(key + ' adds a DESIGN item: an AFTER_DEFINITION loop adds no design item')
+        if only_design and a['kind'] != 'DESIGN':
+            raise ValueError(key + ' adds a ' + a['kind'] + ' item: a BEFORE_CRITERIA loop adds design items only')
         statement = one_line(a['statement'])
         if a['kind'] == 'TOP_LEVEL':
             why = (key + ': a top-level requirement has no parent') if a['parent'] else top_level_refusal(
