@@ -20,6 +20,9 @@ import nrvv_cv_need as cv
 import nrvv_evidence as ev
 
 ASKED_MAX_TITLE_CHARS = 80
+# plan 050 decision 4: at most this many requirements of a TOP-LEVEL part cite its subject NEED - one rule with the Java
+# re-check's NrvvConsts.TOP_LEVEL_PER_NEED_MAX
+TOP_LEVEL_PER_NEED_MAX = 3
 TOP_FIELDS = ('key', 'needs', 'readings', 'title', 'statement', 'rationale', 'evidence')
 BOUNDARY_FIELDS = ('key', 'parent', 'assumptions', 'title', 'statement', 'rationale')
 DESIGN_FIELDS = ('key', 'parent', 'title', 'statement', 'rationale')
@@ -146,6 +149,7 @@ def compose_top(definition_input, subject):
         'Rules:',
     ] + V5_RULES + EVIDENCE_RULES + [
         '- At least one requirement cites the subject in "needs". Keys ' + str(need.get('reqId')) + '-1, -2, ... in order.',
+        '- At most ' + str(TOP_LEVEL_PER_NEED_MAX) + ' requirements cite the subject: restate the NEED, do not elaborate it.',
         '',
     ] + cv.KIND_HINT + ['', 'The subject:', '', _need_line(need), '']
     if s.get('readings'):
@@ -206,6 +210,10 @@ def check_top(cc_result, definition_input, subject):
                         'rationale': rationale, 'evidence': [{'source': a, 'quote': b} for a, b in evidence]})
         if not any(subject_id in r['needs'] for r in out):
             raise ValueError('no requirement cites the subject ' + subject_id)
+        citing = [r['key'] for r in out if subject_id in r['needs']]
+        if len(citing) > TOP_LEVEL_PER_NEED_MAX:
+            raise ValueError(str(len(citing)) + ' requirements ' + str(citing) + ' cite the subject: at most '
+                             + str(TOP_LEVEL_PER_NEED_MAX) + ' requirements cite the subject ' + subject_id)
         return {'requirements': out}
 
     return _refused(checked)

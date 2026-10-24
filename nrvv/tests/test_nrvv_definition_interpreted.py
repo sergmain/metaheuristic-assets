@@ -87,6 +87,23 @@ def test_top_check_quotes_a_followed_item():
     assert 'refused' not in wf.check_top(answer(requirements=[item]), DEFINITION_INPUT, n(1))
 
 
+def test_top_check_caps_the_requirements_citing_the_subject():
+    # plan 050 Phase 7 (decision 4) - characterization test: Green-1 pinned v7 (four accepted); at most
+    # TOP_LEVEL_PER_NEED_MAX (3) requirements cite the subject
+    four = [top(key='GASV6A3-1-' + str(i)) for i in range(1, 5)]
+    assert 'at most 3 requirements cite the subject ' + n(1) in refused_top(four)
+    out = wf.check_top(answer(requirements=four[:3]), DEFINITION_INPUT, n(1))
+    assert 'refused' not in out, out
+    assert len(out['requirements']) == 3
+
+
+def test_top_prompt_states_the_cap():
+    # plan 050 Phase 7 (decision 4): the prompt states the rule the check enforces
+    p = wf.compose_top(DEFINITION_INPUT, n(1))
+    assert '- At most 3 requirements cite the subject: restate the NEED, do not elaborate it.' in p
+    assert wf.TOP_LEVEL_PER_NEED_MAX == 3, 'one rule with NrvvConsts.TOP_LEVEL_PER_NEED_MAX'
+
+
 def test_top_check_refuses_the_three_v6_statements():
     assert 'rule 2 (universal word)' in refused_top([top(needs=[n(1)], readings=[],
         statement='The service shall publish each gas price update to gas stations.',
