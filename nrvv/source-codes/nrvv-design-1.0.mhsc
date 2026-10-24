@@ -1,0 +1,120 @@
+// NRVV design 1.0 (plan 050, decision 3): the design of every live top-level requirement, written AFTER the
+// AFTER_DEFINITION gate passed on the top-level set - one session per top-level requirement for how it is met. The
+// requirements are read at the run's STAGE, forked from the baseline the gate passed at: the ACTIVE members of the
+// lineages whose root is DECOMPOSED - a top-level requirement a REPAIR CHANGEd at its live EDITION, an OBSOLETE one not at
+// all (NrvvDefinitionPartService.read). Every branch is written into ONE STAGE as DERIVED items under its requirement;
+// the RG writes are serialized per STAGE, the CC sessions run in parallel. Line-writing (cause DESIGN). Started by the
+// Dispatcher (the chain, after AFTER_DEFINITION passes), never by hand: the run record NRVV_RUN #runId exists before this
+// ExecContext does and names its baseline, and mhdg-nrvv.finish-run closes it.
+//
+// The part is nrvv-definition-interpreted-1.0's DESIGN part, unchanged:
+//
+//   open       internal mhdg-nrvv.open-stage              ONE STAGE on the run's baseline: stageSnapshotId
+//   designIn   internal mhdg-nrvv.read-definition-input   DESIGN: designInput, topLevelLines (one per line)
+//   designs    internal mh.batch-line-splitter            one branch per top-level requirement, in parallel
+//     dprompt / dcc / dcheck / dstore (store-definition-part DESIGN, meta branch = the line)
+//   close      internal mhdg-rg.post-processing           commits the STAGE - marked FAILED instead if any Task failed
+//   finish     internal mhdg-nrvv.finish-run              the run FINISHED with its snapshot, the line extended
+//
+// A check that refuses CC's answer writes {"refused": "<rule>"}: its branch writes an ANSWER_REFUSED finding and nothing
+// to RG, and the run goes on - the requirement without design is the BEFORE_CRITERIA gate's DESIGN_MISSING.
+//
+// Inputs: exactly NrvvRunUtils.definitionBaselineVariables (MH refuses a missing or an undeclared name).
+//
+// ORDER is declaration order; inside a branch the steps run in order; close and finish run last, after failures too
+// (tag terminal). No cache on cc.
+
+source "nrvv-design-1.0" {
+
+    variables {
+        <- production?
+        <- runId, projectCode
+        <- model
+        <- effort?
+    }
+
+    open := internal mhdg-nrvv.open-stage {
+        name "Open ONE STAGE on the run's baseline"
+        <- runId
+        -> stageSnapshotId: ext=".txt"
+        timeout 300
+    }
+
+    designIn := internal mhdg-nrvv.read-definition-input {
+        name "Read the live top-level requirements, one per line, and the items"
+        meta part = "DESIGN"
+        <- runId, stageSnapshotId
+        -> designInput: ext=".json",
+           topLevelLines: ext=".txt"
+        timeout 120
+    }
+
+    designs := internal mh.batch-line-splitter {
+        name "One branch per top-level requirement"
+        meta number-of-lines-per-task = "1",
+             variable-for-splitting = "topLevelLines",
+             output-is-dynamic = "true",
+             output-variable = "branch",
+             is-array = "false"
+        <- topLevelLines
+        sequential {
+            dprompt := mh.asset.nrvv-design-one-prompt_1.0 {
+                name "Build the prompt of the requirement's design"
+                meta variable-for-design-input = "designInput",
+                     variable-for-branch = "branch",
+                     variable-for-prompt = "designPrompt"
+                <- designInput, branch
+                -> designPrompt: ext=".txt"
+                timeout 60
+            }
+
+            dcc := mh.asset.call-cc_1.2 {
+                name "Ask CC for the requirement's design"
+                // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+                meta variable-for-prompt = "designPrompt",
+                     variable-for-output = "designResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
+                     timeout-sec = "900"
+                <- designPrompt, model, effort?
+                -> designResult: ext=".txt"
+                timeout 1200
+                tries 2
+            }
+
+            dcheck := mh.asset.nrvv-design-one-check_1.0 {
+                name "Check the design; a broken rule is written as a refusal"
+                meta variable-for-cc-result = "designResult",
+                     variable-for-design-input = "designInput",
+                     variable-for-branch = "branch",
+                     variable-for-answer = "designAnswer"
+                <- designResult, designInput, branch
+                -> designAnswer: ext=".json"
+                timeout 60
+            }
+
+            dstore := internal mhdg-nrvv.store-definition-part {
+                name "Write the requirement's design into the STAGE"
+                meta part = "DESIGN",
+                     answer = "designAnswer",
+                     branch = "branch"
+                <- runId, stageSnapshotId, designAnswer, branch
+                timeout 1800
+            }
+        }
+    }
+
+    close := internal mhdg-rg.post-processing {
+        name "Commit the STAGE - marked FAILED instead if any Task failed"
+        <- projectCode, stageSnapshotId
+        timeout 60
+        tag terminal
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED with its snapshot, or ERROR when any Task failed"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
