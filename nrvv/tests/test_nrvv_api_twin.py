@@ -134,3 +134,42 @@ def test_main_reports_each_base_and_fails_when_one_is_refused(tmp_path, capsys):
     assert api_twin.main(['api_twin.py', str(good), str(bad), '--out', str(tmp_path / 'out')]) == 1
     console = capsys.readouterr().out
     assert 'written ' in console and 'REFUSED nrvv-plain-1.0.mhsc: no model call site' in console
+
+
+# plan 052 Phase 7: the production copy passes its own codes - the same rule, the production Function codes
+PRODUCTION_CODES = (
+    (api_twin.re.compile(r'mhdg-nrvv\.call-cc-\d+(?:\.\d+)*'), 'mhdg-nrvv.call-cc-api-1.0'),
+    (api_twin.re.compile(r'mhdg-nrvv\.implement-\d+(?:\.\d+)*'), 'mhdg-nrvv.implement-api-1.0'),
+)
+
+
+def test_twin_with_production_codes_moves_the_production_call_sites():
+    base = BASE.replace('mh.asset.call-cc_1.2', 'mhdg-nrvv.call-cc-1.2').replace(
+        'mh.asset.nrvv-implement_1.1', 'mhdg-nrvv.implement-1.2').replace(
+        'mh.asset.nrvv-sample-check_1.0', 'mhdg-nrvv.sample-check-1.0')
+
+    text, uid, sites = twin(base, 'nrvv-sample-1.3.mhsc', PRODUCTION_CODES)
+
+    assert uid == 'nrvv-sample-api-1.3'
+    assert [(c, a) for _, c, a in sites] == [('mhdg-nrvv.call-cc-1.2', 'mhdg-nrvv.call-cc-api-1.0'),
+                                             ('mhdg-nrvv.implement-1.2', 'mhdg-nrvv.implement-api-1.0')]
+    assert '    ask := mhdg-nrvv.call-cc-api-1.0 {' in text
+    assert '    implement := mhdg-nrvv.implement-api-1.0 {' in text
+    assert text.count('meta llm_provider = "claude_api",') == 2
+    assert 'check := mhdg-nrvv.sample-check-1.0 {' in text
+    # the development codes are not model codes in this call: a flow naming one is left as it is
+    assert 'mh.asset' not in text
+
+
+def test_twin_with_production_codes_refuses_a_production_model_code_outside_a_call_site():
+    base = 'source "nrvv-x-1.0" {\n    ask := mhdg-nrvv.call-cc-1.2 {\n        meta variable-for-model = "model"\n    }\n' \
+           '    note := mhdg-nrvv.store {\n        meta other = "mhdg-nrvv.call-cc-1.2"\n    }\n}\n'
+
+    with pytest.raises(TwinError, match='outside a call site'):
+        twin(base, 'nrvv-x-1.0.mhsc', PRODUCTION_CODES)
+
+
+def test_twin_with_production_codes_does_not_take_an_api_code_for_a_base_code():
+    # mhdg-nrvv.call-cc-api-1.0 must not match the call-cc base pattern: a twin is never twinned again
+    assert api_twin._model_code(PRODUCTION_CODES).fullmatch('mhdg-nrvv.call-cc-api-1.0') is None
+    assert api_twin._model_code(PRODUCTION_CODES).fullmatch('mhdg-nrvv.implement-api-1.0') is None

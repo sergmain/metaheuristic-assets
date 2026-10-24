@@ -44,19 +44,33 @@ class TwinError(ValueError):
     pass
 
 
-def api_code(code):
-    for pattern, replacement in API_CODES:
+def api_code(code, codes=API_CODES):
+    for pattern, replacement in codes:
         if pattern.fullmatch(code):
             return replacement
     raise TwinError('no API code for ' + code)
+
+
+def _model_code(codes):
+    """One pattern matching any model code of `codes` - the base codes the twin moves."""
+    return re.compile('|'.join('(?:' + pattern.pattern + ')' for pattern, _ in codes))
+
+
+def _call_site(model_code):
+    return re.compile(r'^(?P<head>\s*[A-Za-z0-9_.-]+\s*:=\s*)(?P<code>' + model_code.pattern + r')(?P<tail>\s*\{\s*)$')
 
 
 def _is_comment(line):
     return line.lstrip().startswith('//')
 
 
-def twin(text, base_name='<base>'):
-    """(twin text, twin uid, [(process line no, base code, api code)]). Line endings are kept as they are."""
+def twin(text, base_name='<base>', codes=API_CODES):
+    """(twin text, twin uid, [(process line no, base code, api code)]). Line endings are kept as they are.
+
+    `codes` - (base code pattern, API code) pairs; the default is the development codes. The production copy
+    (java/legal/dev-tools/nrvv_production_copy.py) passes the production codes, so the rule is written once."""
+    model_code = MODEL_CODE if codes is API_CODES else _model_code(codes)
+    call_site = CALL_SITE if codes is API_CODES else _call_site(model_code)
     eol = '\r\n' if '\r\n' in text else '\n'
     lines = text.split(eol)
     uid = None
@@ -78,10 +92,10 @@ def twin(text, base_name='<base>'):
             lines[i] = source.group('head') + uid + source.group('tail')
             i += 1
             continue
-        site = CALL_SITE.match(line)
+        site = call_site.match(line)
         if site:
             code = site.group('code')
-            replacement = api_code(code)
+            replacement = api_code(code, codes)
             lines[i] = site.group('head') + replacement + site.group('tail')
             meta_at = _first_meta(lines, i + 1)
             if meta_at is None:
@@ -99,7 +113,7 @@ def twin(text, base_name='<base>'):
             inserted += 1
             i = meta_at + 2
             continue
-        if MODEL_CODE.search(line):
+        if model_code.search(line):
             raise TwinError(base_name + ': line ' + str(i + 1) + ' names a model code outside a call site: '
                             + line.strip())
         i += 1
