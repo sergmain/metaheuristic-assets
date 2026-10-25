@@ -67,7 +67,7 @@ class EchoMessagesApi:
                     return
                 self._send(200, {'id': 'msg_1', 'type': 'message', 'role': 'assistant', 'model': body['model'],
                                  'stop_reason': 'tool_use', 'usage': {'input_tokens': 10, 'output_tokens': 5},
-                                 'content': [{'type': 'tool_use', 'id': 'tu_1', 'name': body['tool_choice']['name'],
+                                 'content': [{'type': 'tool_use', 'id': 'tu_1', 'name': STORE_RESULT_TOOL,
                                               'input': {'result': body['messages'][0]['content']}}]})
 
             def _send(self, status, payload):
@@ -344,3 +344,56 @@ def test_run_claude_api_a_model_refusing_forced_tool_use(tmp_path, capsys):
     assert [r['body']['tool_choice'] for r in api.requests] == [{'type': 'tool', 'name': STORE_RESULT_TOOL}, {'type': 'auto'}]
     assert api.requests[1]['body']['tools'] == [mh_api_call.store_result_tool()]
     assert 'refuses a forced tool_choice - the same request with tool_choice auto' in console
+
+
+def test_run_claude_api_with_an_effort(tmp_path, capsys):
+    """Plan 050 Phase 17 (CT): the effort of a run on the API path. Every v5 - v7 analysis of r1 on the CC path (effort
+    high) read "Stations act on stale prices." as a fact or a cost; four of five v8 analyses on the API path read it as an
+    obligation - and declined. Green-1 pins what the API path does with an effort."""
+    api = EchoMessagesApi('sk-test')
+    channel = ProcessorSecretChannel('cc-4', b'sk-test')
+    params = _task(tmp_path, channel)
+    try:
+        code = mh_call_cc.run_claude_api(params, [{'max-tokens': '200'}, {'timeout-sec': '30'}], str(tmp_path), 'p',
+                                         params['outputs'][0], 'claude-haiku-5-5', 'high', api_url=api.url)
+    finally:
+        api.close()
+
+    console = capsys.readouterr().out
+    assert code == 0, console
+    [request] = api.requests
+    # Red (Green-1 pinned: the effort dropped - no thinking, the tool forced, the answer's budget only): the effort is the
+    # API's extended thinking - high = 12288 thinking tokens on top of the answer's budget; thinking excludes a forced tool
+    assert 'effort high -> extended thinking, budget 12288 tokens' in console
+    assert request['body']['thinking'] == {'type': 'enabled', 'budget_tokens': 12288}
+    assert request['body']['tool_choice'] == {'type': 'auto'}
+    assert request['body']['max_tokens'] == 200 + 12288
+
+
+def test_thinking_budget_per_effort():
+    assert mh_api_call.thinking_budget(None) is None
+    assert mh_api_call.thinking_budget('  ') is None
+    assert mh_api_call.thinking_budget('low') == 2048
+    assert mh_api_call.thinking_budget('medium') == 6144
+    assert mh_api_call.thinking_budget('HIGH') == 12288
+    assert mh_api_call.thinking_budget('extra') == 24576
+    assert mh_api_call.thinking_budget('xhigh') == 24576
+    with pytest.raises(ValueError, match='unknown effort'):
+        mh_api_call.thinking_budget('maximal')
+
+
+def test_request_body_with_thinking_offers_the_tool_under_auto_and_adds_the_budget():
+    body = request_body('claude-haiku-5-5', 'p', 100, thinking=2048)
+    assert body['thinking'] == {'type': 'enabled', 'budget_tokens': 2048}
+    assert body['max_tokens'] == 2148
+    assert body['tool_choice'] == {'type': 'auto'}
+    assert 'thinking' not in request_body('claude-haiku-5-5', 'p', 100), 'no thinking without an effort'
+
+
+def test_thinking_refused_is_the_apis_400_naming_thinking_only():
+    def err(message):
+        return json.dumps({'type': 'error', 'error': {'type': 'invalid_request_error', 'message': message}})
+    assert mh_api_call.thinking_refused(400, err('thinking: extended thinking is not supported for this model'))
+    assert not mh_api_call.thinking_refused(400, err(ForcedToolRefusingApi.REFUSAL))
+    assert not mh_api_call.thinking_refused(500, err('thinking: overloaded'))
+    assert not mh_api_call.thinking_refused(400, None)
