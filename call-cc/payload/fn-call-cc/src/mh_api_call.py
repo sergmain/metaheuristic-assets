@@ -17,6 +17,15 @@
 # tool_choice auto, its max_tokens the answer's budget plus the thinking budget. A model refusing the thinking parameter
 # (a 400 naming thinking) gets the request once more without it.
 #
+# (Superseded 2026-10-25, plan 050 Phase 17, by the API's thinking documentation - the two paragraphs above are kept per
+# the no-delete rule.) The store tool is offered under tool_choice auto on EVERY request: a forced tool_choice starts a
+# Claude Haiku 5.5 response with the tool call and no thinking block (v8's analyses #101 - #106 ran with 0 thinking
+# tokens), and Claude Opus 5.5 / Sonnet 5.5 refuse it with a 400. No thinking field is sent: thinking is adaptive by
+# default on the 5.5 models, and thinking.type "enabled" with budget_tokens is a 400 there. The run's effort is sent as
+# output_config.effort (api_effort: the wire code, extra -> xhigh); max_tokens adds room for the thinking, which counts
+# toward it. A refused request is never retried without what it refused - a run without its effort or thinking is a
+# different run, and the silent fallback is what hid this in #106; it fails with the API's message (refused_parameter).
+#
 # The API key is never in argv, env or on disk: the Processor seals the Vault entry named by mh-function.yaml's
 # api.keyCode and hands it over its loopback secret channel, whose port and check code are in the params file
 # (task.secretPort, task.checkCode). read_secret() speaks that protocol - big-endian int32 length frames: send the check
@@ -44,6 +53,21 @@ STORE_RESULT_TOOL = 'mh_cc_store_result'
 
 # The extended-thinking budget per effort - the model's reasoning before it answers (plan 050 Phase 17).
 THINKING_BUDGET = {'low': 2048, 'medium': 6144, 'high': 12288, 'xhigh': 24576, 'extra': 24576}
+
+# (plan 050 Phase 17, 2026-10-25) THINKING_BUDGET above is no longer sent - see the superseded note at the top.
+# The API's output_config.effort per wire code (RG's RgLlmEffort.code, case-insensitive): low, medium, high and max are the
+# API's own; extra is the API's xhigh, as it is CC's; xhigh is accepted as itself.
+API_EFFORT = {'low': 'low', 'medium': 'medium', 'high': 'high', 'extra': 'xhigh', 'xhigh': 'xhigh', 'max': 'max'}
+
+# Room for adaptive thinking on top of the answer's budget, per API effort - thinking counts toward max_tokens, and an
+# answer cut at max_tokens is a failure (answer_from_response). Room the model does not use costs nothing.
+THINKING_ROOM = {'low': 8192, 'medium': 16384, 'high': 32768, 'xhigh': 65536, 'max': 65536}
+
+# The room when the run names no effort: the 5.5 models then run at their default effort, medium or high.
+DEFAULT_THINKING_ROOM = THINKING_ROOM['high']
+
+# The request's max_tokens is capped at the models' output ceiling (128K on Claude Haiku 5.5, Sonnet 5.5 and Opus 5.5).
+MAX_OUTPUT_TOKENS = 128000
 
 # How much of a failed response's body is printed. The dispatcher's analyzers match the console, so the status line
 # and the API's own error type must be in it; the whole body need not be.
@@ -73,24 +97,28 @@ def store_result_tool():
     }
 
 
-def request_body(model, prompt, max_tokens, forced=True, thinking=None):
+def request_body(model, prompt, max_tokens, effort=None):
     """The Messages API request: one user turn with the prompt verbatim, the store tool offered - forced, or with
     forced=False offered under tool_choice auto (a model that refuses forced tool use - tool_choice_refused). With a
-    thinking budget: extended thinking on, max_tokens the answer's budget plus the thinking budget, the tool under auto."""
+    thinking budget: extended thinking on, max_tokens the answer's budget plus the thinking budget, the tool under auto.
+
+    (Superseded 2026-10-25, plan 050 Phase 17 - the paragraph above is kept per the no-delete rule; there is no forced
+    and no thinking parameter any more.) The store tool is offered under tool_choice auto, always, and no thinking field
+    is sent. effort - an API effort (api_effort) or None - is sent as output_config.effort. max_tokens is the answer's
+    budget; the request's max_tokens adds thinking_room(effort), capped at MAX_OUTPUT_TOKENS."""
     if model is None or not model.strip():
         raise ValueError('a model is required on the claude_api path - the API has no default model')
     if max_tokens < 1:
         raise ValueError('max-tokens must be greater than 0, got ' + str(max_tokens))
     body = {
         'model': model.strip(),
-        'max_tokens': max_tokens,
+        'max_tokens': min(max_tokens + thinking_room(effort), MAX_OUTPUT_TOKENS),
         'messages': [{'role': 'user', 'content': prompt}],
         'tools': [store_result_tool()],
-        'tool_choice': {'type': 'tool', 'name': STORE_RESULT_TOOL} if forced and not thinking else {'type': 'auto'},
+        'tool_choice': {'type': 'auto'},
     }
-    if thinking:
-        body['thinking'] = {'type': 'enabled', 'budget_tokens': thinking}
-        body['max_tokens'] = max_tokens + thinking
+    if effort is not None:
+        body['output_config'] = {'effort': effort}
     return body
 
 
@@ -102,6 +130,28 @@ def thinking_budget(effort):
     if budget is None:
         raise ValueError('unknown effort ' + repr(effort) + ' on the claude_api path - one of ' + str(sorted(THINKING_BUDGET)))
     return budget
+
+
+def api_effort(effort):
+    """The API's output_config.effort of a run's effort (its wire code, API_EFFORT), None for no effort; an unknown effort
+    is refused (plan 050 Phase 17)."""
+    if effort is None or not effort.strip():
+        return None
+    value = API_EFFORT.get(effort.strip().lower())
+    if value is None:
+        raise ValueError('unknown effort ' + repr(effort) + ' on the claude_api path - one of ' + str(sorted(API_EFFORT)))
+    return value
+
+
+def thinking_room(effort):
+    """The max_tokens room for adaptive thinking of an API effort (THINKING_ROOM), DEFAULT_THINKING_ROOM for None; an
+    effort that is not an API effort (a wire code such as extra included) is refused."""
+    if effort is None:
+        return DEFAULT_THINKING_ROOM
+    room = THINKING_ROOM.get(effort)
+    if room is None:
+        raise ValueError('unknown API effort ' + repr(effort) + ' - one of ' + str(sorted(THINKING_ROOM)))
+    return room
 
 
 def _refusal_names(status, text, word):
@@ -135,6 +185,15 @@ def tool_choice_refused(status, text):
     """Whether a response is the API refusing the request's forced tool_choice for this model: a 400 whose error body is
     an invalid_request_error naming tool_choice. Any other failure is not - it stays a failed call."""
     return _refusal_names(status, text, 'tool_choice')
+
+
+def refused_parameter(status, text):
+    """The request parameter a 400 invalid_request_error names - tool_choice, thinking, effort or output_config, the first
+    one named - else None. For the console only: a refusal is never retried without the parameter (plan 050 Phase 17)."""
+    for word in ('tool_choice', 'thinking', 'effort', 'output_config'):
+        if _refusal_names(status, text, word):
+            return word
+    return None
 
 
 def max_tokens(metas_value):

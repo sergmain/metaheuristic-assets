@@ -135,6 +135,58 @@ class ForcedToolRefusingApi:
         self.httpd.server_close()
 
 
+class Haiku55Api:
+    """A local Messages API that behaves as Claude Haiku 5.5 does by the API's thinking documentation (per-model table,
+    2026-10-25) and by run #106 of plan 050 Phase 17 (Task #202108: 'refuses extended thinking', then thinking_tokens 0):
+    thinking type enabled (a budget_tokens request) -> 400 invalid_request_error naming thinking; any other request -> 200
+    with the mh_cc_store_result call (the user turn as `result`) - under a forced tool_choice the call alone (a forced tool
+    starts the response with the call, no thinking block), otherwise a thinking block before the call, as adaptive
+    thinking - the model's default - returns it (display omitted: an empty thinking text). One behaviour for every test.
+    The refusal's wording is this stand-in's own: #106 ran before the payload printed the API's message."""
+
+    REFUSAL = 'thinking.type: "enabled" is not supported for this model. Use "adaptive" instead.'
+
+    def __init__(self):
+        self.requests = []
+        api = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])).decode('utf-8'))
+                api.requests.append({'path': self.path, 'body': body})
+                if (body.get('thinking') or {}).get('type') == 'enabled':
+                    self._send(400, {'type': 'error', 'error': {'type': 'invalid_request_error',
+                                                                 'message': Haiku55Api.REFUSAL}})
+                    return
+                call = {'type': 'tool_use', 'id': 'tu_3', 'name': STORE_RESULT_TOOL,
+                        'input': {'result': body['messages'][0]['content']}}
+                forced = (body.get('tool_choice') or {}).get('type') in ('tool', 'any')
+                content = [call] if forced else [{'type': 'thinking', 'thinking': '', 'signature': 'sig'}, call]
+                self._send(200, {'id': 'msg_3', 'type': 'message', 'role': 'assistant', 'model': body['model'],
+                                 'stop_reason': 'tool_use', 'content': content,
+                                 'usage': {'input_tokens': 12, 'output_tokens': 7 if forced else 47,
+                                           'output_tokens_details': {'thinking_tokens': 0 if forced else 40}}})
+
+            def _send(self, status, payload):
+                data = json.dumps(payload).encode('utf-8')
+                self.send_response(status)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        self.httpd = HTTPServer(('127.0.0.1', 0), Handler)
+        self.url = 'http://127.0.0.1:' + str(self.httpd.server_address[1]) + '/v1/messages'
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
 def _envelope(content, stop_reason='tool_use'):
     return {'content': content, 'stop_reason': stop_reason, 'usage': {'output_tokens': 7}}
 
@@ -145,20 +197,25 @@ def _store(result):
 
 # ----------------------------------------------------------------- the request
 
-def test_request_body_sends_the_prompt_verbatim_and_forces_the_store_tool():
+def test_request_body_sends_the_prompt_verbatim_and_offers_the_store_tool_under_auto():
+    # plan 050 Phase 17 (rewritten 2026-10-25, section 9.3 rule 2 - was ..._and_forces_the_store_tool: the forced tool,
+    # max_tokens 100): the tool under tool_choice auto, no thinking field, no effort sent, the default thinking room
     body = request_body(' claude-haiku-5-5 ', 'line 1\nline 2 \u2014 \u00fc', 100)
 
     assert body['model'] == 'claude-haiku-5-5'
-    assert body['max_tokens'] == 100
+    assert body['max_tokens'] == 100 + 32768
     assert body['messages'] == [{'role': 'user', 'content': 'line 1\nline 2 \u2014 \u00fc'}]
     assert [t['name'] for t in body['tools']] == [STORE_RESULT_TOOL]
     assert body['tools'][0]['input_schema']['required'] == ['result']
-    assert body['tool_choice'] == {'type': 'tool', 'name': STORE_RESULT_TOOL}
+    assert body['tool_choice'] == {'type': 'auto'}
+    assert 'thinking' not in body
+    assert 'output_config' not in body
 
 
-def test_request_body_not_forced_offers_the_store_tool_with_tool_choice_auto():
+def test_request_body_offers_the_store_tool_under_auto_to_every_model():
     # plan 050 Phase 17: the second request to a model that refuses forced tool use
-    body = request_body('claude-sonnet-5-5', 'p', 100, forced=False)
+    # (rewritten 2026-10-25, section 9.3 rule 2 - was ..._not_forced_...: forced=False is gone; every request is this one)
+    body = request_body('claude-sonnet-5-5', 'p', 100)
     assert body['tool_choice'] == {'type': 'auto'}
     assert body['tools'] == [mh_api_call.store_result_tool()]
     assert body['messages'] == [{'role': 'user', 'content': 'p'}]
@@ -291,8 +348,9 @@ def test_run_claude_api_stores_the_store_calls_result_verbatim(tmp_path):
     assert request['headers']['x-api-key'] == 'sk-test'
     assert request['headers']['anthropic-version'] == '2023-06-01'
     assert request['body']['model'] == 'claude-haiku-5-5'
-    assert request['body']['max_tokens'] == 200
-    assert request['body']['tool_choice'] == {'type': 'tool', 'name': STORE_RESULT_TOOL}
+    # plan 050 Phase 17 (rewritten 2026-10-25, section 9.3 rule 2 - was max_tokens 200 and the forced tool)
+    assert request['body']['max_tokens'] == 200 + 32768
+    assert request['body']['tool_choice'] == {'type': 'auto'}
     assert json.loads((tmp_path / 'cc-data' / 'api-response.json').read_text(encoding='utf-8'))['stop_reason'] == 'tool_use'
     assert 'sk-test' not in (tmp_path / 'cc-data' / 'api-response.json').read_text(encoding='utf-8')
 
@@ -339,13 +397,13 @@ def test_run_claude_api_a_model_refusing_forced_tool_use(tmp_path, capsys):
     console = capsys.readouterr().out
     # Red (Green-1 pinned: the one forced request refused, exit 1): the refusal names tool_choice, so the same request goes
     # once more with tool_choice auto - the tool still offered, the answer still exactly one store call
+    # (rewritten 2026-10-25, section 9.3 rule 2: the first and only request is tool_choice auto, so the refusal never
+    # arises - the request shape every model accepts)
     assert code == 0, console
     assert (tmp_path / 'artifacts' / '9').read_bytes() == b'the repair prompt'
-    assert [r['body']['tool_choice'] for r in api.requests] == [{'type': 'tool', 'name': STORE_RESULT_TOOL}, {'type': 'auto'}]
-    assert api.requests[1]['body']['tools'] == [mh_api_call.store_result_tool()]
-    assert 'refuses a forced tool_choice - the same request with tool_choice auto' in console
-    # plan 050 Phase 17: the API's own refusal is printed - what the model accepts is named there
-    assert ForcedToolRefusingApi.REFUSAL.replace('"', '\\"') in console or ForcedToolRefusingApi.REFUSAL in console
+    assert [r['body']['tool_choice'] for r in api.requests] == [{'type': 'auto'}]
+    assert api.requests[0]['body']['tools'] == [mh_api_call.store_result_tool()]
+    assert 'refuses' not in console
 
 
 def test_run_claude_api_with_an_effort(tmp_path, capsys):
@@ -357,7 +415,7 @@ def test_run_claude_api_with_an_effort(tmp_path, capsys):
     params = _task(tmp_path, channel)
     try:
         code = mh_call_cc.run_claude_api(params, [{'max-tokens': '200'}, {'timeout-sec': '30'}], str(tmp_path), 'p',
-                                         params['outputs'][0], 'claude-haiku-5-5', 'high', api_url=api.url)
+                                         params['outputs'][0], 'claude-opus-5-5', 'extra', api_url=api.url)
     finally:
         api.close()
 
@@ -366,10 +424,47 @@ def test_run_claude_api_with_an_effort(tmp_path, capsys):
     [request] = api.requests
     # Red (Green-1 pinned: the effort dropped - no thinking, the tool forced, the answer's budget only): the effort is the
     # API's extended thinking - high = 12288 thinking tokens on top of the answer's budget; thinking excludes a forced tool
-    assert 'effort high -> extended thinking, budget 12288 tokens' in console
-    assert request['body']['thinking'] == {'type': 'enabled', 'budget_tokens': 12288}
+    # (rewritten 2026-10-25, section 9.3 rule 2 - was haiku / high as budget_tokens 12288; its haiku case is now
+    # test_run_claude_api_haiku_5_5_at_effort_high): the REPAIR ladder's level 2 - the wire code extra is the API's xhigh,
+    # sent as output_config.effort, with xhigh's thinking room; no thinking field
+    assert 'effort extra -> output_config.effort xhigh, adaptive thinking, max_tokens 200 + 65536' in console
+    assert request['body']['output_config'] == {'effort': 'xhigh'}
+    assert 'thinking' not in request['body']
     assert request['body']['tool_choice'] == {'type': 'auto'}
-    assert request['body']['max_tokens'] == 200 + 12288
+    assert request['body']['max_tokens'] == 200 + 65536
+
+
+def test_run_claude_api_haiku_5_5_at_effort_high(tmp_path, capsys):
+    """Plan 050 Phase 17 (CT): the default step's model and effort (claude-haiku-5-5 / high) on the API path, against a
+    stand-in behaving as Claude Haiku 5.5 does. v8's analyses of r1 on this path (#101 - #106) all ran with 0 thinking
+    tokens: the forced tool_choice starts the response with the tool call, and 1d9a018's budget_tokens thinking is a 400
+    whose fallback is the forced request again. Green-1 pins what the API path sends."""
+    api = Haiku55Api()
+    channel = ProcessorSecretChannel('cc-5', b'sk-test')
+    params = _task(tmp_path, channel)
+    try:
+        code = mh_call_cc.run_claude_api(params, [{'max-tokens': '200'}, {'timeout-sec': '30'}], str(tmp_path),
+                                         'the analysis prompt', params['outputs'][0], 'claude-haiku-5-5', 'high',
+                                         api_url=api.url)
+    finally:
+        api.close()
+
+    console = capsys.readouterr().out
+    assert code == 0, console
+    assert (tmp_path / 'artifacts' / '9').read_bytes() == b'the analysis prompt'
+    bodies = [r['body'] for r in api.requests]
+    # Red (Green-1 pinned: two requests - the extended-thinking one refused, then the forced one with neither thinking nor
+    # the effort): ONE request every 5.5 model accepts - no thinking field (adaptive is the default), the effort as
+    # output_config.effort, the store tool under tool_choice auto (a forced tool suppresses the thinking), max_tokens the
+    # answer's budget plus room for the thinking (thinking counts toward max_tokens)
+    assert len(bodies) == 1, bodies
+    assert 'thinking' not in bodies[0]
+    assert bodies[0]['output_config'] == {'effort': 'high'}
+    assert bodies[0]['tool_choice'] == {'type': 'auto'}
+    assert bodies[0]['tools'] == [mh_api_call.store_result_tool()]
+    assert bodies[0]['max_tokens'] == 200 + 32768
+    assert 'effort high -> output_config.effort high, adaptive thinking, max_tokens 200 + 32768' in console
+    assert 'refuses' not in console
 
 
 def test_thinking_budget_per_effort():
@@ -384,12 +479,43 @@ def test_thinking_budget_per_effort():
         mh_api_call.thinking_budget('maximal')
 
 
-def test_request_body_with_thinking_offers_the_tool_under_auto_and_adds_the_budget():
-    body = request_body('claude-haiku-5-5', 'p', 100, thinking=2048)
-    assert body['thinking'] == {'type': 'enabled', 'budget_tokens': 2048}
-    assert body['max_tokens'] == 2148
+def test_request_body_with_an_effort_sends_output_config_and_adds_the_thinking_room():
+    # plan 050 Phase 17 (rewritten 2026-10-25, section 9.3 rule 2 - was ..._with_thinking_...: thinking enabled with
+    # budget_tokens 2048, max_tokens 2148)
+    body = request_body('claude-haiku-5-5', 'p', 100, effort='low')
+    assert body['output_config'] == {'effort': 'low'}
+    assert 'thinking' not in body
+    assert body['max_tokens'] == 100 + 8192
     assert body['tool_choice'] == {'type': 'auto'}
-    assert 'thinking' not in request_body('claude-haiku-5-5', 'p', 100), 'no thinking without an effort'
+    assert 'output_config' not in request_body('claude-haiku-5-5', 'p', 100), 'no effort sent without one'
+    assert request_body('claude-opus-5-5', 'p', 120000, effort='max')['max_tokens'] == 128000, 'capped at the ceiling'
+    with pytest.raises(ValueError, match='unknown API effort'):
+        request_body('claude-opus-5-5', 'p', 100, effort='extra')
+
+
+def test_api_effort_per_wire_code():
+    assert mh_api_call.api_effort(None) is None
+    assert mh_api_call.api_effort('  ') is None
+    assert [mh_api_call.api_effort(e) for e in ['low', 'medium', 'HIGH', 'extra', 'xhigh', 'max']] == \
+           ['low', 'medium', 'high', 'xhigh', 'xhigh', 'max']
+    with pytest.raises(ValueError, match='unknown effort'):
+        mh_api_call.api_effort('maximal')
+
+
+def test_thinking_room_per_api_effort():
+    assert [mh_api_call.thinking_room(e) for e in [None, 'low', 'medium', 'high', 'xhigh', 'max']] == \
+           [32768, 8192, 16384, 32768, 65536, 65536]
+
+
+def test_refused_parameter_names_what_a_400_refuses():
+    def err(message):
+        return json.dumps({'type': 'error', 'error': {'type': 'invalid_request_error', 'message': message}})
+    assert mh_api_call.refused_parameter(400, err(Haiku55Api.REFUSAL)) == 'thinking'
+    assert mh_api_call.refused_parameter(400, err(ForcedToolRefusingApi.REFUSAL)) == 'tool_choice'
+    assert mh_api_call.refused_parameter(400, err('output_config.effort: xhigh is not supported')) == 'effort'
+    assert mh_api_call.refused_parameter(400, err('output_config: Extra inputs are not permitted')) == 'output_config'
+    assert mh_api_call.refused_parameter(400, err('messages: at least one message is required')) is None
+    assert mh_api_call.refused_parameter(500, err('thinking: overloaded')) is None
 
 
 def test_thinking_refused_is_the_apis_400_naming_thinking_only():
