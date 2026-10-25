@@ -1,0 +1,111 @@
+// plan 050 Phase 17 (2026-10-25): nrvv-cv-need-expectation-1.2 - the graph of nrvv-cv-need-expectation-1.0 unchanged, a version above its production copy
+// nrvv-cv-need-expectation-1.1 so NRVV runs this development flow and its API twin (the git-sourced mh.asset.call-cc-api,
+// with the API-path fixes); the production copy of plan 050 Phase 19 ships above it.
+// NRVV cv-need-expectation 1.0 (plan 048, Phase 5, decision 14): validation of the NEEDs against their expectation -
+// does each agreed NEED say what its clause of the expectation says? The subjects are the agreed NEEDs whose text names
+// an expectation span (a NEED written by a person has none and is not judged). Per subject CC answers exactly one
+// verdict: FAITHFUL (no finding), OVER_STATES (the NEED says more than its clause - hard), CONTRADICTS_EXPECTATION
+// (hard), UNDER_STATES (the NEED drops something its clause says - soft). One NEEDS_CV run of workflow EXPECTATION; run
+// 3 times per gate (decision 13), a group of the BEFORE_DEFINITION gate. Started by the Dispatcher (POST
+// /rest/v1/nrvv/projects/{id}/needs-cv with workflow EXPECTATION, or the chain after FEASIBILITY), never by hand: the run
+// record NRVV_RUN #runId exists before this ExecContext does and names the baseline's snapshot, and mhdg-nrvv.finish-run
+// closes it.
+//
+//   agreed   internal mhdg-nrvv.read-agreed-needs              the agreed NEEDs at the run's snapshot, each with its
+//                                                              clause, and the subjects - the NEEDs with a clause, one
+//                                                              per line (nullified when there is none: no chunk, no
+//                                                              CC session, no finding)
+//   split    internal mh.batch-line-splitter                  one branch per chunk of at most 40 subjects
+//     eprompt  mh.asset.nrvv-cv-need-expectation-prompt_1.0   the prompt for the chunk: each NEED with its clause
+//     cc       mh.asset.call-cc_1.2                           CC answers {"verdicts": [...]}, one per NEED of the chunk
+//     echeck   mh.asset.nrvv-cv-need-expectation-check_1.0    the answer checked - every NEED of the chunk once, known
+//                                                              verdicts, a text on every verdict but FAITHFUL
+//     store    internal mhdg-nrvv.store-findings               one finding per verdict other than FAITHFUL; checked
+//                                                              again against what the Dispatcher reads itself; a chunk
+//                                                              is written once
+//   finish   internal mhdg-nrvv.finish-run                    the run record FINISHED, or ERROR when any Task failed
+//
+// No STAGE: the run reads RG and NRVV and writes NRVV only. No checkout, no workspace, no credential.
+//
+// Inputs: exactly NrvvRunUtils.needsCvVariables (MH refuses a missing or an undeclared name). `model` is declared
+// without '?': NrvvRunService refuses a blank model (06.004.620).
+//
+// ORDER is declaration order: each process is chained to the one declared before it; inside a branch the steps run in
+// order; finish runs last, after failures too (tag terminal). No cache on cc: each attempt of a group is asked again.
+
+source "nrvv-cv-need-expectation-1.2" {
+
+    variables {
+        <- production?
+        <- runId
+        <- model
+        <- effort?
+    }
+
+    agreed := internal mhdg-nrvv.read-agreed-needs {
+        name "Read the agreed NEEDs with their clauses at the run's snapshot, and the NEEDs that have a clause"
+        <- runId
+        -> agreedNeeds: ext=".json",
+           subjects: ext=".txt"
+        timeout 120
+    }
+
+    split := internal mh.batch-line-splitter {
+        name "One branch per chunk of at most 40 NEEDs with a clause"
+        meta number-of-lines-per-task = "40",
+             variable-for-splitting = "subjects",
+             output-is-dynamic = "true",
+             output-variable = "needChunk",
+             is-array = "false"
+        <- subjects
+        sequential {
+            eprompt := mh.asset.nrvv-cv-need-expectation-prompt_1.0 {
+                name "Build the EXPECTATION prompt for the chunk: each NEED with its clause of the expectation"
+                meta variable-for-agreed-needs = "agreedNeeds",
+                     variable-for-subjects = "needChunk",
+                     variable-for-prompt = "expectationPrompt"
+                <- agreedNeeds, needChunk
+                -> expectationPrompt: ext=".txt"
+                timeout 60
+            }
+
+            cc := mh.asset.call-cc_1.2 {
+                name "Ask CC for one verdict per NEED of the chunk"
+                // the process timeout must be larger than timeout-sec, or MH kills the Task before it can say why
+                meta variable-for-prompt = "expectationPrompt",
+                     variable-for-output = "expectationResult",
+                     variable-for-model = "model",
+                     variable-for-effort = "effort",
+                     timeout-sec = "900"
+                <- expectationPrompt, model, effort?
+                -> expectationResult: ext=".txt"
+                timeout 1200
+                tries 2
+            }
+
+            echeck := mh.asset.nrvv-cv-need-expectation-check_1.0 {
+                name "Check CC's verdicts and hand them on in canonical form"
+                meta variable-for-cc-result = "expectationResult",
+                     variable-for-agreed-needs = "agreedNeeds",
+                     variable-for-subjects = "needChunk",
+                     variable-for-findings = "findings"
+                <- expectationResult, agreedNeeds, needChunk
+                -> findings: ext=".json"
+                timeout 60
+            }
+
+            store := internal mhdg-nrvv.store-findings {
+                name "Store one finding per verdict other than FAITHFUL in NRVV_FINDING - checked again by the Dispatcher"
+                <- runId, findings
+                timeout 120
+            }
+        }
+    }
+
+    finish := internal mhdg-nrvv.finish-run {
+        name "Close the NRVV run record - FINISHED, or ERROR when any Task failed"
+        <- runId
+        timeout 60
+        tag terminal
+    }
+}
