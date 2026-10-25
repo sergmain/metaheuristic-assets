@@ -344,6 +344,8 @@ def test_run_claude_api_a_model_refusing_forced_tool_use(tmp_path, capsys):
     assert [r['body']['tool_choice'] for r in api.requests] == [{'type': 'tool', 'name': STORE_RESULT_TOOL}, {'type': 'auto'}]
     assert api.requests[1]['body']['tools'] == [mh_api_call.store_result_tool()]
     assert 'refuses a forced tool_choice - the same request with tool_choice auto' in console
+    # plan 050 Phase 17: the API's own refusal is printed - what the model accepts is named there
+    assert ForcedToolRefusingApi.REFUSAL.replace('"', '\\"') in console or ForcedToolRefusingApi.REFUSAL in console
 
 
 def test_run_claude_api_with_an_effort(tmp_path, capsys):

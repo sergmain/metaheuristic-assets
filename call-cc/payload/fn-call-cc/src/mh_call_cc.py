@@ -622,13 +622,15 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
         status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
         # plan 050 Phase 17: a model refusing the extended-thinking parameter - the same request without it
         if thinking and mh_api_call.thinking_refused(status, text):
-            print('model ' + body['model'] + ' refuses extended thinking - the same request without it')
+            print('model ' + body['model'] + ' refuses extended thinking - the same request without it; the API: '
+                  + mh_api_call.api_error_message(text))
             body = mh_api_call.request_body(model, prompt, answer_budget)
             status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
         # plan 050 Phase 17: a model that refuses a forced tool_choice (400 naming it) - the same request once more with
         # tool_choice auto; the answer is still exactly one store call
         if mh_api_call.tool_choice_refused(status, text):
-            print('model ' + body['model'] + ' refuses a forced tool_choice - the same request with tool_choice auto')
+            print('model ' + body['model'] + ' refuses a forced tool_choice - the same request with tool_choice auto; the API: '
+                  + mh_api_call.api_error_message(text))
             body = mh_api_call.request_body(model, prompt, answer_budget, forced=False)
             status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
     finally:

@@ -120,6 +120,17 @@ def thinking_refused(status, text):
     return _refusal_names(status, text, 'thinking')
 
 
+def api_error_message(text):
+    """The API's own error message of a failed response (its error.message), else the body's first MAX_BODY_SNIPPET chars."""
+    try:
+        message = ((json.loads(text) or {}).get('error') or {}).get('message')
+    except (ValueError, TypeError):
+        message = None
+    if message:
+        return str(message)
+    return '<no body>' if not text else text[:MAX_BODY_SNIPPET]
+
+
 def tool_choice_refused(status, text):
     """Whether a response is the API refusing the request's forced tool_choice for this model: a 400 whose error body is
     an invalid_request_error naming tool_choice. Any other failure is not - it stays a failed call."""
