@@ -591,9 +591,18 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
         print("FAILED: no model for llm_provider=" + PROVIDER_CLAUDE_API + " - wire meta 'variable-for-model' to a "
               'Variable carrying a model id. The API has no default model.')
         return 1
-    if effort is not None:
-        print('effort ' + effort + ' is ignored on the ' + PROVIDER_CLAUDE_API + ' path')
-    body = mh_api_call.request_body(model, prompt, mh_api_call.max_tokens(meta_value(metas, 'max-tokens')))
+    if effort is not None and effort.strip():
+        # plan 050 Phase 17: the effort is the API's extended thinking (it was ignored on this path)
+        try:
+            thinking = mh_api_call.thinking_budget(effort)
+        except ValueError as e:
+            print('FAILED: ' + str(e))
+            return 1
+        print('effort ' + effort + ' -> extended thinking, budget ' + str(thinking) + ' tokens')
+    else:
+        thinking = None
+    answer_budget = mh_api_call.max_tokens(meta_value(metas, 'max-tokens'))
+    body = mh_api_call.request_body(model, prompt, answer_budget, thinking=thinking)
     seconds = timeout_sec(metas)
 
     data_dir = os.path.join(work_dir, CC_DATA_DIR)
@@ -611,11 +620,16 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
         print('POST ' + api_url + ', model ' + body['model'] + ', max_tokens ' + str(body['max_tokens'])
               + ', timeout ' + str(seconds) + 's')
         status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
+        # plan 050 Phase 17: a model refusing the extended-thinking parameter - the same request without it
+        if thinking and mh_api_call.thinking_refused(status, text):
+            print('model ' + body['model'] + ' refuses extended thinking - the same request without it')
+            body = mh_api_call.request_body(model, prompt, answer_budget)
+            status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
         # plan 050 Phase 17: a model that refuses a forced tool_choice (400 naming it) - the same request once more with
         # tool_choice auto; the answer is still exactly one store call
         if mh_api_call.tool_choice_refused(status, text):
             print('model ' + body['model'] + ' refuses a forced tool_choice - the same request with tool_choice auto')
-            body = mh_api_call.request_body(model, prompt, body['max_tokens'], forced=False)
+            body = mh_api_call.request_body(model, prompt, answer_budget, forced=False)
             status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
     finally:
         mh_api_call.zero(key)

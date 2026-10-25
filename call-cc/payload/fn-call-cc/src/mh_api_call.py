@@ -11,6 +11,12 @@
 # gets the same request once more with tool_choice auto: the tool still offered, the prompt still asking for it, and
 # the answer still exactly one store call (answer_from_response) - free text is refused as before.
 #
+# The run's effort is the API's extended thinking (plan 050 Phase 17: every v5 - v7 analysis of r1 on the CC path, effort
+# high, read "Stations act on stale prices." as a fact or a cost; four of five v8 analyses on the API path with the effort
+# dropped read it as an obligation). Thinking excludes a forced tool, so a request with thinking offers the tool under
+# tool_choice auto, its max_tokens the answer's budget plus the thinking budget. A model refusing the thinking parameter
+# (a 400 naming thinking) gets the request once more without it.
+#
 # The API key is never in argv, env or on disk: the Processor seals the Vault entry named by mh-function.yaml's
 # api.keyCode and hands it over its loopback secret channel, whose port and check code are in the params file
 # (task.secretPort, task.checkCode). read_secret() speaks that protocol - big-endian int32 length frames: send the check
@@ -35,6 +41,9 @@ DEFAULT_MAX_TOKENS = 8192
 
 # The tool the model must call - the same name the CC path's MCP server exposes, so one prompt serves both paths.
 STORE_RESULT_TOOL = 'mh_cc_store_result'
+
+# The extended-thinking budget per effort - the model's reasoning before it answers (plan 050 Phase 17).
+THINKING_BUDGET = {'low': 2048, 'medium': 6144, 'high': 12288, 'xhigh': 24576, 'extra': 24576}
 
 # How much of a failed response's body is printed. The dispatcher's analyzers match the console, so the status line
 # and the API's own error type must be in it; the whole body need not be.
@@ -64,32 +73,57 @@ def store_result_tool():
     }
 
 
-def request_body(model, prompt, max_tokens, forced=True):
+def request_body(model, prompt, max_tokens, forced=True, thinking=None):
     """The Messages API request: one user turn with the prompt verbatim, the store tool offered - forced, or with
-    forced=False offered under tool_choice auto (a model that refuses forced tool use - tool_choice_refused)."""
+    forced=False offered under tool_choice auto (a model that refuses forced tool use - tool_choice_refused). With a
+    thinking budget: extended thinking on, max_tokens the answer's budget plus the thinking budget, the tool under auto."""
     if model is None or not model.strip():
         raise ValueError('a model is required on the claude_api path - the API has no default model')
     if max_tokens < 1:
         raise ValueError('max-tokens must be greater than 0, got ' + str(max_tokens))
-    return {
+    body = {
         'model': model.strip(),
         'max_tokens': max_tokens,
         'messages': [{'role': 'user', 'content': prompt}],
         'tools': [store_result_tool()],
-        'tool_choice': {'type': 'tool', 'name': STORE_RESULT_TOOL} if forced else {'type': 'auto'},
+        'tool_choice': {'type': 'tool', 'name': STORE_RESULT_TOOL} if forced and not thinking else {'type': 'auto'},
     }
+    if thinking:
+        body['thinking'] = {'type': 'enabled', 'budget_tokens': thinking}
+        body['max_tokens'] = max_tokens + thinking
+    return body
 
 
-def tool_choice_refused(status, text):
-    """Whether a response is the API refusing the request's forced tool_choice for this model: a 400 whose error body is
-    an invalid_request_error naming tool_choice. Any other failure is not - it stays a failed call."""
+def thinking_budget(effort):
+    """The extended-thinking budget of an effort (THINKING_BUDGET), None for no effort; an unknown effort is refused."""
+    if effort is None or not effort.strip():
+        return None
+    budget = THINKING_BUDGET.get(effort.strip().lower())
+    if budget is None:
+        raise ValueError('unknown effort ' + repr(effort) + ' on the claude_api path - one of ' + str(sorted(THINKING_BUDGET)))
+    return budget
+
+
+def _refusal_names(status, text, word):
+    """Whether a response is the API's 400 invalid_request_error whose message names `word`."""
     if status != 400 or not text:
         return False
     try:
         error = (json.loads(text) or {}).get('error') or {}
     except ValueError:
         return False
-    return error.get('type') == 'invalid_request_error' and 'tool_choice' in str(error.get('message'))
+    return error.get('type') == 'invalid_request_error' and word in str(error.get('message'))
+
+
+def thinking_refused(status, text):
+    """Whether a response is the API refusing the request's extended thinking for this model."""
+    return _refusal_names(status, text, 'thinking')
+
+
+def tool_choice_refused(status, text):
+    """Whether a response is the API refusing the request's forced tool_choice for this model: a 400 whose error body is
+    an invalid_request_error naming tool_choice. Any other failure is not - it stays a failed call."""
+    return _refusal_names(status, text, 'tool_choice')
 
 
 def max_tokens(metas_value):
