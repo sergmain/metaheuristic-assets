@@ -7,6 +7,10 @@
 #   - a prompt written for the CC path ("store your answer with mh_cc_store_result") works unchanged, and
 #   - the answer is still exactly one tool call's `result`, copied verbatim - never the model's free text.
 #
+# A model that refuses a forced tool_choice (the API's 400 naming tool_choice - claude-sonnet-5-5, plan 050 Phase 17)
+# gets the same request once more with tool_choice auto: the tool still offered, the prompt still asking for it, and
+# the answer still exactly one store call (answer_from_response) - free text is refused as before.
+#
 # The API key is never in argv, env or on disk: the Processor seals the Vault entry named by mh-function.yaml's
 # api.keyCode and hands it over its loopback secret channel, whose port and check code are in the params file
 # (task.secretPort, task.checkCode). read_secret() speaks that protocol - big-endian int32 length frames: send the check
@@ -60,8 +64,9 @@ def store_result_tool():
     }
 
 
-def request_body(model, prompt, max_tokens):
-    """The Messages API request: one user turn with the prompt verbatim, the store tool offered and forced."""
+def request_body(model, prompt, max_tokens, forced=True):
+    """The Messages API request: one user turn with the prompt verbatim, the store tool offered - forced, or with
+    forced=False offered under tool_choice auto (a model that refuses forced tool use - tool_choice_refused)."""
     if model is None or not model.strip():
         raise ValueError('a model is required on the claude_api path - the API has no default model')
     if max_tokens < 1:
@@ -71,8 +76,20 @@ def request_body(model, prompt, max_tokens):
         'max_tokens': max_tokens,
         'messages': [{'role': 'user', 'content': prompt}],
         'tools': [store_result_tool()],
-        'tool_choice': {'type': 'tool', 'name': STORE_RESULT_TOOL},
+        'tool_choice': {'type': 'tool', 'name': STORE_RESULT_TOOL} if forced else {'type': 'auto'},
     }
+
+
+def tool_choice_refused(status, text):
+    """Whether a response is the API refusing the request's forced tool_choice for this model: a 400 whose error body is
+    an invalid_request_error naming tool_choice. Any other failure is not - it stays a failed call."""
+    if status != 400 or not text:
+        return False
+    try:
+        error = (json.loads(text) or {}).get('error') or {}
+    except ValueError:
+        return False
+    return error.get('type') == 'invalid_request_error' and 'tool_choice' in str(error.get('message'))
 
 
 def max_tokens(metas_value):

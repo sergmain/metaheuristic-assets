@@ -582,6 +582,7 @@ def main(argv):
 def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, api_url=mh_api_call.API_URL):
     """The claude_api path: one Messages API call; the answer is the `result` of the forced mh_cc_store_result call,
     copied verbatim into the output Variable. Returns the Function's exit code: 0, or 1 with a FAILED line.
+    Plan 050 Phase 17: a model refusing the forced tool_choice gets the same request once more with tool_choice auto.
 
     params is the task block of the params file - its secretPort and checkCode locate the Processor's secret channel.
     api_url is a parameter so a test can point the one POST at a local server; main() passes nothing.
@@ -610,6 +611,12 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
         print('POST ' + api_url + ', model ' + body['model'] + ', max_tokens ' + str(body['max_tokens'])
               + ', timeout ' + str(seconds) + 's')
         status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
+        # plan 050 Phase 17: a model that refuses a forced tool_choice (400 naming it) - the same request once more with
+        # tool_choice auto; the answer is still exactly one store call
+        if mh_api_call.tool_choice_refused(status, text):
+            print('model ' + body['model'] + ' refuses a forced tool_choice - the same request with tool_choice auto')
+            body = mh_api_call.request_body(model, prompt, body['max_tokens'], forced=False)
+            status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
     finally:
         mh_api_call.zero(key)
 
