@@ -73,6 +73,14 @@ MAX_OUTPUT_TOKENS = 128000
 # and the API's own error type must be in it; the whole body need not be.
 MAX_BODY_SNIPPET = 2000
 
+# The response headers that say WHICH limit a 429 hit (https://platform.claude.com/docs/en/api/rate-limits#response-headers):
+# the request limit and the token limits answer the same status and error type, and only these tell them apart. The
+# Processor sees nothing of the HTTP exchange - only this Function's console - so the Function prints them, and MH's
+# shipped analyzers (mh-api-analyzers.yaml, rule api-request-limit) match the lines. The format is a contract: one
+# '<header>: <value>' line each, name in lower case, in this order, an absent header omitted.
+RATE_LIMIT_HEADERS = ('retry-after', 'anthropic-ratelimit-requests-remaining', 'anthropic-ratelimit-tokens-remaining',
+                      'anthropic-ratelimit-input-tokens-remaining', 'anthropic-ratelimit-output-tokens-remaining')
+
 # The loopback secret channel: one frame each way, a sane cap on the key frame.
 MAX_KEY_FRAME_BYTES = 65536
 SECRET_TIMEOUT_SEC = 5
@@ -241,6 +249,19 @@ def api_failure_line(status, body):
     return 'Anthropic API call failed with status ' + str(status) + '; body=' + snippet
 
 
+def rate_limit_header_lines(headers):
+    """One '<header>: <value>' line per rate-limit header present, in RATE_LIMIT_HEADERS order. `headers` is anything
+    with a case-insensitive get() - an HTTPError's headers are."""
+    if headers is None:
+        return []
+    lines = []
+    for name in RATE_LIMIT_HEADERS:
+        value = headers.get(name)
+        if value is not None:
+            lines.append(name + ': ' + str(value).strip())
+    return lines
+
+
 # ---------------------------------------------------------------------------------------------------
 # THE BOUNDARY
 
@@ -292,6 +313,9 @@ def post_messages(url, api_key, body, timeout_sec):
         with opener.open(request, timeout=timeout_sec) as response:
             return response.status, _decode(response)
     except urllib.error.HTTPError as e:
+        # the only moment the headers exist: print what tells a request limit from a token limit (see RATE_LIMIT_HEADERS)
+        for line in rate_limit_header_lines(e.headers):
+            print(line, flush=True)
         return e.code, _decode(e)
 
 
