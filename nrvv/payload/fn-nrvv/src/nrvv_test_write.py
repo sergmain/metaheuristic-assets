@@ -7,6 +7,7 @@
 #   suite-name   NrvvNamingUtils.suiteName of the TEST_CASE's lineage root
 #   cc-result    CC's answer, stored through call-cc's result tool:
 #                {"testFile": "<content of tests/test_<suite>.py>", "testIds": ["tests/test_<suite>.py::<name>", ...]}
+#                - since plan 050 Phase 17: the content of tests/test_<suite>.py itself, no JSON (see below)
 # Output:
 #   suite-files  JSON {"suite", "testFile", "suiteFile", "testIds"} - the two files, repository-relative
 #
@@ -24,6 +25,12 @@
 # them out in one branch of four (ExecContext #91, Task 25250) while the file alone decides which tests exist, so
 # asking for them added nothing but a way to fail. The checks on the file itself stay.
 #
+# Since plan 050 Phase 17 (2026-10-26, by its characterization test test_the_answer_is_the_test_file_itself): the answer
+# IS the test file - no JSON object around it, so the first check above ("the answer is one JSON object") is gone; one
+# markdown fence is still unwrapped, and ast still refuses a file that is not whole Python. On the API path, 6 of 29
+# answers of acceptance run (b) #119 (TEST_AUTHOR #3365) were '{"testFile": "<code>' with no closing '"}': JSON inside
+# the store tool's one string is two escaping levels, and the model's closers closed the tool call's string instead.
+#
 # Pure but for write_suite()/run()/main(): no git, no network, no subprocess.
 
 import ast
@@ -35,7 +42,6 @@ import sys
 import mh_task_io as io
 import nrvv_paths
 from nrvv_checkout import parse_location
-import nrvv_cc_answer as ca
 
 FUNCTION_CODE = 'mh.asset.nrvv-test-write_1.0'
 
@@ -81,17 +87,15 @@ def module_level_tests(source, path):
 
 
 def parse_answer(cc_result, suite):
-    """(test file content, test ids) of CC's answer for suite - or a ValueError listing every problem at once."""
+    """(test file content, test ids) of CC's answer for suite - or a ValueError listing every problem at once. The
+    answer is the test file itself (plan 050 Phase 17); one markdown fence around it is unwrapped."""
     text = (cc_result or '').strip()
     fenced = FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    data = ca.loads(text)
-    if not isinstance(data, dict):
-        raise ValueError('CC answered no JSON object {"testFile": ..., "testIds": [...]}: ' + excerpt(text))
-    source = data.get('testFile')
-    if not isinstance(source, str) or not source.strip():
-        raise ValueError('CC answered no testFile: ' + excerpt(text))
+    if not text:
+        raise ValueError('CC answered no test file')
+    source = text + '\n'
 
     path = test_file(suite)
     defined = module_level_tests(source, path)

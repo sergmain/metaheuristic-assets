@@ -199,7 +199,8 @@ def test_the_test_prompt_names_the_module_the_file_and_the_governed_criterion():
     assert 'tests/test_TMPSN3F36BJ_7_suite.py' in prompt
     assert "TEST_CASE TMPSN3F36BJ-7, criterion:\nRunning main() prints 'Hello, NRVV'." in prompt
     # CT Red (TA1, C1): the answer is the file alone - the writer derives the ids
-    assert '{"testFile": "<the whole content of tests/test_TMPSN3F36BJ_7_suite.py>"}' in prompt
+    # plan 050 Phase 17: the file itself (was '{"testFile": "<the whole content of tests/test_TMPSN3F36BJ_7_suite.py>"}')
+    assert 'with the whole content of tests/test_TMPSN3F36BJ_7_suite.py as the result' in prompt
     assert 'testIds' not in prompt
     assert 'Requirement TMPSN3F36BJ-3:' in prompt
     assert '{{M=' not in prompt
@@ -234,10 +235,9 @@ GOOD_TESTS = (
     '    assert capsys.readouterr().out.count(\'\\n\') == 1\n')
 
 
-def answer(source=GOOD_TESTS, ids=None):
-    return json.dumps({'testFile': source,
-                       'testIds': ids if ids is not None else [PATH + '::test_main_prints_hello',
-                                                               PATH + '::test_main_prints_one_line']})
+def answer(source=GOOD_TESTS):
+    # plan 050 Phase 17: the answer is the test file itself; it was json.dumps({'testFile': source, 'testIds': ids})
+    return source
 
 
 def test_parse_answer_returns_the_file_and_its_ids():
@@ -248,16 +248,45 @@ def test_parse_answer_returns_the_file_and_its_ids():
 
 
 def test_parse_answer_unwraps_one_markdown_fence():
-    assert tw.parse_answer('```json\n' + answer() + '\n```', SUITE)[0] == GOOD_TESTS
+    assert tw.parse_answer('```python\n' + answer() + '\n```', SUITE)[0] == GOOD_TESTS
 
 
-def test_parse_answer_with_a_stray_quote_and_brace_after_the_object():
+def test_the_former_json_answer_is_refused():
     # plan 045 Phase 36, acceptance run TEST_AUTHOR #114 (Variable 20334): haiku stored the whole, valid answer object
-    # followed by '"}' - json.loads refused it as "Extra data"
-    source, ids = tw.parse_answer(json.dumps({'testFile': GOOD_TESTS}) + '"}', SUITE)
+    # followed by '"}' - json.loads refused it as "Extra data", and the decode then accepted it (the object whole, the tail
+    # carrying nothing). Rewritten by plan 050 Phase 17 (9.3 rule 2): the answer is the file itself, so the JSON form -
+    # whole, with a stray tail, or without its closers as #119's six - is refused before anything is written
+    with pytest.raises(ValueError, match='defines no test function'):
+        tw.parse_answer(json.dumps({'testFile': GOOD_TESTS}), SUITE)
+    for broken in (json.dumps({'testFile': GOOD_TESTS}) + '"}', json.dumps({'testFile': GOOD_TESTS})[:-2]):
+        with pytest.raises(ValueError, match='not valid Python'):
+            tw.parse_answer(broken, SUITE)
 
-    assert source == GOOD_TESTS, 'the object is whole; the stray quote and brace carry nothing'
+
+# plan 050 Phase 17 (characterization test): acceptance run (b) #119 GASV8B2, TEST_AUTHOR #3365 (ExecContext 4203) on
+# the API path - 6 of 29 answers (Variables 203369, 203380, 203388, 203448, 203454, 203456) were stored as
+# '{"testFile": "<code>' and nothing after it, each ending at a whole last line of code. JSON inside the store tool's one
+# string is two escaping levels: the '"}' the model wrote to close the file and the object closed the tool call's string
+# and object instead (on the CC path the same slip left '"}' too MANY - #114 above). The file is the only field the
+# writer reads (TA1), so the answer becomes the file itself: one escaping level, and ast still refuses what is not whole
+# Python.
+def test_the_answer_is_the_test_file_itself():
+    # CT Green-1: refused - 'CC answered something that is not JSON'
+    # CT Red: the answer is the file itself; its ids are the file's module-level test functions, in file order
+    source, ids = tw.parse_answer(GOOD_TESTS, SUITE)
+
+    assert source == GOOD_TESTS
     assert ids == [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line']
+
+
+def test_the_test_prompt_asks_for_the_test_file_itself():
+    prompt = tp.compose('X-1', E1_REQUIREMENT, 'It prints once.', SUITE, 'X-2')
+
+    # CT Green-1: '{"testFile": "<the whole content of tests/test_<suite>.py>"}' was asked for
+    # CT Red: the file itself, and no JSON
+    assert 'testFile' not in prompt and 'JSON object' not in prompt
+    assert ('with the whole content of ' + PATH + ' as the result: the Python source itself - not JSON, not quoted, no '
+            'markdown fence, nothing before or after it.') in prompt
 
 
 # observed: TA1 (ExecContext #91), branch 2, Task 25250 - CC's test answer, Variable 13815, byte for byte. It carries
@@ -268,37 +297,34 @@ TA1_BRANCH2_ANSWER = r"""{"testFile": "import inspect\n\nimport nrvv_sample\n\n\
 def test_the_ta1_answer_without_test_ids_is_refused():
     # CT Green-1 (TA1, correction C1 of the test-author flow): the answer is refused for its missing testIds
     # CT Red: it is accepted - the ids are the file's module-level test functions, in file order
-    source, ids = tw.parse_answer(TA1_BRANCH2_ANSWER, SUITE)
+    # plan 050 Phase 17 (9.3 rule 2): the answer is the file itself - the observed answer's file, as it is stored now
+    source, ids = tw.parse_answer(json.loads(TA1_BRANCH2_ANSWER)['testFile'], SUITE)
 
     assert source.startswith('import inspect\n')
     assert ids == [PATH + '::test_class_declares_main_member', PATH + '::test_main_is_callable',
                    PATH + '::test_main_is_a_function_or_method']
 
 
-@pytest.mark.parametrize('listed', [
-    [],
-    ['tests/test_other.py::test_main_prints_hello', PATH + '::test_main_prints_one_line'],
-    [PATH + '::test_main_prints_hello'],
-    [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line', PATH + '::test_x'],
-    [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line'],
-    'not a list',
-])
-def test_test_ids_in_the_answer_are_ignored_the_file_decides(listed):
-    # CT Red (TA1, C1): these answers were refused for their testIds; the file alone now decides the suite
-    source, ids = tw.parse_answer(json.dumps({'testFile': GOOD_TESTS, 'testIds': listed}), SUITE)
+def test_the_file_alone_decides_the_suite_in_file_order():
+    # CT Red (TA1, C1): answers were refused for their testIds; the file alone decides the suite. Rewritten by plan 050
+    # Phase 17 (9.3 rule 2): an answer carries no testIds any more - the ids are the module-level test functions only,
+    # in file order (a helper and a nested function are not tests)
+    source = ('def test_z():\n    def test_inner():\n        pass\n\n\ndef helper():\n    pass\n\n\n'
+              'def test_a():\n    pass\n')
 
-    assert source == GOOD_TESTS
-    assert ids == [PATH + '::test_main_prints_hello', PATH + '::test_main_prints_one_line']
+    assert tw.parse_answer(source, SUITE) == (source, [PATH + '::test_z', PATH + '::test_a'])
 
 
 @pytest.mark.parametrize('bad, why', [
-    ('not json', 'not JSON'),
-    (json.dumps(['x']), 'no JSON object'),
-    (json.dumps({'testIds': [PATH + '::test_main_prints_hello']}), 'no testFile'),
-    (answer(source='def test_a(:\n    pass\n', ids=[PATH + '::test_a']), 'not valid Python'),
-    (answer(source='class TestA:\n    def test_a(self):\n        pass\n', ids=[PATH + '::TestA']), 'test class'),
-    (answer(source='def helper():\n    pass\n', ids=[PATH + '::helper']), 'defines no test function'),
-    (json.dumps({'testFile': 'def helper():\n    pass\n'}), 'defines no test function'),
+    # plan 050 Phase 17 (9.3 rule 2): the answer is the file itself - the JSON shapes ('not json' -> 'not JSON', a JSON
+    # list -> 'no JSON object', no testFile -> 'no testFile') went with the JSON; an empty answer is refused instead
+    ('', 'no test file'),
+    ('  \n', 'no test file'),
+    ('```python\n\n```', 'no test file'),
+    (answer(source='def test_a(:\n    pass\n'), 'not valid Python'),
+    (answer(source='class TestA:\n    def test_a(self):\n        pass\n'), 'test class'),
+    (answer(source='def helper():\n    pass\n'), 'defines no test function'),
+    ('not json', 'defines no test function'),
 ])
 def test_parse_answer_refuses_before_anything_is_written(bad, why):
     with pytest.raises(ValueError, match=why):

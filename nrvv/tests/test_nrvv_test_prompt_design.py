@@ -19,8 +19,11 @@ CRITERION = 'Running main prints "Hello, NRVV" exactly once.'
 # plan 047 Phase 20: re-taken deliberately - the answer instruction moved to the END of the prompt (by its
 # characterization test, test_the_answer_instruction_comes_last); the pin before it was
 # 'd3d0ea2f8846d5b2f41a8c4c87f1a6c659f62b21c1650951efc8a26152e2d4c9', 1689. The design roles still leave it unchanged.
-V1_SHA256 = '0493b995d89b2cc134e7a6de2dcc57f9250523d7257ffaeaf0638b23accd72c6'
-V1_LENGTH = 1819
+# plan 050 Phase 17: re-taken deliberately - the answer is the test file itself, no JSON (by its characterization test
+# test_nrvv_test_author.py::test_the_test_prompt_asks_for_the_test_file_itself); the pin before it was
+# '0493b995d89b2cc134e7a6de2dcc57f9250523d7257ffaeaf0638b23accd72c6', 1819.
+V1_SHA256 = '6ee5f7bceb99935c9578284c7c34483d67b29c09efae6915c31f43c9b54443ca'
+V1_LENGTH = 1868
 
 
 def v1_prompt():
@@ -55,7 +58,9 @@ def test_design_mode_names_app_the_interface_and_nrvv_env_in_full():
     assert 'drives `app` only through `nrvv_env` - no other fake' in prompt
     assert 'fixed seeds only (several seeds per property are allowed)' in prompt
     assert 'ported' not in prompt and 'nrvv_sample' not in prompt, 'a defined system is not a port'
-    assert '{"testFile": "<the whole content of tests/test_X_1.py>"}' in prompt
+    # plan 050 Phase 17: the answer is the file itself (was '{"testFile": "<the whole content of tests/test_X_1.py>"}')
+    assert 'with the whole content of tests/test_X_1.py as the result: the Python source itself' in prompt
+    assert 'testFile' not in prompt
 
 
 def test_a_design_without_env_files_is_refused():

@@ -21,6 +21,11 @@
 # Since TA1 (2026-10-04, correction C1, nrvv/DETAILS.md): CC answers the file alone, {"testFile": ...}; the writer
 # derives the suite's ids from it. Asking for testIds as well made one answer in four fail for omitting them.
 #
+# Since plan 050 Phase 17 (2026-10-26): CC answers the file ITSELF - the Python source as the store tool's result, no
+# JSON around it. JSON inside the tool's one string is two escaping levels; on the API path 6 of 29 answers of
+# acceptance run (b) #119 ended at a whole last line of code with no closing '"}' (the model's closers closed the tool
+# call's string instead), and on the CC path the same slip had left '"}' too many (plan 045 Phase 36).
+#
 # DESIGN MODE (plan 043, Phase 10) - two OPTIONAL roles, read only when the process declares them:
 #   design    the design mhdg-nrvv.list-scope wrote, {"interface": [{"reqId", "content"}], "environment": [...]}
 #   env-dir   the test-suite dir: the prompt reads <env-dir>/tests/nrvv_env/ from the checkout, where
@@ -59,11 +64,15 @@ def answer_instruction(path):
         'Store your answer with the result tool as exactly this JSON object, and nothing else:',
         '{"testFile": "<the whole content of ' + path + '>"}',
         'Every module-level test_ function of the file becomes part of the suite.',
+    Plan 050 Phase 17 (by its characterization test, test_the_test_prompt_asks_for_the_test_file_itself): the answer is
+    the file itself. The first two lines below were:
+        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        '{"testFile": "<the whole content of ' + path + '>"}',
     """
     return [
         '',
-        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
-        '{"testFile": "<the whole content of ' + path + '>"}',
+        'Answer by calling the mh_cc_store_result tool exactly once, with the whole content of ' + path + ' as the result:'
+        ' the Python source itself - not JSON, not quoted, no markdown fence, nothing before or after it.',
         'Every module-level test_ function of the file becomes part of the suite.',
         'Print nothing - neither the test file nor any explanation: only what the tool stores reaches the pipeline.',
     ]
