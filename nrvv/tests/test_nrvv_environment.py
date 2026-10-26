@@ -46,7 +46,8 @@ def test_env_prompt_carries_the_interface_the_environment_and_the_rules():
     assert '`nrvv_env` never imports `app`' in prompt
     assert 'random.Random(seed)' in prompt
     assert 'never threading, _thread, multiprocessing, asyncio,' in prompt
-    assert '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}' in prompt
+    # plan 050 Phase 17: the files under header lines (was '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}')
+    assert '--- tests/nrvv_env/__init__.py\n<content>' in prompt
 
 
 def test_env_prompt_ends_with_the_answer_instruction():
@@ -55,7 +56,7 @@ def test_env_prompt_ends_with_the_answer_instruction():
     # CT Red (plan 047 Phase 20): the answer instruction is the LAST part, after the Environment, as every v5 prompt's
     assert 'Store your answer with the result tool' not in prompt
     assert prompt.index('X-4:') < prompt.index('Answer by calling the mh_cc_store_result tool exactly once')
-    assert '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}' in prompt[prompt.index('X-4:'):]
+    assert '--- tests/nrvv_env/<module>.py' in prompt[prompt.index('X-4:'):], 'plan 050 Phase 17: the header lines'
     assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
 
 
@@ -99,11 +100,11 @@ def test_parse_design_refuses_a_design_without_both_parts(bad):
 def test_parse_env_answer_accepts_the_stdlib_the_package_and_relative_imports():
     files = dict(ANSWER['files'])
     files['clock.py'] = 'import nrvv_env.world\nfrom nrvv_env import world\nfrom collections import deque\nimport random as r\n'
-    assert list(ne.parse_env_answer('```json\n' + json.dumps({'files': files}) + '\n```')) == ['__init__.py', 'clock.py', 'world.py']
+    assert list(ne.parse_env_answer(carried(files))) == ['__init__.py', 'clock.py', 'world.py']
 
 
 @pytest.mark.parametrize('files, rule', [
-    ({}, 'no JSON object'),
+    ({}, 'no file under'),
     ({'World.py': 'X = 1\n'}, 'is not a lowercase module name'),
     ({'world.txt': 'X = 1\n'}, 'is not a lowercase module name'),
     ({'../escape.py': 'X = 1\n'}, 'is not a lowercase module name'),
@@ -123,28 +124,65 @@ def test_parse_env_answer_accepts_the_stdlib_the_package_and_relative_imports():
 ])
 def test_parse_env_answer_refuses_every_broken_rule(files, rule):
     with pytest.raises(ValueError) as e:
-        ne.parse_env_answer(json.dumps({'files': files}))
+        ne.parse_env_answer(carried(files))
     assert rule in str(e.value), str(e.value)
 
 
-def test_parse_env_answer_refuses_what_is_not_a_files_map():
-    for bad in ('not json', '[]', '{"files": []}', '{"files": {"world.py": 7}}'):
-        with pytest.raises(ValueError):
+def test_parse_env_answer_refuses_what_is_not_files_under_their_header_lines():
+    # plan 050 Phase 17 (9.3 rule 2): was test_parse_env_answer_refuses_what_is_not_a_files_map over the JSON shapes
+    # ('not json', '[]', '{"files": []}', '{"files": {"world.py": 7}}'); the answer is the files under header lines now
+    for bad, rule in (('', 'no file under'), ('not json', 'text before the first'),
+                      ('prose\n' + carried(ANSWER['files']), 'text before the first'),
+                      (carried(ANSWER['files']) + carried({'world.py': 'X = 1\n'}), "'world.py' is given twice")):
+        with pytest.raises(ValueError) as e:
             ne.parse_env_answer(bad)
+        assert rule in str(e.value), str(e.value)
 
 
-def test_parse_env_answer_with_a_stray_closing_brace_after_the_object():
+def test_the_former_json_env_answer_is_refused():
     # plan 045 Phase 36, acceptance run TEST_AUTHOR #107 (Task 31708): haiku stored the whole, valid files object and
-    # one '}' more, then CRLF - json.loads refused it as "Extra data"
-    answer = json.dumps(ANSWER) + '}\r\n'
-    assert ne.parse_env_answer(answer) == ANSWER['files'], 'the object is whole; the stray closer carries nothing'
+    # one '}' more, then CRLF - json.loads refused it as "Extra data", and the decode then accepted it. Rewritten by plan
+    # 050 Phase 17 (9.3 rule 2): the answer is the files under header lines, so the JSON form - whole or with a stray tail -
+    # is refused before anything is written
+    for answer in (json.dumps(ANSWER), json.dumps(ANSWER) + '}\r\n'):
+        with pytest.raises(ValueError) as e:
+            ne.parse_env_answer(answer)
+        assert 'text before the first' in str(e.value), str(e.value)
 
 
 @pytest.mark.parametrize('tail', ['} {"files": {}}', 'and some prose', ']x', '{'])
-def test_parse_env_answer_refuses_content_after_the_object(tail):
+def test_parse_env_answer_refuses_content_after_the_last_file(tail):
+    # plan 050 Phase 17 (9.3 rule 2): was "content after the object"; text after the last file belongs to that file, so it
+    # is refused as that file's Python
     with pytest.raises(ValueError) as e:
-        ne.parse_env_answer(json.dumps(ANSWER) + tail)
-    assert 'CC answered something that is not JSON' in str(e.value), str(e.value)
+        ne.parse_env_answer(carried(ANSWER['files']) + tail)
+    assert 'world.py is not valid Python' in str(e.value), str(e.value)
+
+
+def carried(files):
+    """plan 050 Phase 17: the environment answer's carrier - every file under its own '--- tests/nrvv_env/<name>' line."""
+    return ''.join('--- tests/nrvv_env/' + name + '\n' + content for name, content in files.items())
+
+
+# plan 050 Phase 17 (characterization test): the environment answer carries code as JSON inside the store tool's one
+# string, as TEST_AUTHOR did - two escaping levels, the slip that cost acceptance run (b) #119 six test answers on the API
+# path (no closing '"}') and left #107's environment answer one '}' too many on the CC path (above). The answer becomes the
+# files themselves, each under a header line - the form the test prompt already shows nrvv_env in.
+def test_the_env_answer_is_the_files_under_their_header_lines():
+    # CT Green-1: refused - 'CC answered something that is not JSON'
+    # CT Red: the files, by name, exactly as written under their header lines; one markdown fence around them unwrapped
+    assert ne.parse_env_answer(carried(ANSWER['files'])) == ANSWER['files']
+    assert ne.parse_env_answer('```text\n' + carried(ANSWER['files']) + '```') == ANSWER['files']
+
+
+def test_the_env_prompt_asks_for_the_files_under_their_header_lines():
+    prompt = ne.compose_env_prompt(ne.parse_design(json.dumps(DESIGN)))
+
+    # CT Green-1: '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}' was asked for
+    # CT Red: the files themselves under their header lines, and no JSON
+    assert '{"files"' not in prompt and 'JSON object' not in prompt
+    assert 'each file opened by a line "--- tests/nrvv_env/<name>.py" and followed by its Python source' in prompt
+    assert '\n--- tests/nrvv_env/__init__.py\n<content>\n--- tests/nrvv_env/<module>.py\n<content>\n' in prompt
 
 
 # ---------------------------------------------------------------------------------------------------------- write
@@ -186,7 +224,7 @@ def sample_test_suite(tmp_path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
-    ne.write_env(ts, '', ne.parse_env_answer(json.dumps(ANSWER)))
+    ne.write_env(ts, '', ne.parse_env_answer(carried(ANSWER['files'])))
     return ts, target
 
 
@@ -240,7 +278,7 @@ def test_the_two_functions_through_their_roles(tmp_path):
     w2 = str(tmp_path / 'ewrite')
     ew.run(task_with_inputs(w2, [{'variable-for-workspace': 'workspace'}, {'variable-for-location': 'testSuite'},
                                  {'variable-for-cc-result': 'envResult'}, {'variable-for-files': 'envFiles'}],
-                            {'workspace': workspace, 'testSuite': location, 'envResult': json.dumps(ANSWER)}, ['envFiles']))
+                            {'workspace': workspace, 'testSuite': location, 'envResult': carried(ANSWER['files'])}, ['envFiles']))
     assert json.loads(artifact(w2, 101)) == ['nrvv/synthetic/gas-price/test-suite/tests/nrvv_env/__init__.py',
                                              'nrvv/synthetic/gas-price/test-suite/tests/nrvv_env/world.py']
 
@@ -254,7 +292,7 @@ def test_ewrite_into_a_fresh_dir_of_the_checkout(tmp_path):
     w = str(tmp_path / 'ewrite')
     task = task_with_inputs(w, [{'variable-for-workspace': 'workspace'}, {'variable-for-location': 'testSuite'},
                                 {'variable-for-cc-result': 'envResult'}, {'variable-for-files': 'envFiles'}],
-                            {'workspace': workspace, 'testSuite': location, 'envResult': json.dumps(ANSWER)}, ['envFiles'])
+                            {'workspace': workspace, 'testSuite': location, 'envResult': carried(ANSWER['files'])}, ['envFiles'])
 
     ew.run(task)
 
@@ -281,7 +319,7 @@ def ewrite_task(tmp_path, world_source):
                             [{'variable-for-workspace': 'workspace'}, {'variable-for-location': 'testSuite'},
                              {'variable-for-cc-result': 'envResult'}, {'variable-for-design': 'design'},
                              {'variable-for-files': 'envFiles'}],
-                            {'workspace': workspace, 'testSuite': location, 'envResult': json.dumps(answer),
+                            {'workspace': workspace, 'testSuite': location, 'envResult': carried(answer['files']),
                              'design': json.dumps(DESIGN)}, ['envFiles'])
     return task, os.path.join(workspace, 'test-suite', 'ts', 'tests', 'nrvv_env', 'world.py')
 

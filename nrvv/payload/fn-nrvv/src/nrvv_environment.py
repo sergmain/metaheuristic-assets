@@ -15,6 +15,12 @@
 # test under it - `import nrvv_env` resolves there both under the launcher (nrvv_suite_run, cwd = the test-suite dir) and
 # under the implementer's `python -m pytest <test-suite dir>` (cwd = the target dir). No file of the package may be one
 # pytest collects (test_*.py, *_test.py).
+#
+# THE ANSWER since plan 050 Phase 17 (2026-10-26, by its characterization test
+# test_the_env_answer_is_the_files_under_their_header_lines): the files themselves, not {"files": {...}} - JSON inside the
+# store tool's one string is two escaping levels, the slip that cost acceptance run (b) #119 six test answers on the API
+# path (no closing '"}') and left #107's environment answer one '}' too many on the CC path. Every file is opened by a line
+# under its own `--- tests/nrvv_env/<name>.py` and followed by its Python source - the form the test prompt shows nrvv_env in.
 
 import ast
 import json
@@ -23,11 +29,13 @@ import re
 import shutil
 import sys
 
-import nrvv_cc_answer as ca
 import nrvv_requirement_text as rt
 
 PACKAGE = 'nrvv_env'
 ENV_DIR = 'tests/' + PACKAGE
+# plan 050 Phase 17: the line that opens a file of the answer
+HEADER = '--- ' + ENV_DIR + '/'
+HEADER_LINE = re.compile(r'^--- ' + re.escape(ENV_DIR) + r'/(.*)$')
 FILE_NAME = re.compile(r'[a-z][a-z0-9_]*\.py')
 INIT = '__init__.py'
 FORBIDDEN = ('threading', '_thread', 'multiprocessing', 'asyncio', 'concurrent', 'time', 'socket', 'subprocess')
@@ -111,8 +119,17 @@ def compose_env_prompt(design):
         '',
         items_text(design['environment']),
         '',
-        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
-        '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}',
+        # plan 050 Phase 17 (by its characterization test test_the_env_prompt_asks_for_the_files_under_their_header_lines):
+        # the files themselves under header lines. It was:
+        #   'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        #   '{"files": {"__init__.py": "<content>", "<module>.py": "<content>"}}',
+        'Answer by calling the mh_cc_store_result tool exactly once, with the files of the package as the result: each file'
+        ' opened by a line "' + HEADER + '<name>.py" and followed by its Python source - nothing before the first such'
+        ' line, no JSON, no markdown fence:',
+        HEADER + INIT,
+        '<content>',
+        HEADER + '<module>.py',
+        '<content>',
         'Print nothing - neither the files nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
@@ -182,17 +199,46 @@ def check_ports(files, design):
                                          + " Interface's " + member.name + ' - hand app its ports as closures inside connect')
 
 
+def split_files(text):
+    """{file name: content} of the files carried under their header lines (plan 050 Phase 17), in answer order. A ValueError
+    for text before the first header line, for no header line at all, or for a file given twice. A file's content is its
+    lines up to the next header line, trailing blank lines dropped and one newline kept; a file with no text is empty."""
+    files = {}
+    current = None
+    body = []
+    for line in text.replace('\r\n', '\n').split('\n'):
+        header = HEADER_LINE.match(line)
+        if header:
+            if current is not None:
+                files[current] = _file_text(body)
+            current = header.group(1).strip()
+            if current in files:
+                raise ValueError("file '" + current + "' is given twice")
+            body = []
+        elif current is not None:
+            body.append(line)
+        elif line.strip():
+            raise ValueError('CC answered text before the first "' + HEADER + '<name>.py" line: ' + excerpt(text))
+    if current is None:
+        raise ValueError('CC answered no file under a "' + HEADER + '<name>.py" line: ' + excerpt(text))
+    files[current] = _file_text(body)
+    return files
+
+
+def _file_text(lines):
+    text = '\n'.join(lines).rstrip('\n')
+    return text + '\n' if text.strip() else ''
+
+
 def parse_env_answer(cc_result):
     """{file name: content} of CC's answer, checked before anything is written - or a ValueError naming the rule."""
     text = (cc_result or '').strip()
     fenced = FENCE.match(text)
     if fenced:
         text = fenced.group(1).strip()
-    # the shared decode of every NRVV check (nrvv_cc_answer) - STRAY_CLOSERS above is the rule it took over
-    data = ca.loads(text)
-    files = data.get('files') if isinstance(data, dict) else None
-    if not isinstance(files, dict) or not files:
-        raise ValueError('CC answered no JSON object {"files": {"<module>.py": "<content>"}}: ' + excerpt(text))
+    # plan 050 Phase 17: the files under their header lines (split_files); it was the shared JSON decode of every NRVV
+    # check, nrvv_cc_answer.loads, over {"files": {...}}
+    files = split_files(text)
     for name, content in sorted(files.items()):
         if not isinstance(name, str) or not (name == INIT or FILE_NAME.fullmatch(name)):
             raise ValueError("file name '" + str(name) + "' is not a lowercase module name ending in .py")

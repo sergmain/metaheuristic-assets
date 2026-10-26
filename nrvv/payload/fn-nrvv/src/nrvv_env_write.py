@@ -5,6 +5,8 @@
 #   workspace   absolute path of the run workspace
 #   location    the NRVV project's test-suite location, JSON {"url", "branchOrRef", "dir"} - checked out before
 #   cc-result   CC's answer, stored through call-cc's result tool: {"files": {"<module>.py": "<content>"}}
+#               - since plan 050 Phase 17: the files themselves, each under a line "--- tests/nrvv_env/<name>.py"
+#               (nrvv_environment.split_files)
 #   design      optional (plan 047 Phase 21): the design list-scope wrote - with it, no file may expose a public function
 #               or method named as an Interface operation or port (nrvv_environment.check_ports)
 # Output:
