@@ -252,8 +252,8 @@ def verdicts_of(cc_result, context, chunk):
                 raise ValueError(where + ' is JUSTIFIED by ' + repr(unknown[0]) + ', which is not one of the agreed NEEDs')
             if len(set(ids)) != len(ids):
                 raise ValueError(where + ' names a NEED twice in needReqIds')
-        elif ids:
-            raise ValueError(where + ' is ' + verdict + ' and names needReqIds: only JUSTIFIED does')
+        # plan 050 Phase 17 (#110): a verdict other than JUSTIFIED stores no needReqIds - a reasoning model names the NEEDs
+        # it measured an OVER_REACH against, and refusing the chunk for it ended a group; they are dropped (item below)
         if verdict == 'CONTRADICTS_NEED' and need not in agreed:
             raise ValueError(where + ' is CONTRADICTS_NEED and names no agreed NEED as needReqId: ' + repr(need))
         if verdict == 'RESTS_ON_SUPERSEDED' and need not in _superseded_needs(subjects[subject]):

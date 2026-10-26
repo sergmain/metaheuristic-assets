@@ -304,7 +304,6 @@ def test_backtrace_verdicts_canonical_in_chunk_order():
     ([bt_verdict('GAS-10', 'JUSTIFIED', needReqIds=['GAS-9'])], 'not one of the agreed NEEDs'),
     ([bt_verdict('GAS-10', 'JUSTIFIED', needReqIds=['GAS-2', 'GAS-2'])], 'twice'),
     ([bt_verdict('GAS-10', 'JUSTIFIED', needReqIds='GAS-2')], 'not a list'),
-    ([bt_verdict('GAS-10', 'OVER_REACH', needReqIds=['GAS-2'])], 'only JUSTIFIED does'),
     ([bt_verdict('GAS-10', 'OVER_REACH', needReqId='GAS-2')], 'only CONTRADICTS_NEED and RESTS_ON_SUPERSEDED do'),
     ([bt_verdict('GAS-10', 'CONTRADICTS_NEED')], 'names no agreed NEED'),
     ([bt_verdict('GAS-10', 'CONTRADICTS_NEED', needReqId='GAS-3')], 'names no agreed NEED'),
@@ -355,6 +354,25 @@ def test_backtrace_justified_without_text():
         {'subject': 'GAS-11', 'verdict': 'OVER_REACH', 'text': '"at most once every 60 seconds"', 'counterexample': 'two prices 10 s apart'},
         {'subject': 'GAS-20', 'verdict': 'JUSTIFIED', 'needReqIds': ['GAS-7']},
     ]}, 'a JUSTIFIED verdict needs no text; every other verdict still does'
+
+
+def test_backtrace_needs_named_by_a_verdict_other_than_justified():
+    # plan 050 Phase 17 (#110 GASV8A9, AFTER_DEFINITION BACKTRACE: 8 of 9 attempts on GASV8A9-41; #108 GASV8A7 once): a
+    # reasoning model names in needReqIds the NEEDs an OVER_REACH was measured against - the answer shape lists the field
+    # for every verdict - and the check refused the whole chunk; every replacement was refused the same way, the group
+    # stayed incomplete and the chain ended with no pass and no decline.
+    # Characterization test: Green-1 pinned the refusal; the NEEDs of a verdict other than JUSTIFIED are no part of its
+    # finding (only JUSTIFIED stores needReqIds), so the check drops them instead of refusing the chunk.
+    raw = bt_answer(bt_verdict('GAS-10', 'OVER_REACH', '"every station"', needReqIds=['GAS-2'],
+                               counterexample='a station that is never sent a price'),
+                    bt_verdict('GAS-11', 'JUSTIFIED', needReqIds=['GAS-2']),
+                    bt_verdict('GAS-20', 'UNNEEDED', needReqIds=['GAS-7']))
+    assert backtrace.verdicts_of(raw, BT_CONTEXT, BT_CHUNK) == {'verdicts': [
+        {'subject': 'GAS-10', 'verdict': 'OVER_REACH', 'text': '"every station"',
+         'counterexample': 'a station that is never sent a price'},
+        {'subject': 'GAS-11', 'verdict': 'JUSTIFIED', 'text': 'why', 'needReqIds': ['GAS-2']},
+        {'subject': 'GAS-20', 'verdict': 'UNNEEDED', 'text': 'why'},
+    ]}, 'needReqIds of a verdict other than JUSTIFIED are dropped, not refused'
 
 
 @pytest.mark.parametrize('raw, message', [
