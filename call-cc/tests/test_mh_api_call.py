@@ -525,3 +525,100 @@ def test_thinking_refused_is_the_apis_400_naming_thinking_only():
     assert not mh_api_call.thinking_refused(400, err(ForcedToolRefusingApi.REFUSAL))
     assert not mh_api_call.thinking_refused(500, err('thinking: overloaded'))
     assert not mh_api_call.thinking_refused(400, None)
+
+
+# ---------------------------------------------------------------------------------------------------
+# RATE-LIMIT HEADER LINES - a contract with MH's mh-api-analyzers.yaml (rule api-request-limit): the Processor sees
+# nothing of the HTTP exchange, so the Function prints, on a non-2xx response, one '<header>: <value>' line per
+# rate-limit header present - name in lower case, in RATE_LIMIT_HEADERS order, nothing else.
+
+class FixedStatusApi:
+    """A local Messages API answering every POST with one fixed status, headers and JSON body."""
+
+    def __init__(self, status, headers, payload):
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                data = json.dumps(payload).encode('utf-8')
+                self.send_response(status)
+                for name, value in headers:
+                    self.send_header(name, value)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        self.httpd = HTTPServer(('127.0.0.1', 0), Handler)
+        self.url = 'http://127.0.0.1:' + str(self.httpd.server_address[1]) + '/v1/messages'
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+# as the API sends them: mixed case, plus headers that are not rate-limit headers
+RATE_LIMIT_RESPONSE_HEADERS = [('Retry-After', '2'), ('Anthropic-RateLimit-Requests-Remaining', '0'),
+                               ('anthropic-ratelimit-tokens-remaining', '380000'),
+                               ('anthropic-ratelimit-input-tokens-remaining', '300000'),
+                               ('anthropic-ratelimit-output-tokens-remaining', '80000'),
+                               ('request-id', 'req_011'), ('anthropic-ratelimit-requests-reset', '2026-10-26T12:00:00Z')]
+RATE_LIMIT_ERROR = {'type': 'error', 'error': {'type': 'rate_limit_error', 'message': 'rate limit exceeded'}}
+EXPECTED_RATE_LIMIT_LINES = ['retry-after: 2',
+                             'anthropic-ratelimit-requests-remaining: 0',
+                             'anthropic-ratelimit-tokens-remaining: 380000',
+                             'anthropic-ratelimit-input-tokens-remaining: 300000',
+                             'anthropic-ratelimit-output-tokens-remaining: 80000']
+
+
+def _call_fixed_status_api(status, headers, payload):
+    api = FixedStatusApi(status, headers, payload)
+    try:
+        return CALL(api.url)
+    finally:
+        api.close()
+
+
+def test_a_429_prints_the_rate_limit_headers_in_contract_order(capsys):
+    status, text = _call_fixed_status_api(429, RATE_LIMIT_RESPONSE_HEADERS, RATE_LIMIT_ERROR)
+    assert status == 429
+    assert '"rate_limit_error"' in text
+    # exactly these lines: lower-case names whatever the wire case, contract order, no other header
+    assert capsys.readouterr().out.splitlines() == EXPECTED_RATE_LIMIT_LINES
+
+
+def test_a_spend_cap_429_has_no_retry_after_line(capsys):
+    headers = [h for h in RATE_LIMIT_RESPONSE_HEADERS if h[0] != 'Retry-After']
+    status, _ = _call_fixed_status_api(429, headers, {'type': 'error', 'error': {
+        'type': 'rate_limit_error', 'message': 'You have reached your API usage limits',
+        'details': {'error_code': 'enforced_spend_limit_reached'}}})
+    assert status == 429
+    assert capsys.readouterr().out.splitlines() == EXPECTED_RATE_LIMIT_LINES[1:]
+
+
+def test_a_2xx_prints_no_header_lines(capsys):
+    status, _ = _call_fixed_status_api(200, RATE_LIMIT_RESPONSE_HEADERS, {'ok': True})
+    assert status == 200
+    assert capsys.readouterr().out == ''
+
+
+def test_a_non_429_failure_prints_its_headers_too(capsys):
+    # every non-2xx prints them - the analyzer, not the Function, decides what a 529 with requests-remaining: 0 means
+    status, _ = _call_fixed_status_api(529, [('anthropic-ratelimit-requests-remaining', '0')],
+                                       {'type': 'error', 'error': {'type': 'overloaded_error', 'message': 'Overloaded'}})
+    assert status == 529
+    assert capsys.readouterr().out.splitlines() == ['anthropic-ratelimit-requests-remaining: 0']
+
+
+def test_rate_limit_header_lines_without_headers_is_empty():
+    assert MODULE.rate_limit_header_lines(None) == []
+    assert MODULE.rate_limit_header_lines({}) == []
+
+MODULE = mh_api_call
+
+
+def CALL(url):
+    return mh_api_call.post_messages(url, 'k', {'model': 'm'}, 5)
