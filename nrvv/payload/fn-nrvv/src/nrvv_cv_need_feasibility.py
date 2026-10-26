@@ -7,6 +7,8 @@
 #   DETERMINED       a witness design (witness) - no finding
 # A witness is a design sketch of at most 2000 characters that names every agreed NEED (its reqId) with how the sketch
 # meets it. Optimality is not a criterion: it is a NEED or it is not asked. Run 3 times per gate (decision 13).
+# Plan 050 Phase 17: a witness may group NEEDs of one prefix as GAS-6/7; the canonical witness writes each in full
+# (GAS-6/GAS-7), so the Java re-check, which sees the canonical answer, finds every NEED it names.
 #
 # The canonical answer keeps the verdict's own fields only:
 #   {"verdict": "INFEASIBLE", "needReqIds": [...], "reason": "..."}
@@ -70,6 +72,17 @@ def names(witness, req_id):
     return re.search(re.escape(req_id) + r'(?!\d)', witness) is not None
 
 
+def expand_groups(witness, known):
+    """`witness` with every group of one known prefix written in full - GAS-6/7 -> GAS-6/GAS-7, GAS-5/6/7 likewise; a
+    prefix no agreed NEED carries is left as it is."""
+    prefixes = {m.group(1) for m in (re.match(r'(.*-)\d+$', x) for x in known) if m}
+    if not prefixes:
+        return witness
+    group = re.compile('(' + '|'.join(re.escape(p) for p in sorted(prefixes, key=len, reverse=True)) + r')(\d+)((?:/\d+)+)(?!\d)')
+    return group.sub(lambda m: m.group(1) + m.group(2) + ''.join('/' + m.group(1) + n for n in m.group(3).split('/')[1:]),
+                     witness)
+
+
 def verdict_of(cc_result, needs):
     """CC's verdict in canonical form, or a ValueError naming the first violation."""
     text = (cc_result or '').strip()
@@ -103,7 +116,7 @@ def verdict_of(cc_result, needs):
     witness = data.get('witness')
     if not isinstance(witness, str) or not witness.strip():
         raise ValueError('a ' + verdict + ' verdict gives its witness design')
-    witness = witness.strip()
+    witness = expand_groups(witness.strip(), known)
     if len(witness) > WITNESS_MAX_CHARS:
         raise ValueError('the witness is ' + str(len(witness)) + ' characters, at most ' + str(WITNESS_MAX_CHARS))
     missing = [x for x in known if not names(witness, x)]

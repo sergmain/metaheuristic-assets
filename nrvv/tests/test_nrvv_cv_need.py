@@ -161,6 +161,17 @@ def test_feasibility_witness_names_need_by_reqid_not_by_prefix():
     assert not feasibility.names('meets GAS-21 only', 'GAS-2')
 
 
+# plan 050 Phase 17: a stronger model groups NEEDs in its witness - GASV8A15-4/3, GASV8A15-5/7 (#116; #113 the same) - and
+# names every one; the check refused 8 of 13 sonnet attempts for it and #116's FEASIBILITY group stayed incomplete
+GROUPED = ('One publisher per station keeps the newest price and resends it until acknowledged: GAS-2 holds by resending '
+           'the newest; GAS-6/7 are met by never replacing the first and by coalescing; GAS-9 by default.')
+
+
+def test_feasibility_witness_naming_needs_in_a_slash_group():
+    out = feasibility.verdict_of(json.dumps({'verdict': 'DETERMINED', 'witness': GROUPED}), NEEDS)
+    assert out == {'verdict': 'DETERMINED', 'witness': GROUPED.replace('GAS-6/7', 'GAS-6/GAS-7')}
+
+
 @pytest.mark.parametrize('answer_object, message', [
     ({'verdict': 'MAYBE', 'witness': WITNESS}, 'unknown verdict'),
     ({'verdict': 'DETERMINED', 'witness': WITNESS, 'design': 'x'}, 'unknown field'),
