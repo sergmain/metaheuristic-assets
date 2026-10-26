@@ -164,6 +164,13 @@ def compose(context, component):
     if context.get('gateStage') == 'BEFORE_CRITERIA':
         lines.append('- This loop repairs the design: change, obsolete and add design items only - the top-level'
                      ' requirements passed their gate already.')
+    # plan 050 Phase 17 (d), by its characterization test test_prompt_states_the_contradictions_exception_at_a_req_cv_stage:
+    # at a stage whose gate runs RG's REQ_CV either side of a REQ_CONTRADICTION is changeable whatever its layer - the check's
+    # rule (sides); in #111's re-entered loop 7 of 27 answers KEEPed everything under the line above
+    if context.get('gateStage') in ('AFTER_INTERPRETATION', 'AFTER_DEFINITION') and any(
+            str(r.get('kind')) == 'REQ_CONTRADICTION' for r in component.get('reasons') or []):
+        lines.append('- Exception: either side of a REQ_CONTRADICTION below may be changed or obsoleted whatever its layer -'
+                     ' the gate judged the whole requirement set; additions still follow the rule above.')
     lines += ['', 'Which side a repair changes:']
     for finding, change in WHICH_SIDE:
         lines.append('- ' + finding + ': ' + change + '.')
@@ -422,13 +429,24 @@ def answer_of(cc_result, context, component):
     def language_refusal(key, statement, prose):
         return ev.language_refusal(key, statement) or ev.language_refusal(key, prose)
 
+    # plan 050 Phase 17 (d), by its characterization test test_rule_a_contradictions_sides_are_changeable_at_a_req_cv_stage:
+    # an item a REQ_CONTRADICTION reason of the component names is changeable whatever its layer at a stage whose gate runs
+    # RG's REQ_CV - after a NEED delta the re-entered AFTER_INTERPRETATION gate's contradictions named design, Interface and
+    # Environment items (acceptance run (d) on #111, decline #55). Not at BEFORE_CRITERIA: its contradictions are
+    # LOCAL_CONTRADICTION's, per branch, and their fix belongs to the design layer. NrvvRepairUtils.contradictionSides, the
+    # same rule.
+    sides = set() if only_design else {root(str(x)) for reason in component.get('reasons') or []
+                                       if reason.get('kind') == 'REQ_CONTRADICTION'
+                                       for x in (reason.get('subject'), reason.get('counterpart')) if x}
+
     for r, d in decisions.items():
         it = items[r]
-        if only_items and d['action'] != 'KEEP' and it['type'] != 'INTERPRETATION':
+        staged = r not in sides
+        if staged and only_items and d['action'] != 'KEEP' and it['type'] != 'INTERPRETATION':
             raise ValueError(r + ' is a ' + it['type'] + ' item: an AFTER_INTERPRETATION loop changes interpretation items only')
-        if no_design and d['action'] != 'KEEP' and it['type'] == 'DESIGN':
+        if staged and no_design and d['action'] != 'KEEP' and it['type'] == 'DESIGN':
             raise ValueError(r + ' is a DESIGN item: an AFTER_DEFINITION loop changes no design item')
-        if only_design and d['action'] != 'KEEP' and it['type'] != 'DESIGN':
+        if staged and only_design and d['action'] != 'KEEP' and it['type'] != 'DESIGN':
             raise ValueError(r + ' is a ' + it['type'] + ' item: a BEFORE_CRITERIA loop changes design items only')
         if d['action'] != 'CHANGE':
             continue

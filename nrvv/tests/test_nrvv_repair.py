@@ -58,6 +58,9 @@ CONTEXT = {'snapshotId': 7, 'gateStage': 'AFTER_DEFINITION', 'components': [C1, 
 # parent rules it reaches are checked in a context that names no gate stage
 CRITERIA = dict(CONTEXT, gateStage='BEFORE_CRITERIA')
 NO_STAGE = dict(CONTEXT, gateStage=None)
+# plan 050 Phase 17 (d; section 9.3 rule 2): C1 with an OVER_REACH instead of its REQ_CONTRADICTION - its items are then no
+# contradiction's sides, so every stage rule applies to them
+C1_OVER_REACH = dict(C1, reasons=[{'id': 21, 'kind': 'OVER_REACH', 'subject': 'GASR-10', 'counterpart': None, 'text': 'every'}])
 # plan 050 Phase 8 (decision 5; fixture change): C1 and C2 also holding a missing part, so that a top-level or interpretation
 # addition there reaches the other rules of the check instead of decision 5's
 MISSING = {'id': 11, 'kind': 'NEED_NOT_MET', 'subject': 'GASR-2', 'counterpart': None, 'text': 'a missing part'}
@@ -313,9 +316,11 @@ def test_rule_the_stage_decides_which_items_a_repair_changes():
     definition = dict(CONTEXT, gateStage='AFTER_DEFINITION')
     assert 'A1 adds a DESIGN item: an AFTER_DEFINITION loop adds no design item' in \
         refusal(answer([KEEP_D1, {'reqId': 'GASR-10', 'action': 'KEEP'}], [design]), context=definition)
+    # plan 050 Phase 17 (d; section 9.3 rule 2, test rewrite): GASR-11 is a side of C1's REQ_CONTRADICTION, which an
+    # AFTER_DEFINITION loop may change now - the rule is reached through C1's OVER_REACH twin
     assert 'GASR-11 is a DESIGN item: an AFTER_DEFINITION loop changes no design item' in \
         refusal(answer([{'reqId': 'GASR-10', 'action': 'KEEP'}, {'reqId': 'GASR-11', 'action': 'OBSOLETE', 'reason': 'r'}]),
-                context=definition)
+                context=dict(definition, components=[C1_OVER_REACH, C2, C3]))
     assert 'A1 adds a TOP_LEVEL item: a BEFORE_CRITERIA loop adds design items only' in refusal(answer([], [{
         'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 't', 'statement': 'The service shall make a station settle on the latest price.',
         'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}]), 'C3', criteria)
@@ -325,10 +330,42 @@ def test_rule_the_stage_decides_which_items_a_repair_changes():
 
 def test_rule_an_interpretation_loop_changes_interpretation_items_only():
     ctx = dict(CONTEXT, gateStage='AFTER_INTERPRETATION')
-    assert 'AFTER_INTERPRETATION loop changes interpretation items only' in refusal(answer([CHANGE_T1, KEEP_D1]), context=ctx)
+    # plan 050 Phase 17 (d; section 9.3 rule 2, test rewrite): GASR-10 is a side of C1's REQ_CONTRADICTION, which an
+    # AFTER_INTERPRETATION loop may change now - the rule is reached through C1's OVER_REACH twin
+    assert 'AFTER_INTERPRETATION loop changes interpretation items only' in \
+        refusal(answer([CHANGE_T1, KEEP_D1]), context=dict(ctx, components=[C1_OVER_REACH, C2, C3]))
     add = {'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 't', 'statement': 'The service shall make a station settle on the latest price.',
            'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}
     assert 'adds interpretation items only' in refusal(answer([], [add]), 'C3', ctx)
+
+
+# plan 050 Phase 17 (d), characterization test - the payload twin of NrvvRepairUtilsTest#
+# test_parseAnswer_aContradictionsSidesAreChangeableWhateverTheStage (section 9.2 rule 8): after a NEED delta the re-entered
+# AFTER_INTERPRETATION gate's REQ_CV contradictions named design, Interface and Environment items its loop could not change
+# (acceptance run (d) on #111, decline #55). An item a REQ_CONTRADICTION reason of the component names becomes changeable
+# whatever its layer, at a stage whose gate runs RG's REQ_CV; Green-1 pinned the refusal ('GASR-11 is a DESIGN item: an
+# AFTER_INTERPRETATION loop changes interpretation items only'), Red flipped it.
+OBSOLETE_D1 = answer([{'reqId': 'GASR-10', 'action': 'KEEP'}, {'reqId': 'GASR-11', 'action': 'OBSOLETE', 'reason': 'contradicts GASR-10'}])
+
+
+def test_rule_a_contradictions_sides_are_changeable_at_a_req_cv_stage():
+    ctx = dict(CONTEXT, gateStage='AFTER_INTERPRETATION')
+    out = wf.checked(OBSOLETE_D1, ctx, 'C1\n')
+    assert 'refused' not in out, out
+    assert [d['reqId'] for d in out['decisions'] if d['action'] == 'OBSOLETE'] == ['GASR-11'], out
+
+
+CONTRADICTION_SIDES = 'either side of a REQ_CONTRADICTION below may be changed or obsoleted whatever its layer'
+
+
+def test_prompt_states_the_contradictions_exception_at_a_req_cv_stage():
+    # plan 050 Phase 17 (d), characterization test: in #111's re-entered loop 7 of 27 answers KEEPed everything - the prompt
+    # said 'interpretation items only' while the contradictions' sides were design items. Green-1 pinned: no prompt says it;
+    # Red: a stage whose gate runs RG's REQ_CV says it for a component holding a REQ_CONTRADICTION, and only there
+    for stage in ('AFTER_INTERPRETATION', 'AFTER_DEFINITION'):
+        assert CONTRADICTION_SIDES in wf.compose(dict(CONTEXT, gateStage=stage), C1), stage
+    assert CONTRADICTION_SIDES not in wf.compose(dict(CONTEXT, gateStage='BEFORE_CRITERIA'), C1)
+    assert CONTRADICTION_SIDES not in wf.compose(dict(CONTEXT, gateStage='AFTER_INTERPRETATION'), C1_OVER_REACH)
 
 
 def test_a_chunk_that_is_not_one_component_fails_the_task():
