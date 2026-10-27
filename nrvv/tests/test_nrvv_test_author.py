@@ -98,7 +98,8 @@ def test_the_criterion_prompt_carries_the_requirement_text_and_the_answer_shape(
 
     assert 'Requirement TMPSN3F36BJ-3:' in prompt
     assert "1.1) When executed, the program must output the exact text 'Hello, NRVV'" in prompt
-    assert '{"criterion": "<the criterion>"}' in prompt
+    # plan 050 Phase 17: the criterion itself (was '{"criterion": "<the criterion>"}')
+    assert 'with the criterion itself as the result' in prompt
     assert '{{M=' not in prompt and 'METADATA' not in prompt
 
 
@@ -127,7 +128,7 @@ def test_the_criterion_prompt_ends_with_how_the_answer_is_stored():
     # the requirement first, then - the last thing CC reads - the tool by name, the answer's shape, and "print nothing"
     tail = prompt[prompt.index('4.1) Not applicable.'):]
     assert 'mh_cc_store_result' in tail
-    assert '{"criterion": "<the criterion>"}' in tail
+    assert 'the criterion itself as the result' in tail, 'plan 050 Phase 17 (was the JSON object)'
     assert prompt.rstrip().endswith('only what the tool stores reaches the pipeline.')
     assert prompt.index('Requirement GASV4ACCC-5:') < prompt.index('mh_cc_store_result')
 
@@ -163,29 +164,60 @@ def test_the_criterion_prompt_refuses_an_empty_input(req_id, content):
 
 
 def test_the_criterion_check_collapses_whitespace_into_one_line():
-    answer = json.dumps({'criterion': "Running main()  prints\n'Hello, NRVV'\tonce."})
+    answer = "Running main()  prints\n'Hello, NRVV'\tonce."  # plan 050 Phase 17: the criterion itself (was its JSON)
 
     assert cc.criterion_of(answer) == "Running main() prints 'Hello, NRVV' once."
 
 
 def test_the_criterion_check_unwraps_one_markdown_fence():
-    assert cc.criterion_of('```json\n{"criterion": "It prints once."}\n```') == 'It prints once.'
+    assert cc.criterion_of('```text\nIt prints once.\n```') == 'It prints once.'
 
 
-@pytest.mark.parametrize('answer', ['not json', '["x"]', '{"criterion": "  "}', '{"text": "x"}', '', None,
-                                    '{"criterion": 5}'])
+# plan 050 Phase 17 (9.3 rule 2): the answer is the criterion itself - the JSON shapes refused before ('not json' as no
+# JSON, '{"text": "x"}' as no criterion, ...) became: no text at all, or anything JSON-shaped (the former form included)
+@pytest.mark.parametrize('answer', ['', None, '  \n', '```text\n\n```', '{"criterion": "x"}', '{"criterion": 5}',
+                                    '{"text": "x"}', '["x"]'])
 def test_the_criterion_check_refuses_anything_but_one_criterion(answer):
     with pytest.raises(ValueError):
         cc.criterion_of(answer)
 
 
 def test_the_criterion_check_counts_utf8_bytes_as_the_test_case_column_does():
-    assert len(cc.criterion_of(json.dumps({'criterion': '\u0436' * 1000}))) == 1000
+    assert len(cc.criterion_of('\u0436' * 1000)) == 1000
     with pytest.raises(ValueError, match='2002 UTF-8 bytes'):
-        cc.criterion_of(json.dumps({'criterion': '\u0436' * 1001}))
-    assert len(cc.criterion_of(json.dumps({'criterion': 'x' * 2000}))) == 2000
+        cc.criterion_of('\u0436' * 1001)
+    assert len(cc.criterion_of('x' * 2000)) == 2000
     with pytest.raises(ValueError, match='UTF-8 bytes'):
-        cc.criterion_of(json.dumps({'criterion': 'x' * 2001}))
+        cc.criterion_of('x' * 2001)
+
+
+# plan 050 Phase 17 (characterization test): acceptance run (b) #120 GASV8B3 on CC - CRITERIA #3598 (ExecContext 4476)
+# ended ERROR: one answer (Variable 218630, byte for byte below) closed its criterion with an ESCAPED quote, so the JSON
+# string never ended; the check raised and the run ended ERROR, the chain with it. The nested-escaping slip of
+# TEST_AUTHOR's answers (deviation 17), here in prose. The answer has one field, so it becomes the criterion itself.
+OBSERVED_120_ANSWER = ('{"criterion": "Submit via submitDesiredPrice for one station price P1, then P2, then P3 while the '
+                       'send of P1 stays unacknowledged, then stop submitting and acknowledge each send by its send '
+                       'identifier until none remain. Observe via sendToStation: only P1 is sent while it is in flight, '
+                       'and the next send carries P3; P2 is never sent. After the final acknowledgement, getStationState '
+                       'reports latestDesiredPrice = P3, lastAcknowledgedPrice = P3 and settled = true.\\"}')
+
+
+def test_the_criterion_answer_is_the_criterion_itself():
+    # CT Green-1: both refused - 'CC answered something that is not JSON'
+    # CT Red: the answer is the criterion itself, collapsed to one line; the former JSON form is refused by name - taken
+    # as text it would be stored as the criterion
+    assert cc.criterion_of('It prints\n  once.') == 'It prints once.'
+    with pytest.raises(ValueError, match='former JSON form'):
+        cc.criterion_of(OBSERVED_120_ANSWER)
+
+
+def test_the_criterion_prompt_asks_for_the_criterion_itself():
+    prompt = cp.compose('GASV4ACCC-5', E1_REQUIREMENT)
+
+    # CT Green-1: '{"criterion": "<the criterion>"}' was asked for
+    # CT Red: the criterion itself, and no JSON
+    assert '"criterion"' not in prompt and 'JSON object' not in prompt
+    assert 'with the criterion itself as the result: plain text - not JSON, not quoted' in prompt
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -437,7 +469,7 @@ def test_run_criterion_prompt_and_check_through_their_roles(tmp_path):
 
     w2 = str(tmp_path / 'check')
     cc.run(task_with_inputs(w2, [{'variable-for-cc-result': 'criterionResult'}, {'variable-for-criterion': 'criterion'}],
-                            {'criterionResult': '{"criterion": "It prints once."}'}, ['criterion']))
+                            {'criterionResult': 'It prints once.'}, ['criterion']))
     assert artifact(w2, 101) == 'It prints once.'
 
 

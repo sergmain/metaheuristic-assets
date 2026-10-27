@@ -13,7 +13,8 @@
 #
 # FROM THE REQUIREMENT ALONE: the prompt carries the requirement's text - all four items, so a filled Acceptance item
 # is used whenever recovery provided one - and never target code (decision 17). CC answers through call-cc's result
-# tool with ONE JSON object; mh.asset.nrvv-criterion-check_1.0 checks it.
+# tool with ONE JSON object; mh.asset.nrvv-criterion-check_1.0 checks it. Since plan 050 Phase 17: with the criterion
+# itself, plain text - no JSON.
 #
 # LANGUAGE-NEUTRAL (correction C3): the requirement was recovered from code in one language and is implemented in
 # another, so a requirement about a construct of the source language (a declaration, an access modifier, a return
@@ -93,8 +94,12 @@ def compose(req_id, content, constraints=None):
         'Requirement ' + req + ':',
         text,
         '',
-        'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
-        '{"criterion": "<the criterion>"}',
+        'Answer by calling the mh_cc_store_result tool exactly once, with the criterion itself as the result: plain text'
+        ' - not JSON, not quoted, no markdown fence, nothing before or after it.',
+        # plan 050 Phase 17 (by its characterization test test_the_criterion_prompt_asks_for_the_criterion_itself): the
+        # criterion itself - (b) #120's escaped closing quote ended CRITERIA #3598 ERROR. The two lines above were:
+        #   'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object, and nothing else:',
+        #   '{"criterion": "<the criterion>"}',
         'Print nothing - neither the criterion nor any explanation: only what the tool stores reaches the pipeline.',
     ])
 
