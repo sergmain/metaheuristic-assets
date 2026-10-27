@@ -184,9 +184,17 @@ def _path(url):
 
 # ---------------------------------------------------------------------------------------------------
 # THE SURVEY
+#
+# E1 (ExecContext #5156, 2026-10-27): the sign-in above went through over plain HTTP - /start_sign_in and /sign_in
+# both HTTP 200, no reCAPTCHA, no two-factor code, no e-mailed code - and the form page answered HTTP 200 on
+# apply.ycombinator.com.
 
 def survey(session, login, password, form_url, log):
-    """Sign in when YC asks for it, then read the form page. Returns {host, path, component, version, props}.
+    """Sign in when YC asks for it, then fetch the form page. Returns {host, path, html}.
+
+    The SSO's sign-in page is Inertia and is read here; the form page is handed back as HTML and read by the core
+    (vc_page.py), because what it embeds is not the SSO's format - E1, ExecContext #5156: the signed-in form page on
+    apply.ycombinator.com carries no Inertia data-page attribute.
 
     session is a vc_http.Session opened with may_send above."""
     form_url = check_form_url(form_url)
@@ -212,11 +220,8 @@ def survey(session, login, password, form_url, log):
     if _host(current.url) != APPLY_HOST:
         raise RuntimeError('after the sign-in YC still shows a page on ' + str(_host(current.url))
                            + ', not the form on ' + APPLY_HOST)
-    page = inertia_page(current.text)
     return {
         'host': _host(current.url),
         'path': urllib.parse.urlsplit(current.url).path,
-        'component': page.get('component'),
-        'version': page.get('version'),
-        'props': page.get('props'),
+        'html': current.text,
     }

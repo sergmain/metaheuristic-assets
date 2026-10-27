@@ -6,8 +6,8 @@
 #
 # ONE PAYLOAD SERVES EVERY FUND. What differs per fund is:
 #   - the adapter module vc_fund_<fund>.py, registered in ADAPTERS: how to sign in, what a survey may send,
-#     where the form's state is - and, optionally, its own extract_fields when the generic one below does
-#     not fit that fund's page
+#     how to reach the form page (survey returns {host, path, html}) - and, optionally, its own extract_fields
+#     when the generic one below does not fit that fund's embedded state
 #   - the Function descriptor, whose api.keyCode names the fund's Vault entry (VC_YC_AUTH for YC): a
 #     descriptor carries exactly one key, so a fund is a descriptor
 #   - the wrapper .mhsc: def fund, def survey_fn, over the shared vc-form-survey.mhscp
@@ -39,6 +39,8 @@ import json
 import os
 import re
 import sys
+
+from vc_page import embedded_state, extract_html_fields, page_structure
 
 FUNCTION_TYPE = 'mh.asset.vc-form-survey'
 
@@ -304,15 +306,31 @@ def skeleton(value, key=None, depth=0, in_options=False):
     return type(value).__name__
 
 
-def inventory(fund, page, fields):
+def inventory(fund, page, state_kind, state, fields, source, counts):
+    """The formFields document. page is the adapter's {host, path, html}; state the embedded state or None."""
     return {
         'fund': fund,
-        'form': {'host': page.get('host'), 'path': page.get('path'), 'component': page.get('component'),
-                 'version': page.get('version')},
+        'form': {'host': page.get('host'), 'path': page.get('path'),
+                 'embedding': state_kind,
+                 'component': state.get('component') if state else None,
+                 'version': state.get('version') if state else None},
+        'source': source,
         'fieldCount': len(fields),
+        'candidates': counts,
         'fields': fields,
-        'propsSkeleton': skeleton(page.get('props')),
+        'propsSkeleton': skeleton(state.get('props')) if state else None,
+        'pageStructure': page_structure(page.get('html')),
     }
+
+
+def choose_fields(from_props, from_html):
+    """The fields a survey reports, and where they came from: the embedded state when it defines any, else the
+    page's form controls, else none."""
+    if from_props:
+        return from_props, 'props'
+    if from_html:
+        return from_html, 'html-form'
+    return [], 'none'
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -360,13 +378,26 @@ def run(task, credential):
 
     session = open_session(adapter.may_send, print)
     page = adapter.survey(session, login, password, form_url, print)
-    print('form page: ' + str(page.get('component')) + ' at ' + str(page.get('host')) + str(page.get('path')))
+    state_kind, state = embedded_state(page.get('html'))
+    structure = page_structure(page.get('html'))
+    print('form page: ' + str(page.get('host')) + str(page.get('path')) + ', ' + str(structure['bytes'])
+          + ' bytes, embedded state: ' + str(state_kind)
+          + (' (' + str(state.get('component')) + ')' if state else '')
+          + ', forms: ' + str(structure['forms']) + ', controls: ' + json.dumps(structure['controls'])
+          + ', scripts: ' + str(len(structure['scripts'])) + ', json scripts: ' + str(len(structure['jsonScripts'])))
 
     extract = getattr(adapter, 'extract_fields', extract_fields)
-    fields = assign_variable_names(fund, extract(page.get('props')))
-    write_text(fields_target, json.dumps(inventory(fund, page, fields), indent=2, ensure_ascii=False))
+    from_props = extract(state.get('props')) if state else []
+    from_html = extract_html_fields(page.get('html'))
+    chosen, source = choose_fields(from_props, from_html)
+    fields = assign_variable_names(fund, chosen)
+    counts = {'props': len(from_props), 'html-form': len(from_html)}
+    write_text(fields_target, json.dumps(inventory(fund, page, state_kind, state, fields, source, counts),
+                                         indent=2, ensure_ascii=False))
     write_text(variables_target, variables_block(fields))
-    print('fields found: ' + str(len(fields)))
+    print('fields found: ' + str(len(fields)) + ' from ' + source + ' (candidates: ' + json.dumps(counts) + ')')
+    if not fields:
+        print('WARNING: no field definition found - formFields.pageStructure describes the page for the next step')
     for f in fields:
         print('  ' + f['variable'] + ' <- ' + f['key'] + ' (' + str(f['type']) + ', required=' + str(f['required'])
               + ')')

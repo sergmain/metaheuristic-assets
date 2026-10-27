@@ -189,8 +189,26 @@ def test_skeleton_numbers_kept_only_as_limits_or_ids():
 
 def test_inventory_counts_the_fields_it_lists():
     fields = s.assign_variable_names('yc', s.extract_fields(PROPS))
-    page = {'host': 'apply.example', 'path': '/apps/x/edit', 'component': 'Apps/Edit', 'version': 'v1', 'props': PROPS}
-    inv = s.inventory('yc', page, fields)
+    page = {'host': 'apply.example', 'path': '/apps/x/edit', 'html': '<html><script src="/a.js?v=1"></script></html>'}
+    state = {'component': 'Apps/Edit', 'version': 'v1', 'props': PROPS}
+    inv = s.inventory('yc', page, 'inertia', state, fields, 'props', {'props': 4, 'html-form': 0})
     assert inv['fieldCount'] == 4 == len(inv['fields'])
-    assert inv['form'] == {'host': 'apply.example', 'path': '/apps/x/edit', 'component': 'Apps/Edit', 'version': 'v1'}
+    assert inv['form'] == {'host': 'apply.example', 'path': '/apps/x/edit', 'embedding': 'inertia',
+                           'component': 'Apps/Edit', 'version': 'v1'}
+    assert inv['source'] == 'props'
+    assert inv['pageStructure']['scripts'] == ['/a.js']
     assert 'Acme Rockets' not in json.dumps(inv)
+
+
+def test_inventory_without_embedded_state_has_no_skeleton():
+    page = {'host': 'apply.example', 'path': '/apps/x/edit', 'html': '<html></html>'}
+    inv = s.inventory('yc', page, None, None, [], 'none', {'props': 0, 'html-form': 0})
+    assert inv['form']['embedding'] is None
+    assert inv['propsSkeleton'] is None
+    assert inv['fieldCount'] == 0
+
+
+def test_choose_fields_prefers_the_embedded_state_then_the_html_form():
+    assert s.choose_fields([{'key': 'a'}], [{'key': 'b'}]) == ([{'key': 'a'}], 'props')
+    assert s.choose_fields([], [{'key': 'b'}]) == ([{'key': 'b'}], 'html-form')
+    assert s.choose_fields([], []) == ([], 'none')

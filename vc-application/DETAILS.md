@@ -14,7 +14,7 @@ Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund) · Fun
 **Adding a fund** - nothing in the shared graph or the core changes:
 
 1. `payload/fn-vc-form-survey/src/vc_fund_<fund>.py` - `FUND`, `may_send(method, url)`, `survey(session, login,
-   password, form_url, log)` returning `{host, path, component, version, props}`, and optionally its own
+   password, form_url, log)` returning `{host, path, html}` of the signed-in form page, and optionally its own
    `extract_fields(props)`; registered in `vc_form_survey.ADAPTERS`; unit tests in `tests/test_vc_fund_<fund>.py`.
 2. `functions/fn-vc-form-survey-<fund>/mh-function.yaml` - code `mh.asset.vc-form-survey-<fund>_1.0`, the same
    payload, `api.keyCode` = the fund's Vault entry (a descriptor carries exactly one key).
@@ -52,13 +52,17 @@ order that matters is inside the Function:
 1. **The secret handoff comes first** - the Processor's `accept()` waits 10 seconds.
 2. **Everything resolvable is resolved before the fund's site is called** - the adapter, the inputs, both output
    declarations, the shape of the credential.
-3. **The adapter signs in when the site asks for it, then reads the form page.** For YC: `GET` the form url (YC
+3. **The adapter signs in when the site asks for it, then fetches the form page.** For YC: `GET` the form url (YC
    redirects to its SSO), `POST /start_sign_in`, `POST /sign_in`, `GET` the redirect, `GET` the form - see
    `vc_fund_yc.py` for the protocol as YC's own client speaks it.
-4. **Fields are extracted from the page's props** - the adapter's `extract_fields` when it has one, else the generic
-   one: a dict with a label and an identity is a field, a dict with fields beneath it is a section, a dict inside
-   `options` / `choices` is a choice.
-5. **Both outputs are written**, and every field is printed as `variable <- key (type, required)`.
+4. **The page is read by the core (`vc_page.py`), whatever carries the form:** the state a JS framework embeds
+   (Inertia attribute or script, react-rails, react_on_rails, Next.js, any JSON script) and the server-rendered
+   form controls. Fields come from the embedded state when it defines any - the adapter's `extract_fields` when it
+   has one, else the generic one: a dict with a label and an identity is a field, a dict with fields beneath it is a
+   section, a dict inside `options` / `choices` is a choice - else from the form controls, else none. The page's
+   structure (names and counts only) is recorded either way.
+5. **Both outputs are written**, and every field is printed as `variable <- key (type, required)`. No field found
+   is not a failure of the Task: the outputs carry the page's structure for the next experiment.
 
 `tries 1`: a sign-in that failed is not repeated; another attempt only moves the site toward a captcha.
 
@@ -68,7 +72,7 @@ order that matters is inside the Function:
 |---|---|---|---|
 | `formUrl` | in | the application's page | for YC an https url on `apply.ycombinator.com`, e.g. `https://apply.ycombinator.com/apps/<id>/edit` |
 | `production` | in, nullable | read and reported only; a survey writes nothing durable in either mode | JSON `null` at launch |
-| `formFields` | out | the inventory, JSON: `fund`, `form` {host, path, component, version}, `fieldCount`, `fields` [{key, label, type, required, options, limits, help, section, path, variable}], `propsSkeleton` | - |
+| `formFields` | out | the inventory, JSON: `fund`, `form` {host, path, embedding, component, version}, `source` (`props`, `html-form` or `none`), `fieldCount`, `candidates` (fields found per source), `fields` [{key, label, type, required, options, limits, help, section, path, variable}], `propsSkeleton` (or null), `pageStructure` | - |
 | `applyVariables` | out | the apply flow's `variables { }` block: one `<- <variable>` per field, `?` unless the form marks the field required, the label as a comment above it | - |
 
 - **Credential:** Vault entry `VC_YC_AUTH`, the plain `login:password` of the founder's YC account (an e-mail or a YC
@@ -98,15 +102,26 @@ e-mail the account about a new sign-in). Nothing in the application changes.
 
 ### 6. Corrections
 
-None yet.
+- **2026-10-27, E1, ExecContext #5156, Task #326554 (ERROR, exit 1, payload `362f738`).** Console, one line per
+  request: `GET apply.../edit` -> 302 -> `account.ycombinator.com/` 200 (`SignIn`), `POST /start_sign_in` 200,
+  `POST /sign_in` 200 (`signed in`), `GET apply.../edit` 200 - then `the page carries no Inertia data-page attribute`.
+  The sign-in - E1's riskiest assumption - held: no reCAPTCHA, no two-factor code, no e-mailed code; the only POSTs
+  were the two sign-in calls (F3). What failed is the assumption that the apply site embeds its page the way the SSO
+  does. Learned: the form page is read without assuming its framework (`vc_page.py`), and its structure is recorded
+  whenever no field is found. The full console is in `mh_task.function_exec_results` - the MCP excerpt stops after
+  the first request.
+- **2026-10-27, while writing E2's tests.** A `<textarea>` inside a `<label>` made the typed text part of the label -
+  applicant content into `formFields` (F6). `test_html_fields_never_carry_what_was_typed` now covers it, and the
+  parser skips textarea content.
 
 ### 7. Experiments
 
 | id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
 |---|---|---|---|---|---|
-| E1 | the request taken literally: sign in to YC over plain HTTP the way YC's own SSO client does, read the form page's Inertia props, extract the fields generically, emit the apply inputs | - | `vc-form-survey-yc-synthetic-1.0` | YC lets a plain HTTP client sign in with the password alone - no reCAPTCHA, no two-factor code, no e-mailed new-device code; the cheapest run that shows it is this run | OPEN |
-| E2 | if the field definitions are not in the props: read them from the edit page's JavaScript chunk (the client-side form definition) | E1's riskiest alternative: the props carry answers but not definitions | - | the edit component's chunk names the fields statically | OPEN |
-| E3 | if YC demands a captcha for a plain HTTP client: a real browser (Edge, installed on the Processor's box) driven over its debugging protocol | E1's riskiest assumption | - | the captcha is not demanded of a real browser; an e-mailed code would still need a person | OPEN |
+| E1 | the request taken literally: sign in to YC over plain HTTP the way YC's own SSO client does, read the form page's Inertia props, extract the fields generically, emit the apply inputs | - | `vc-form-survey-yc-synthetic-1.0` (payload `362f738`) | YC lets a plain HTTP client sign in with the password alone - no reCAPTCHA, no two-factor code, no e-mailed new-device code; the cheapest run that shows it is this run | REJECTED - ExecContext #5156: the sign-in held (F1's sign-in half, F3), but the signed-in form page has no Inertia `data-page` |
+| E2 | read the form page whatever carries it: every standard embedded state, then the server-rendered form controls; record the page's structure when neither yields a field | E1, ExecContext #5156: the apply page is not Inertia | `vc-form-survey-yc-synthetic-1.0` (payload after `362f738`) | the form's definition reaches the server's HTML at all - in an embedded state or as form controls - rather than being fetched by the page's JavaScript after load | OPEN |
+| E3 | if the definitions are not in the server's HTML: read them from the JavaScript the page loads, or from the JSON endpoint that JavaScript calls | E1's riskiest alternative, refined by E2's `pageStructure` | - | the endpoint answers a plain HTTP client with the signed-in session | OPEN |
+| E4 | if YC demands a captcha for a plain HTTP client: a real browser (Edge, installed on the Processor's box) driven over its debugging protocol | E1's riskiest assumption - not observed in E1 | - | the captcha is not demanded of a real browser; an e-mailed code would still need a person | OPEN |
 
 Measured alike: no numeric metric; F1-F6 are pass/fail.
 
