@@ -1,0 +1,33 @@
+version: 3
+function:
+  # One descriptor per fund: a descriptor carries exactly one Vault key (api.keyCode), and each fund's
+  # account lives in its own entry. The payload is shared - the fund's adapter is chosen by the process
+  # meta 'fund' (vc_form_survey.ADAPTERS).
+  code: mh.asset.vc-form-survey-yc_1.0
+  type: mh.asset.vc-form-survey
+  env: python-3
+  sourcing: git
+  # The payload is NOT packaged into this bundle - it is reached only through this block, and it lives
+  # beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the tip at every
+  # ExecContext creation and pins the sha into every Task of that run.
+  #
+  # The whole payload directory is copied into {task.home}/asset at launch, so vc_http.py, vc_fund_yc.py
+  # and mh_secret_client.py are always siblings of the script that imports them.
+  git:
+    repo: https://github.com/sergmain/metaheuristic-assets.git
+    branch: master
+    commit: HEAD
+    path: vc-application/payload/fn-vc-form-survey
+  targets:
+    mh-default:
+      src: src
+      file: vc_form_survey.py
+  # The YC account: the PLAIN login:password (an e-mail or a YC username, then the password) of the YC
+  # account the application belongs to. The Processor fetches the vault entry sealed, decrypts it, and hands
+  # it to the Function over its loopback secret channel - never argv, env or disk.
+  api:
+    keyCode: VC_YC_AUTH
+  metas:
+    # 2: every variable is named by a process meta, and task.metas, task.checkCode and task.secretPort exist
+    # only in params version 2.
+    - mh.task-params-version: 2
