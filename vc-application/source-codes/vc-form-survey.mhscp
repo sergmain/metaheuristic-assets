@@ -1,0 +1,38 @@
+// DSL for .mhsc/.mhscp is described in /mnt/shared/metaheuristic.wiki/p/source-code-dsl.md
+//
+// The graph of a VC application-form survey, shared by every fund's wrapper (vc-form-survey-<fund>-*.mhsc).
+// A wrapper defines:
+//   fund       the adapter the Function loads, vc_fund_<fund>.py in the payload
+//   survey_fn  the Function code of that fund's descriptor - one descriptor per fund, because a descriptor
+//              carries exactly one Vault key (api.keyCode)
+//
+// Reusable by construction - nothing about a particular run appears here:
+//   formUrl         IN   the application's url, e.g. https://apply.ycombinator.com/apps/<id>/edit
+//   production      IN   nullable; read and reported only - a survey writes nothing durable in either mode
+//   formFields      OUT  the field inventory, JSON: key, label, type, required, options, limits per field,
+//                        and the shape of the page's props with no applicant content in it
+//   applyVariables  OUT  the variables { } block of the fund's apply flow, one input per field
+
+    variables {
+        <- formUrl
+        <- production?
+        -> formFields
+        -> applyVariables
+    }
+
+    survey := ${survey_fn} {
+        name "Survey the input fields of a VC application form"
+        // Every name the Function reads or writes is bound here, never inside it.
+        meta fund = "${fund}",
+             variable-for-form-url = "formUrl",
+             variable-for-production = "production",
+             variable-for-form-fields = "formFields",
+             variable-for-apply-variables = "applyVariables"
+        <- formUrl, production?
+        -> formFields: ext=".json",
+           applyVariables: ext=".txt"
+        // Up to six requests of at most 20 s each, plus the 10 s window of the secret handshake.
+        timeout 180
+        // A sign-in that failed is not repeated: another attempt only moves the fund's site toward a captcha.
+        tries 1
+    }

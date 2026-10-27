@@ -1,0 +1,19 @@
+// DSL for .mhsc/.mhscp is described in /mnt/shared/metaheuristic.wiki/p/source-code-dsl.md
+//
+// The YC application-form survey, synthetic: signs in with the YC account in Vault entry VC_YC_AUTH, reads
+// the application form at formUrl, and hands back every input field it defines (formFields) and the
+// variables { } block of a YC apply flow (applyVariables). It only reads - nothing is written to YC.
+//
+// 'synthetic' in the name: the survey a DAHF experiment runs to define the apply flow. It is never
+// promoted (vc-application/DETAILS.md, part 8).
+//
+// Launch with mh_create_exec_context_with_variables (source-level inputs, 562.120): formUrl, production null.
+// Run it in a company whose Vault - or the management company's, whose keys have priority - holds VC_YC_AUTH.
+
+source "vc-form-survey-yc-synthetic-1.0" {
+
+    def fund = "yc"
+    def survey_fn = "mh.asset.vc-form-survey-yc_1.0"
+
+    include "vc-form-survey"
+}
