@@ -172,6 +172,41 @@ def test_feasibility_witness_naming_needs_in_a_slash_group():
     assert out == {'verdict': 'DETERMINED', 'witness': GROUPED.replace('GAS-6/7', 'GAS-6/GAS-7')}
 
 
+# plan 053 (characterization test): X1 E1 #123 GASV8X1E1 on CC - every FEASIBILITY attempt (5 of 5) refused, the group
+# incomplete, the project ended at its NEED gate: the witness joined NEEDs as "GASV8X1E1-4 and -3", "-5 and -7", "-8 and
+# -9", naming each; expand_groups knew only the slash form "GAS-6/7". The observed answer (Variable 222306) byte for byte.
+PAIRED = ('One publisher per station keeps the newest price and resends it until acknowledged: GAS-2 and -6 hold by '
+          'resending the newest and never replacing the first; GAS-7 & -9 by coalescing and by default.')
+E1_NEEDS = [{'reqId': 'GASV8X1E1-' + str(n), 'revision': 1, 'title': 'T' + str(n), 'statement': 'S' + str(n),
+             'parentReqId': None, 'kind': 'OBLIGATION'} for n in range(1, 11)]
+E1_ANSWER = ('{"verdict":"UNDERDETERMINED","needReqIds":[],"reason":"","witness":"Central service keeps per-station state: '
+             'desired (latest price), lastAcked, inFlight flag. Stop-and-wait with coalescing. GASV8X1E1-1: the service publishes '
+             'price updates to stations. GASV8X1E1-2: new prices only overwrite the station\'s desired value while a send is in '
+             'flight; they never queue. GASV8X1E1-5 and -7: because at most one send per station is outstanding, nothing can '
+             'be reordered at the dumb station, so no station-side versioning or dedup is needed. GASV8X1E1-6: the in-order ack '
+             'for the single outstanding send releases the next one. On ack, if desired != acked, send desired once; otherwise '
+             'send nothing. GASV8X1E1-4 and -3: when input stops, the last send carries the latest price, so each station '
+             'settles on it. Intermediate states may be stale or skipped. GASV8X1E1-8 and -9: superseded intermediate prices are '
+             'never sent, and unchanged prices are not resent, which avoids spam and unnecessary updates. GASV8X1E1-10: the next '
+             'send goes out as soon as the ack arrives, which keeps staleness low.","openChoices":["Ack timeout and retry '
+             'policy when an ack is lost or delayed","Whether to add a debounce or minimum interval between sends to a station '
+             '(trades staleness against spam)","Whether sends to different stations are independent or rate-limited globally",'
+             '"How long to wait before declaring a station unreachable"]}')
+
+
+def test_feasibility_witness_naming_needs_joined_by_and():
+    # CT Green-1: refused - 'the witness does not name NEED GAS-6' / '... GASV8X1E1-3'
+    # CT Red: "X-4 and -3", "X-7 & -9" (also "X-1, -2") name both NEEDs - written in full, as the slash form is
+    out = feasibility.verdict_of(json.dumps({'verdict': 'DETERMINED', 'witness': PAIRED}), NEEDS)
+    assert out == {'verdict': 'DETERMINED',
+                   'witness': PAIRED.replace('GAS-2 and -6', 'GAS-2 and GAS-6').replace('GAS-7 & -9', 'GAS-7 & GAS-9')}
+    e1 = feasibility.verdict_of(E1_ANSWER, E1_NEEDS)
+    assert e1['verdict'] == 'UNDERDETERMINED' and len(e1['openChoices']) == 4, e1
+    for pair in ('GASV8X1E1-5 and GASV8X1E1-7', 'GASV8X1E1-4 and GASV8X1E1-3', 'GASV8X1E1-8 and GASV8X1E1-9'):
+        assert pair in e1['witness'], pair
+    assert 'GASV8X1E1-1, GASV8X1E1-2' in feasibility.expand_groups('GASV8X1E1-1, -2 hold', [n['reqId'] for n in E1_NEEDS])
+
+
 @pytest.mark.parametrize('answer_object, message', [
     ({'verdict': 'MAYBE', 'witness': WITNESS}, 'unknown verdict'),
     ({'verdict': 'DETERMINED', 'witness': WITNESS, 'design': 'x'}, 'unknown field'),
