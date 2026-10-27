@@ -1,0 +1,4 @@
+# GASV8B3_88_suite - written by nrvv-test-author
+tests/test_GASV8B3_88_suite.py::test_superseded_ack_does_not_settle_and_triggers_followup
+tests/test_GASV8B3_88_suite.py::test_ack_of_followup_send_settles_on_latest
+tests/test_GASV8B3_88_suite.py::test_unmatched_ack_is_ignored_and_changes_no_state

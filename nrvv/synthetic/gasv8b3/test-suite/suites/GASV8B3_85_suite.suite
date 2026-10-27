@@ -1,0 +1,8 @@
+# GASV8B3_85_suite - written by nrvv-test-author
+tests/test_GASV8B3_85_suite.py::test_station_report_provisional_then_final
+tests/test_GASV8B3_85_suite.py::test_batch_report_provisional_then_final
+tests/test_GASV8B3_85_suite.py::test_window_report_provisional_then_final
+tests/test_GASV8B3_85_suite.py::test_report_states_required_figures_and_totals
+tests/test_GASV8B3_85_suite.py::test_station_report_sends_count_matches_dispatches
+tests/test_GASV8B3_85_suite.py::test_reporting_does_not_change_sending_behaviour
+tests/test_GASV8B3_85_suite.py::test_report_does_not_add_events_or_sends

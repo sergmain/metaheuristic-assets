@@ -1,0 +1,7 @@
+# GASV8B3_89_suite - written by nrvv-test-author
+tests/test_GASV8B3_89_suite.py::test_no_sends_reports_zero
+tests/test_GASV8B3_89_suite.py::test_single_send_counts_one_no_resend
+tests/test_GASV8B3_89_suite.py::test_counts_match_with_resend
+tests/test_GASV8B3_89_suite.py::test_total_cost_is_sum_of_per_send_costs
+tests/test_GASV8B3_89_suite.py::test_many_stations_and_repeated_updates
+tests/test_GASV8B3_89_suite.py::test_report_is_stable_when_read_twice

@@ -1,0 +1,4 @@
+# GASV8B3_94_suite - written by nrvv-test-author
+tests/test_GASV8B3_94_suite.py::test_intermediate_price_p2_is_never_sent
+tests/test_GASV8B3_94_suite.py::test_last_price_sent_is_p3
+tests/test_GASV8B3_94_suite.py::test_station_state_settled_on_p3

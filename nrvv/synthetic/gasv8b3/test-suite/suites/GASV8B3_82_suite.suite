@@ -1,0 +1,8 @@
+# GASV8B3_82_suite - written by nrvv-test-author
+tests/test_GASV8B3_82_suite.py::test_one_send_event_per_send_attempt
+tests/test_GASV8B3_82_suite.py::test_send_events_have_product_and_times
+tests/test_GASV8B3_82_suite.py::test_sending_cost_is_sum_of_event_costs
+tests/test_GASV8B3_82_suite.py::test_superseded_price_is_recorded
+tests/test_GASV8B3_82_suite.py::test_single_stale_interval_with_start_and_end
+tests/test_GASV8B3_82_suite.py::test_stale_cost_is_duration_times_rate
+tests/test_GASV8B3_82_suite.py::test_reports_cover_station

@@ -1,0 +1,7 @@
+# GASV8B3_95_suite - written by nrvv-test-author
+tests/test_GASV8B3_95_suite.py::test_superseded_and_effective_costs_match_unit_costs
+tests/test_GASV8B3_95_suite.py::test_sends_are_a_then_b_with_latest_price
+tests/test_GASV8B3_95_suite.py::test_redundant_resend_classified_and_total_is_sum
+tests/test_GASV8B3_95_suite.py::test_failed_send_classified_failed
+tests/test_GASV8B3_95_suite.py::test_classification_does_not_change_sends
+tests/test_GASV8B3_95_suite.py::test_total_equals_sum_of_classes_across_seeds

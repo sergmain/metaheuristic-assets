@@ -1,0 +1,5 @@
+# GASV8B3_87_suite - written by nrvv-test-author
+tests/test_GASV8B3_87_suite.py::test_no_send_while_first_unacknowledged_and_p3_follows
+tests/test_GASV8B3_87_suite.py::test_p2_is_never_sent
+tests/test_GASV8B3_87_suite.py::test_final_state_settled_on_p3
+tests/test_GASV8B3_87_suite.py::test_exactly_one_new_send_after_ack_across_seeds

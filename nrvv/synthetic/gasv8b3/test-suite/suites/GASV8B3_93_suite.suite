@@ -1,0 +1,7 @@
+# GASV8B3_93_suite - written by nrvv-test-author
+tests/test_GASV8B3_93_suite.py::test_desired_price_is_only_latest_after_each_submit
+tests/test_GASV8B3_93_suite.py::test_versions_strictly_increase_by_one_per_accepted_price
+tests/test_GASV8B3_93_suite.py::test_other_station_version_unchanged
+tests/test_GASV8B3_93_suite.py::test_older_prices_never_reappear_with_late_acks
+tests/test_GASV8B3_93_suite.py::test_late_ack_for_older_send_does_not_change_version
+tests/test_GASV8B3_93_suite.py::test_no_version_sent_to_station

@@ -1,0 +1,5 @@
+# GASV8B3_81_suite - written by nrvv-test-author
+tests/test_GASV8B3_81_suite.py::test_record_holds_latest_submitted_price
+tests/test_GASV8B3_81_suite.py::test_version_rises_by_exactly_one_per_accepted_change
+tests/test_GASV8B3_81_suite.py::test_earlier_prices_not_retained_or_queued
+tests/test_GASV8B3_81_suite.py::test_record_and_version_survive_restart

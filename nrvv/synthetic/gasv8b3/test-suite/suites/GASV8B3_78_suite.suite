@@ -1,0 +1,4 @@
+# GASV8B3_78_suite - written by nrvv-test-author
+tests/test_GASV8B3_78_suite.py::test_one_cost_record_per_send_with_required_fields
+tests/test_GASV8B3_78_suite.py::test_resolved_records_have_resolution_time_and_outcome
+tests/test_GASV8B3_78_suite.py::test_resend_links_to_original_and_records_survive_restart
