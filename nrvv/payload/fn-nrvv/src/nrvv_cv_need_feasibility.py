@@ -79,7 +79,10 @@ def expand_groups(witness, known):
     GAS-4 and -3 -> GAS-4 and GAS-3, GAS-1, -2 -> GAS-1, GAS-2 (X1 E1 #123: every FEASIBILITY attempt refused for it).
     Plan 053 (by its characterization test test_feasibility_witness_naming_needs_by_a_bare_suffix): also a bare suffix -
     a '-N' not inside a word, e.g. opening a sentence as '-2:' or in '-3/-4' - when the witness names exactly one known
-    prefix and that prefix with N is an agreed NEED (X1 C2R #133: the prefix written once, every other NEED as '-N:')."""
+    prefix and that prefix with N is an agreed NEED (X1 C2R #133: the prefix written once, every other NEED as '-N:').
+    Plan 053 (by its characterization test test_feasibility_witness_naming_needs_by_a_bracketed_suffix): also '[N]' -
+    [1] -> [GAS-1] - when the agreed NEEDs carry exactly one prefix and that prefix with N is an agreed NEED (X1 C2R2 #136:
+    the points numbered by the NEEDs' suffixes, no reqId written)."""
     prefixes = {m.group(1) for m in (re.match(r'(.*-)\d+$', x) for x in known) if m}
     if not prefixes:
         return witness
@@ -90,12 +93,16 @@ def expand_groups(witness, known):
     joined = re.compile('(' + alternatives + r')(\d+)((?:\s*(?:,|&|\band\b)\s*-\d+)+)(?!\d)')
     witness = joined.sub(lambda m: m.group(1) + m.group(2) + re.sub(r'-(\d+)', lambda n: m.group(1) + n.group(1), m.group(3)),
                          witness)
-    named = [p for p in prefixes if re.search(re.escape(p) + r'\d', witness)]
-    if len(named) != 1:
-        return witness
     agreed = set(known)
-    return re.sub(r'(?<![\w-])-(\d+)(?!\d)',
-                  lambda m: named[0] + m.group(1) if named[0] + m.group(1) in agreed else m.group(0), witness)
+    named = [p for p in prefixes if re.search(re.escape(p) + r'\d', witness)]
+    if len(named) == 1:
+        witness = re.sub(r'(?<![\w-])-(\d+)(?!\d)',
+                         lambda m: named[0] + m.group(1) if named[0] + m.group(1) in agreed else m.group(0), witness)
+    if len(prefixes) == 1:
+        only = next(iter(prefixes))
+        witness = re.sub(r'\[(\d+)\]', lambda m: '[' + only + m.group(1) + ']' if only + m.group(1) in agreed else m.group(0),
+                         witness)
+    return witness
 
 
 def verdict_of(cc_result, needs):

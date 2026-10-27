@@ -245,6 +245,41 @@ def test_feasibility_witness_naming_needs_by_a_bare_suffix():
         'GAS-1 and X-1; -2 holds', 'two prefixes named - a bare suffix is ambiguous'
 
 
+# plan 053 (characterization test): X1 C2R2 #136 GASV8X1C2R2 on CC, payload 3ded886 - FEASIBILITY runs #4066 / #4067 (and
+# #133's #4023 before them) refused 'the witness does not name NEED GASV8X1C2R2-1': the witness numbers its points by the
+# NEEDs' suffixes in brackets - "[1]" ... "[9]" - and writes no reqId at all. The observed answer (Variable 233795) byte for
+# byte.
+C2R2_NEEDS = [{'reqId': 'GASV8X1C2R2-' + str(n), 'revision': 1, 'title': 'T' + str(n), 'statement': 'S' + str(n),
+               'parentReqId': None, 'kind': 'OBLIGATION'} for n in range(1, 10)]
+C2R2_ANSWER = ('{"verdict":"UNDERDETERMINED","needReqIds":[],"reason":"","witness":"Central publisher keeps per-station '
+               'state: desiredPrice (latest) and lastAcked. Strictly one send in flight per station. [1] The central service '
+               'publishes price updates to stations. [2] New prices arriving mid-send just overwrite desiredPrice (coalescing); '
+               'they never start a parallel send. [3] Only eventual correctness: no ordering or latency guarantee for '
+               'intermediate states. [4] When the in-flight send is acked, if desiredPrice != lastAcked, send desiredPrice; so '
+               'each station converges to the latest price. Unacked sends are retried after a timeout. [5] Out-of-order arrival '
+               'is harmless because at most one send per station is outstanding, so nothing can overtake it. [6] In-order acks '
+               'match the single outstanding send one-to-one, so an ack is unambiguous. [7] The design needs no station-side '
+               'versioning or dedup; sends are idempotent full-price sets and all ordering logic is central. [8] Coalescing '
+               'drops superseded intermediate prices and skips sends when desired equals acked, so there is no spam or '
+               'unnecessary update. [9] Sending immediately after each ack keeps the stale window short.","openChoices":'
+               '["Retry timeout and backoff for unacked sends","Whether to add a minimum delay or batching window between sends, '
+               'trading sending cost against staleness","Whether stations are sent to in parallel or throttled globally",'
+               '"Whether a send in flight is allowed to be superseded early, or must always be waited for"]}')
+
+
+def test_feasibility_witness_naming_needs_by_a_bracketed_suffix():
+    # CT Green-1: refused - 'the witness does not name NEED GASV8X1C2R2-1'
+    # CT Red: "[N]" names the NEED of the agreed NEEDs' one prefix - written in full inside the brackets
+    out = feasibility.verdict_of(C2R2_ANSWER, C2R2_NEEDS)
+    assert out['verdict'] == 'UNDERDETERMINED' and len(out['openChoices']) == 4, out
+    for named in ('[GASV8X1C2R2-1] The central', '[GASV8X1C2R2-4] When', '[GASV8X1C2R2-9] Sending'):
+        assert named in out['witness'], named
+    known = [n['reqId'] for n in C2R2_NEEDS]
+    assert feasibility.expand_groups('[12] holds', known) == '[12] holds', 'a number no agreed NEED carries'
+    assert feasibility.expand_groups('[1] holds', ['GAS-1', 'X-1']) == '[1] holds', 'two prefixes - ambiguous'
+    assert feasibility.expand_groups('-2: holds', known) == '-2: holds', 'a bare suffix still needs its prefix named'
+
+
 @pytest.mark.parametrize('answer_object, message', [
     ({'verdict': 'MAYBE', 'witness': WITNESS}, 'unknown verdict'),
     ({'verdict': 'DETERMINED', 'witness': WITNESS, 'design': 'x'}, 'unknown field'),
