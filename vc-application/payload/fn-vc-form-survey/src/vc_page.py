@@ -178,6 +178,53 @@ def call_arguments(text, marker):
         position = end
 
 
+def react_component_pushes(text, marker='REACT_COMPONENTS.push('):
+    """Every {component, props} pushed after marker. The argument is a JS object literal whose own keys may be bare -
+    YC writes {divId: "...", component: "...", props: {...JSON...}} (E3, ExecContext #5295) - so the wrapper is read
+    as JS: component from its string literal, props from the balanced JSON object after 'props:'. A wrapper that is
+    JSON as a whole is read as JSON."""
+    found = []
+    position = 0
+    while True:
+        i = text.find(marker, position)
+        if i < 0:
+            return found
+        parsed = JSON_PARSE_STRING.match(text, i + len(marker))
+        if parsed:
+            try:
+                whole = _json_object(json.loads(parsed.group(1)))
+            except ValueError:
+                whole = None
+            if whole is not None:
+                found.append({'component': whole.get('component'), 'props': whole.get('props')})
+            position = parsed.end()
+            continue
+        start = text.find('{', i + len(marker))
+        end = _literal_end(text, start) if start >= 0 else None
+        if end is None:
+            return found
+        literal = text[start:end]
+        position = end
+        whole = _json_object(literal)
+        if whole is not None:
+            found.append({'component': whole.get('component'), 'props': whole.get('props')})
+            continue
+        component = PUSH_COMPONENT.search(literal)
+        props_key = PUSH_PROPS.search(literal)
+        props = None
+        if props_key:
+            props_start = literal.find('{', props_key.end() - 1)
+            props_end = _literal_end(literal, props_start) if props_start >= 0 else None
+            props = _json_object(literal[props_start:props_end]) if props_end else None
+        if props is not None:
+            found.append({'component': json.loads(component.group(1)) if component else None, 'props': props})
+
+
+# the wrapper's own keys, bare or quoted, at the wrapper's top level as YC writes it
+PUSH_COMPONENT = re.compile(r'[{,]\s*["\']?component["\']?\s*:\s*("(?:[^"\\]|\\.)*")', re.S)
+PUSH_PROPS = re.compile(r'[{,]\s*["\']?props["\']?\s*:\s*\{', re.S)
+
+
 def sketch(text, limit=160):
     """The head of a script with the content of every string literal blanked - its shape, never its data."""
     s = re.sub(r'"(?:[^"\\]|\\.)*"', '"~"', text or '', flags=re.S)
@@ -231,7 +278,7 @@ def embedded_state(page_html):
     # YC's apply site (E2, ExecContext #5286): inline scripts push {divId, component, props} onto
     # window.REACT_COMPONENTS, and the app bundle mounts each component on its divId
     pushed = [c for s in parser.scripts if not s['attrs'].get('src')
-              for c in call_arguments(s['text'], 'REACT_COMPONENTS.push(')]
+              for c in react_component_pushes(s['text'])]
     if pushed:
         if len(pushed) == 1:
             return 'react-components', {'component': pushed[0].get('component'), 'version': None,

@@ -92,6 +92,31 @@ def test_react_components_several_pushes_are_combined():
                                              {'component': 'components/ApplyEdit', 'props': COMPONENT['props']}]}
 
 
+def test_react_components_push_with_bare_wrapper_keys_as_yc_writes_it():
+    # the shape E3 (ExecContext #5295) observed: a JS literal with bare keys around JSON props, across lines
+    props = {'app': {'uuid': 'u-1', 'questions': {}}, 'questionLabels': {'describe': {'q': 'Describe {it} "briefly"'}},
+             'component': 'not-the-wrapper'}
+    doc = ('<div id="5ac0418c"></div><script>\n'
+           'window.REACT_COMPONENTS = window.REACT_COMPONENTS || []\n'
+           'window.REACT_COMPONENTS.push({\n'
+           '  divId: "5ac0418c",\n'
+           '  component: "components/apply/ApplicationEdit",\n'
+           '  props: ' + json.dumps(props) + '\n'
+           '})\n</script>')
+    assert p.embedded_state(doc) == ('react-components', {'component': 'components/apply/ApplicationEdit',
+                                                          'version': None, 'props': props})
+
+
+def test_react_component_pushes_empty_props_and_several_pushes():
+    text = ('window.REACT_COMPONENTS.push({ divId: "a", component: "Nav", props: {} })\n'
+            'window.REACT_COMPONENTS.push({ divId: "b", component: "Edit", props: {"x": 1} })')
+    assert p.react_component_pushes(text) == [{'component': 'Nav', 'props': {}}, {'component': 'Edit', 'props': {'x': 1}}]
+
+
+def test_react_component_pushes_skips_props_that_are_not_json():
+    assert p.react_component_pushes('window.REACT_COMPONENTS.push({ divId: "a", component: "X", props: {a: 1} })') == []
+
+
 def test_call_arguments_braces_inside_strings_do_not_count():
     text = 'X.push({"a": "}{ \\" }", "b": {"c": 1}}); X.push({"d": 2})'
     assert p.call_arguments(text, 'X.push(') == [{'a': '}{ " }', 'b': {'c': 1}}, {'d': 2}]
