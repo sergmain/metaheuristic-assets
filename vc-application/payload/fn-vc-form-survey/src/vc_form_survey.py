@@ -274,7 +274,8 @@ def variables_block(fields):
     for f in fields:
         facts = [f['type'] or 'type unknown',
                  'required' if f['required'] is True else ('optional' if f['required'] is False else 'required unknown')]
-        lines.append('    // ' + _one_line(f['label'], 100) + ' (' + ', '.join(facts) + ')')
+        lines.append('    // ' + (_one_line(f['label'], 100) if f['label'] else '(no label on the form)')
+                     + ' (' + ', '.join(facts) + ')')
         lines.append('    <- ' + f['variable'] + ('' if f['required'] is True else '?'))
     lines.append('}')
     return '\n'.join(lines) + '\n'

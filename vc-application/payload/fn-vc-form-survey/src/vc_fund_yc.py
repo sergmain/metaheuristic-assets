@@ -185,6 +185,12 @@ def _path(url):
 # ---------------------------------------------------------------------------------------------------
 # THE FIELDS
 #
+# OBSERVED (E4, ExecContext #5319, 2026-10-27): the AppForm push's props carry active_question_groups =
+# {group: {fieldName: {prompt: {q, required, subtitle?, placeholder?} | null}}} - every question of the form with its
+# label and required flag, grouped as the form shows them - and NO questionLabels; AppForm builds its labels from
+# prompt.q (apply-*.js). That is read first. The paragraph below is the earlier reading, kept for a page that carries
+# questionLabels instead.
+#
 # What the apply bundle reads (apply-*.js, read 2026-10-27): every question is a field component (InputField,
 # TextareaField, SelectField, Radio, CheckboxField, VideoField, ...) named by a fieldName literal in the bundle, and it
 # takes its label from questionLabels[fieldName] = {q, subtitle, placeholder}. The application form renders with
@@ -230,9 +236,47 @@ def _sections(groups):
     return section_of
 
 
+def _text(value):
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def fields_from_question_groups(groups):
+    """One field per entry of the server's active_question_groups - {group: {fieldName: {prompt: {q, required, subtitle?,
+    placeholder?} | null}}} - in the server's order, the group as its section. A null prompt (founderBios: the founders'
+    profiles, a form of their own) is a field with no label. Nothing but the prompt of each entry is read."""
+    fields = []
+    for group, members in groups.items():
+        if not isinstance(members, dict):
+            continue
+        for key, entry in members.items():
+            prompt = entry.get('prompt') if isinstance(entry, dict) else None
+            prompt = prompt if isinstance(prompt, dict) else {}
+            q = _text(prompt.get('q'))
+            subtitle = _text(prompt.get('subtitle'))
+            placeholder = _text(prompt.get('placeholder'))
+            label = q or subtitle
+            help_text = subtitle if q and subtitle else placeholder
+            fields.append({
+                'key': key,
+                'label': _one_line(label) if label else None,
+                'type': None,
+                'required': prompt.get('required') if isinstance(prompt.get('required'), bool) else None,
+                'options': None,
+                'limits': None,
+                'help': _one_line(help_text) if help_text else None,
+                'section': group,
+                'path': 'props.active_question_groups.' + str(group) + '.' + str(key),
+            })
+    return fields
+
+
 def extract_fields(props):
-    """One field per questionLabels entry, in the server's order; [] when the props carry no questionLabels (the core
-    then falls back to its generic extraction)."""
+    """The form's fields: from active_question_groups when the props carry it (YC's AppForm - E4, ExecContext #5319),
+    else one field per questionLabels entry, in the server's order; [] when neither is there (the core then falls back
+    to its generic extraction)."""
+    groups = find_key(props, 'active_question_groups')
+    if isinstance(groups, dict) and groups:
+        return fields_from_question_groups(groups)
     labels = find_key(props, 'questionLabels')
     if not isinstance(labels, dict) or not labels:
         return []

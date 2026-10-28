@@ -58,7 +58,8 @@ order that matters is inside the Function:
 4. **The page is read by the core (`vc_page.py`), whatever carries the form:** the state a JS framework embeds
    (Inertia attribute or script, react-rails, react_on_rails, Next.js, `window.REACT_COMPONENTS.push(...)` - YC's apply
    site - any JSON script) and the server-rendered form controls. Fields come from the embedded state when it
-   defines any - the adapter's `extract_fields` first (YC: one field per `questionLabels` entry), else the generic one: a
+   defines any - the adapter's `extract_fields` first (YC: one field per entry of the AppForm's `active_question_groups`,
+   its group as the section), else the generic one: a
    dict with a label and an identity is a field, a dict with fields beneath it is a section, a dict inside `options` /
    `choices` is a choice - else from the form controls, else none. The page's structure (names, counts and
    string-blanked script sketches only) is recorded either way.
@@ -130,6 +131,20 @@ e-mail the account about a new sign-in). Nothing in the application changes.
   `embedding` null. `inlineScriptSketches` showed why: three `window.REACT_COMPONENTS.push({ divId: "~", component: "~",
   props: {...} })` scripts (435, 8,372 and 180 bytes) - the wrapper's keys are bare, so it is not JSON, and only its
   `props` value is. Learned: read the wrapper as JS and its props as JSON (`vc_page.react_component_pushes`).
+- **2026-10-27, E4, ExecContext #5319, both Tasks OK (payload `1b9b0c1`).** Launched from this chat as "E2" while the
+  E3/E4 work above was pushed from another one, so it ran E4's payload; launched and read over HTTP from the box -
+  `/rest/v1/mcp` for the launch, `GET /rest/v1/dispatcher/source-code/exec-context/{ec}/download-variable/{id}` for
+  the outputs (Variable content of this home is on disk: psql `lo_get` returns nothing). `formFields` (Variable
+  #251437, 17,823 bytes, read in full): `embedding` `react-components` - `components/Header`, `components/AppForm`,
+  `components/Footer` - and 0 fields; `applyVariables` (#251438) an empty block. The AppForm props carry no
+  `questionLabels`: they are `active_question_groups`, `app_uuid`, `future_batch_names`, `update_kind`, `user_hnid`,
+  and `active_question_groups` is `{group: {fieldName: {prompt: {q, required, subtitle?, placeholder?} | null}}}` -
+  51 entries in 8 groups (Founders 4, Founder Video 2, Company 10, Progress 13, Idea 4, Equity 12, Curious 3, Batch
+  Preference 3); 50 prompts carry `q` and `required`, 8 a `subtitle`, 3 a `placeholder`; `founderBios`' prompt is
+  null. `apply-*.js` (`AppForm` = `({user_hnid, active_question_groups, update_kind, app_uuid, future_batch_names})`)
+  builds its labels from `prompt.q`; answers arrive later over GraphQL (`/graphql`). Learned: the question
+  definitions ARE in the server's props, under the snake-case name - CT `test_yc_active_question_groups.py` (Green-1
+  `[]`, Red, Green-3), tests 96/96.
 
 ### 7. Experiments
 
@@ -138,9 +153,10 @@ e-mail the account about a new sign-in). Nothing in the application changes.
 | E1 | the request taken literally: sign in to YC over plain HTTP the way YC's own SSO client does, read the form page's Inertia props, extract the fields generically, emit the apply inputs | - | `vc-form-survey-yc-synthetic-1.0` (payload `362f738`) | YC lets a plain HTTP client sign in with the password alone - no reCAPTCHA, no two-factor code, no e-mailed new-device code; the cheapest run that shows it is this run | REJECTED - ExecContext #5156: the sign-in held (F1's sign-in half, F3), but the signed-in form page has no Inertia `data-page` |
 | E2 | read the form page whatever carries it: every standard embedded state, then the server-rendered form controls; record the page's structure when neither yields a field | E1, ExecContext #5156: the apply page is not Inertia | `vc-form-survey-yc-synthetic-1.0` (payload `aa1946b`) | the form's definition reaches the server's HTML at all - in an embedded state or as form controls - rather than being fetched by the page's JavaScript after load | REJECTED - ExecContext #5286: Task OK, 0 fields; no standard embedding, 0 forms, 0 controls; 9 inline scripts and the bundle `apply-NOt1hKGv.js` |
 | E3 | the edit page's inline scripts push `{divId, component, props}` onto `window.REACT_COMPONENTS`, and the props carry `questionLabels` - the set of questions the form shows (`hideQuestionsWithoutLabels`), fieldName -> {q, subtitle, placeholder}; the YC adapter reads the fields from it | E2, ExecContext #5286, and the public bundle `apply-NOt1hKGv.js` read from outside | `vc-form-survey-yc-synthetic-1.0` (payload `dbdbe1c`) | the inline scripts pass the props as JSON (a literal or `JSON.parse` of a string) - the sketches in `pageStructure.inlineScriptSketches` show the shape if not | REJECTED - ExecContext #5295: the pushes are there (3), but the wrapper is a JS literal with bare keys - `push({ divId: "~", component: "~", props: {JSON} })` - so nothing was read; 0 fields |
-| E4 | E3 with the wrapper read as JS: `component` from its string literal, `props` from the balanced JSON object after `props:` | E3, ExecContext #5295: `inlineScriptSketches` | `vc-form-survey-yc-synthetic-1.0` (payload after `dbdbe1c`) | the props of the 8,372-byte push carry `questionLabels` | OPEN |
-| E5 | if the field set is right but types, required flags and choices are needed: read them from the bundle's code - each field component is called with a `fieldName` literal (125 in `apply-*.js`) and its options / validation schema | E3/E4, once the set holds: `questionLabels` carries no types | - | the bundle's minified calls keep `fieldName` and `options` as literals next to the component they render | OPEN |
-| E6 | if YC demands a captcha for a plain HTTP client: a real browser (Edge, installed on the Processor's box) driven over its debugging protocol | E1's riskiest assumption - not observed in E1-E3 | - | the captcha is not demanded of a real browser; an e-mailed code would still need a person | OPEN |
+| E4 | E3 with the wrapper read as JS: `component` from its string literal, `props` from the balanced JSON object after `props:` | E3, ExecContext #5295: `inlineScriptSketches` | `vc-form-survey-yc-synthetic-1.0` (payload `1b9b0c1`) | the props of the 8,372-byte push carry `questionLabels` | REJECTED - ExecContext #5319: the three pushes are read (`react-components`), but no prop is named `questionLabels`; the definitions are under the AppForm's `active_question_groups`; 0 fields |
+| E5 | one field per entry of the AppForm's `active_question_groups`: key = the field name, label = `prompt.q`, required = `prompt.required`, help = `subtitle` or `placeholder`, section = the group | E4, ExecContext #5319: `propsSkeleton` | `vc-form-survey-yc-synthetic-1.0` (payload after `1b9b0c1`) | the 51 entries are the whole form - no question is added by the bundle without a server entry | OPEN |
+| E6 | if the field set is right but types, required flags and choices are needed: read them from the bundle's code - each field component is called with a `fieldName` literal (125 in `apply-*.js`) and its options / validation schema | E3/E4, once the set holds: `questionLabels` carries no types | - | the bundle's minified calls keep `fieldName` and `options` as literals next to the component they render | OPEN |
+| E7 | if YC demands a captcha for a plain HTTP client: a real browser (Edge, installed on the Processor's box) driven over its debugging protocol | E1's riskiest assumption - not observed in E1-E4 | - | the captcha is not demanded of a real browser; an e-mailed code would still need a person | OPEN |
 
 Measured alike: no numeric metric; F1-F6 are pass/fail.
 
