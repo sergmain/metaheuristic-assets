@@ -142,7 +142,11 @@ def test_top_an_unknown_subject_is_a_flow_defect():
 # ---- BOUNDARY ----
 
 def boundary_item(key, parent='T-21', assumptions=None, statement='The service offers an operation that sets a desired price.'):
-    item = {'key': key, 'parent': parent, 'title': 'Item ' + key, 'statement': statement, 'rationale': 'why'}
+    # plan 053 P6: a boundary item quotes its parent (the rule is tested on its own in
+    # test_derived_items_carry_evidence_from_their_parent_or_an_item); these tests pin the other rules
+    quote = {'T-21': 'publish to each station', 'T-22': 'the latest desired price'}.get(parent, 'any words')
+    item = {'key': key, 'parent': parent, 'title': 'Item ' + key, 'statement': statement, 'rationale': 'why',
+            'evidence': [{'source': parent, 'quote': quote}]}
     if assumptions is not None:
         item['assumptions'] = assumptions
     return item
@@ -190,7 +194,8 @@ def test_design_prompt_names_the_requirement_and_the_others_read_only():
 
 def test_design_check_puts_every_item_under_the_branch():
     out = wf.check_design(answer(design=[{'key': 'D-1', 'parent': 'T-99', 'title': 'Newest only',
-                                          'statement': 'The service sends only the newest desired price.', 'rationale': 'coalesce'}]),
+                                          'statement': 'The service sends only the newest desired price.', 'rationale': 'coalesce',
+                                          'evidence': [{'source': 'T-21', 'quote': 'publish to each station'}]}]),
                           DESIGN_INPUT, 'T-21')
     assert out['design'][0]['parent'] == 'T-21'
 
@@ -201,3 +206,48 @@ def test_design_check_refuses_empty_or_a_language_and_raises_on_an_unknown_branc
                                                                   'rationale': 'r'}]), DESIGN_INPUT, 'T-21')['refused']
     with pytest.raises(ValueError, match="no top-level requirement 'T-99'"):
         wf.check_design(answer(design=[]), DESIGN_INPUT, 'T-99')
+
+
+# ---- plan 053 P6: evidence on derived items ----
+# characterization test: v8 accepts no evidence on a derived item - DESIGN_FIELDS and BOUNDARY_FIELDS lack it, so an answer
+# carrying it is refused as an unknown field; a derived item's only justification is the model's prose
+
+def test_derived_items_carry_evidence_from_their_parent_or_an_item():
+    # CT Green-1: refused - unknown field 'evidence'
+    # CT Red: a design / Interface / Environment item quotes, under evidence, at least two words verbatim from its parent
+    # top-level requirement or from an interpretation item given to the part; the check keeps the quotes
+    def d(evidence, key='D-1'):
+        item = {'key': key, 'title': 'Newest only', 'statement': 'The service sends only the newest desired price.',
+                'rationale': 'coalesce'}
+        if evidence is not None:
+            item['evidence'] = evidence
+        return item
+    design = wf.check_design(answer(design=[d([{'source': 'T-21', 'quote': 'publish to each station'}]),
+                                            d([{'source': 'I-12', 'quote': 'the latest desired price'}], 'D-2')]),
+                             DESIGN_INPUT, 'T-21')
+    assert 'refused' not in design, design
+    assert design['design'][0]['evidence'] == [{'source': 'T-21', 'quote': 'publish to each station'}]
+    assert design['design'][1]['evidence'] == [{'source': 'I-12', 'quote': 'the latest desired price'}]
+    assert 'D-1: rule 1 (quote) - no evidence' in wf.check_design(answer(design=[d(None)]), DESIGN_INPUT, 'T-21')['refused']
+    assert 'is neither' in wf.check_design(answer(design=[d([{'source': 'T-22', 'quote': 'the latest desired price'}])]),
+                                           DESIGN_INPUT, 'T-21')['refused'], 'another branch is no source'
+    assert 'is not verbatim' in wf.check_design(answer(design=[d([{'source': 'T-21', 'quote': 'publish to every station'}])]),
+                                                DESIGN_INPUT, 'T-21')['refused']
+    env = [dict(boundary_item('EN-1', 'T-22', ['I-13', 'I-14'], 'The simulation reorders sends.'),
+                evidence=[{'source': 'I-13', 'quote': 'out of order'}])]
+    boundary = wf.check_boundary(answer(interface=[dict(boundary_item('IF-1'), evidence=[{'source': 'T-21', 'quote': 'the price it'
+                                                                                                          ' is to hold'}])],
+                                        environment=env), BOUNDARY_INPUT)
+    assert 'refused' not in boundary, boundary
+    assert boundary['interface'][0]['evidence'] == [{'source': 'T-21', 'quote': 'the price it is to hold'}]
+    assert boundary['environment'][0]['evidence'] == [{'source': 'I-13', 'quote': 'out of order'}]
+    bare = {k: v for k, v in boundary_item('IF-1').items() if k != 'evidence'}
+    assert 'IF-1: rule 1 (quote) - no evidence' in wf.check_boundary(answer(interface=[bare], environment=env),
+                                                                    BOUNDARY_INPUT)['refused']
+    assert 'is neither' in wf.check_boundary(answer(interface=[dict(boundary_item('IF-1'), evidence=[{'source': 'T-22',
+                                                                                                       'quote': 'every station'}])],
+                                                    environment=env), BOUNDARY_INPUT)['refused'], 'IF-1 is under T-21'
+    for p in (wf.compose_design(DESIGN_INPUT, 'T-21'), wf.compose_boundary(BOUNDARY_INPUT)):
+        assert '"evidence": [{"source": "<reqId>", "quote": "<words>"}]' in p
+        assert 'Quote, under "evidence"' in p
+
