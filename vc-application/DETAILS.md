@@ -86,6 +86,29 @@ order that matters is inside the Function:
 - ⚠️ **What needs a person:** YC may answer a sign-in with a reCAPTCHA, a two-factor code or an e-mailed new-device
   code. Each ends the run with `SignInNeedsPerson` naming which one.
 
+#### The YC apply inputs
+
+Defined by E5 (ExecContext #5406, `applyVariables`): the global input Variables of a YC apply flow, one per question of
+the application at 2026-10-27, `yc` + the field name in PascalCase. Required (no `?`): `ycVideoS3Key`, `ycName`,
+`ycDescribe`, `ycFutureBatchName`; every other input is nullable.
+
+| group | inputs |
+|---|---|
+| Founders | `ycFounderBios?` (no label: the founders' own profiles, a form of their own), `ycMeet?`, `ycOthers2?`, `ycCofounder?` |
+| Founder Video | `ycVideo?`, `ycVideoS3Key` (an upload) |
+| Company | `ycName`, `ycDescribe`, `ycUrl?`, `ycDemo?`, `ycDemoS3Key?` (an upload), `ycProductLink?`, `ycProductCreds?`, `ycMake?`, `ycWhere?`, `ycWherewhy?` |
+| Progress | `ycHowfar?`, `ycWorked?`, `ycTechstack?`, `ycCodingAgentSession?` (an upload), `ycStage?`, `ycUsernums?`, `ycWhenbeta?`, `ycRevenue?`, `ycRevenueamount?`, `ycRevenuesource?`, `ycGrowthrate?`, `ycSince?`, `ycAcc?` |
+| Idea | `ycExp?`, `ycGet?`, `ycMoney?`, `ycIdeas?` |
+| Equity | `ycIncyet?`, `ycInctype?`, `ycIncpercent?`, `ycPercent2?`, `ycInvestyet?`, `ycIncinvest?`, `ycInvestamount?`, `ycBank?`, `ycBurn?`, `ycRunway?`, `ycCurrentlyraising?`, `ycRaisingdetails?` |
+| Curious | `ycWhyapply?`, `ycHowhear?`, `ycReferralCode?` |
+| Batch Preference | `ycBatchPreference?`, `ycFutureBatchName`, `ycFutureBatchWhy?` |
+
+- ⚠️ `ycFutureBatchName` is required on the page but asked only when a future batch is chosen: an apply flow for the
+  upcoming batch declares it `?` - the page's flag is per question, not per path through the form (E6).
+- ⚠️ Types and choices are not known yet (E6): which inputs are a choice (`ycHowfar`, `ycIncyet`, `ycBatchPreference`,
+  ...) and what values they accept is in the bundle's code.
+- `production` (nullable) joins these in the apply flow's own `.mhsc`, as in every `.mhsc`.
+
 ### 4. Durable side effects
 
 None in MH: no meta storage, no project; the run leaves its two output Variables. On YC: a signed-in session (YC may
@@ -145,6 +168,16 @@ e-mail the account about a new sign-in). Nothing in the application changes.
   builds its labels from `prompt.q`; answers arrive later over GraphQL (`/graphql`). Learned: the question
   definitions ARE in the server's props, under the snake-case name - CT `test_yc_active_question_groups.py` (Green-1
   `[]`, Red, Green-3), tests 96/96.
+- **2026-10-27, E5, ExecContext #5406, both Tasks OK (payload `c54075e`).** `formFields` (Variable #258293, 38,550 bytes)
+  and `applyVariables` (#258294, 104 lines) read in full. `source` `props`, `fieldCount` 51, `candidates` {props 51,
+  html-form 0}. Checked against the page independently of the extraction: the 51 (group, fieldName) entries of
+  `propsSkeleton...active_question_groups` equal the fields' (section, key), same order, keys unique (F2); 51 `<-`
+  lines, names unique and in field order, `?` exactly where `required` is not `true` (F5); `app_uuid` and `user_hnid`
+  stay `str:<length>` (F6). Seven labels differ from the skeleton's `q` only because the skeleton cuts at 160
+  characters - each is a prefix match; `percent2`'s label is cut at the 300-character label cap. Two limits of the
+  definition, both in the bundle's code rather than the props (E6): no field has a type - three are uploads
+  (`videoS3Key`, `demoS3Key`, `codingAgentSession`); and `required` is per question, not per path through the form -
+  `futureBatchName` is required on the page but asked only when a future batch is chosen.
 
 ### 7. Experiments
 
@@ -154,7 +187,7 @@ e-mail the account about a new sign-in). Nothing in the application changes.
 | E2 | read the form page whatever carries it: every standard embedded state, then the server-rendered form controls; record the page's structure when neither yields a field | E1, ExecContext #5156: the apply page is not Inertia | `vc-form-survey-yc-synthetic-1.0` (payload `aa1946b`) | the form's definition reaches the server's HTML at all - in an embedded state or as form controls - rather than being fetched by the page's JavaScript after load | REJECTED - ExecContext #5286: Task OK, 0 fields; no standard embedding, 0 forms, 0 controls; 9 inline scripts and the bundle `apply-NOt1hKGv.js` |
 | E3 | the edit page's inline scripts push `{divId, component, props}` onto `window.REACT_COMPONENTS`, and the props carry `questionLabels` - the set of questions the form shows (`hideQuestionsWithoutLabels`), fieldName -> {q, subtitle, placeholder}; the YC adapter reads the fields from it | E2, ExecContext #5286, and the public bundle `apply-NOt1hKGv.js` read from outside | `vc-form-survey-yc-synthetic-1.0` (payload `dbdbe1c`) | the inline scripts pass the props as JSON (a literal or `JSON.parse` of a string) - the sketches in `pageStructure.inlineScriptSketches` show the shape if not | REJECTED - ExecContext #5295: the pushes are there (3), but the wrapper is a JS literal with bare keys - `push({ divId: "~", component: "~", props: {JSON} })` - so nothing was read; 0 fields |
 | E4 | E3 with the wrapper read as JS: `component` from its string literal, `props` from the balanced JSON object after `props:` | E3, ExecContext #5295: `inlineScriptSketches` | `vc-form-survey-yc-synthetic-1.0` (payload `1b9b0c1`) | the props of the 8,372-byte push carry `questionLabels` | REJECTED - ExecContext #5319: the three pushes are read (`react-components`), but no prop is named `questionLabels`; the definitions are under the AppForm's `active_question_groups`; 0 fields |
-| E5 | one field per entry of the AppForm's `active_question_groups`: key = the field name, label = `prompt.q`, required = `prompt.required`, help = `subtitle` or `placeholder`, section = the group | E4, ExecContext #5319: `propsSkeleton` | `vc-form-survey-yc-synthetic-1.0` (payload after `1b9b0c1`) | the 51 entries are the whole form - no question is added by the bundle without a server entry | OPEN |
+| E5 | one field per entry of the AppForm's `active_question_groups`: key = the field name, label = `prompt.q`, required = `prompt.required`, help = `subtitle` or `placeholder`, section = the group | E4, ExecContext #5319: `propsSkeleton` | `vc-form-survey-yc-synthetic-1.0` (payload `c54075e`) | the 51 entries are the whole form - no question is added by the bundle without a server entry | CHAMPION - ExecContext #5406: 51 fields from `props`, the page's 51 entries in the same order (F2), 51 inputs, `?` exactly where `required` is not true (F5), F1/F6 hold; types unknown - E6 |
 | E6 | if the field set is right but types, required flags and choices are needed: read them from the bundle's code - each field component is called with a `fieldName` literal (125 in `apply-*.js`) and its options / validation schema | E3/E4, once the set holds: `questionLabels` carries no types | - | the bundle's minified calls keep `fieldName` and `options` as literals next to the component they render | OPEN |
 | E7 | if YC demands a captcha for a plain HTTP client: a real browser (Edge, installed on the Processor's box) driven over its debugging protocol | E1's riskiest assumption - not observed in E1-E4 | - | the captcha is not demanded of a real browser; an e-mailed code would still need a person | OPEN |
 
