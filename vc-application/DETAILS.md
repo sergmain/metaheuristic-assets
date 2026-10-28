@@ -56,11 +56,12 @@ order that matters is inside the Function:
    redirects to its SSO), `POST /start_sign_in`, `POST /sign_in`, `GET` the redirect, `GET` the form - see
    `vc_fund_yc.py` for the protocol as YC's own client speaks it.
 4. **The page is read by the core (`vc_page.py`), whatever carries the form:** the state a JS framework embeds
-   (Inertia attribute or script, react-rails, react_on_rails, Next.js, any JSON script) and the server-rendered
-   form controls. Fields come from the embedded state when it defines any - the adapter's `extract_fields` when it
-   has one, else the generic one: a dict with a label and an identity is a field, a dict with fields beneath it is a
-   section, a dict inside `options` / `choices` is a choice - else from the form controls, else none. The page's
-   structure (names and counts only) is recorded either way.
+   (Inertia attribute or script, react-rails, react_on_rails, Next.js, `window.REACT_COMPONENTS.push(...)` - YC's apply
+   site - any JSON script) and the server-rendered form controls. Fields come from the embedded state when it
+   defines any - the adapter's `extract_fields` first (YC: one field per `questionLabels` entry), else the generic one: a
+   dict with a label and an identity is a field, a dict with fields beneath it is a section, a dict inside `options` /
+   `choices` is a choice - else from the form controls, else none. The page's structure (names, counts and
+   string-blanked script sketches only) is recorded either way.
 5. **Both outputs are written**, and every field is printed as `variable <- key (type, required)`. No field found
    is not a failure of the Task: the outputs carry the page's structure for the next experiment.
 
@@ -113,15 +114,27 @@ e-mail the account about a new sign-in). Nothing in the application changes.
 - **2026-10-27, while writing E2's tests.** A `<textarea>` inside a `<label>` made the typed text part of the label -
   applicant content into `formFields` (F6). `test_html_fields_never_carry_what_was_typed` now covers it, and the
   parser skips textarea content.
+- **2026-10-27, E2, ExecContext #5286, Task #339656 (OK, payload `aa1946b`).** `formFields` (Variable #249980, read in
+  full): signed in, form page `apply.ycombinator.com/apps/.../edit` of 46,035 bytes; `source` none, 0 fields; no
+  embedded framework state, 0 forms, 0 controls; 9 inline scripts; 4 hash-like element ids; scripts
+  `bookface-static.ycombinator.com/vite/assets/apply-NOt1hKGv.js`, `apply_chat_tailwind-*.js`, Google Maps. Learned,
+  from the public bundle read from outside: it mounts every entry of `window.REACT_COMPONENTS` ({divId, component,
+  props}) - the hash ids are the divIds, the inline scripts the pushes; the application form shows a question only
+  when the server's `questionLabels` prop has a label for it; answers are `app.questions[fieldName]`; types and
+  validation are in the bundle's code. A Task that ends OK keeps no console in `mh_task.function_exec_results` - the
+  output Variables are the evidence. The Desktop `metaheuristic` connection was down for this run: it was launched
+  and read over the Dispatcher's own MCP endpoint `/rest/v1/mcp`, called from the box (MH's REST has no route that
+  initializes an ExecContext's source-level inputs).
 
 ### 7. Experiments
 
 | id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
 |---|---|---|---|---|---|
 | E1 | the request taken literally: sign in to YC over plain HTTP the way YC's own SSO client does, read the form page's Inertia props, extract the fields generically, emit the apply inputs | - | `vc-form-survey-yc-synthetic-1.0` (payload `362f738`) | YC lets a plain HTTP client sign in with the password alone - no reCAPTCHA, no two-factor code, no e-mailed new-device code; the cheapest run that shows it is this run | REJECTED - ExecContext #5156: the sign-in held (F1's sign-in half, F3), but the signed-in form page has no Inertia `data-page` |
-| E2 | read the form page whatever carries it: every standard embedded state, then the server-rendered form controls; record the page's structure when neither yields a field | E1, ExecContext #5156: the apply page is not Inertia | `vc-form-survey-yc-synthetic-1.0` (payload after `362f738`) | the form's definition reaches the server's HTML at all - in an embedded state or as form controls - rather than being fetched by the page's JavaScript after load | OPEN |
-| E3 | if the definitions are not in the server's HTML: read them from the JavaScript the page loads, or from the JSON endpoint that JavaScript calls | E1's riskiest alternative, refined by E2's `pageStructure` | - | the endpoint answers a plain HTTP client with the signed-in session | OPEN |
-| E4 | if YC demands a captcha for a plain HTTP client: a real browser (Edge, installed on the Processor's box) driven over its debugging protocol | E1's riskiest assumption - not observed in E1 | - | the captcha is not demanded of a real browser; an e-mailed code would still need a person | OPEN |
+| E2 | read the form page whatever carries it: every standard embedded state, then the server-rendered form controls; record the page's structure when neither yields a field | E1, ExecContext #5156: the apply page is not Inertia | `vc-form-survey-yc-synthetic-1.0` (payload `aa1946b`) | the form's definition reaches the server's HTML at all - in an embedded state or as form controls - rather than being fetched by the page's JavaScript after load | REJECTED - ExecContext #5286: Task OK, 0 fields; no standard embedding, 0 forms, 0 controls; 9 inline scripts and the bundle `apply-NOt1hKGv.js` |
+| E3 | the edit page's inline scripts push `{divId, component, props}` onto `window.REACT_COMPONENTS`, and the props carry `questionLabels` - the set of questions the form shows (`hideQuestionsWithoutLabels`), fieldName -> {q, subtitle, placeholder}; the YC adapter reads the fields from it | E2, ExecContext #5286, and the public bundle `apply-NOt1hKGv.js` read from outside | `vc-form-survey-yc-synthetic-1.0` (payload after `aa1946b`) | the inline scripts pass the props as JSON (a literal or `JSON.parse` of a string) - the sketches in `pageStructure.inlineScriptSketches` show the shape if not | OPEN |
+| E4 | if the field set is right but types, required flags and choices are needed: read them from the bundle's code - each field component is called with a `fieldName` literal (125 in `apply-*.js`) and its options / validation schema | E3, once it holds: `questionLabels` carries no types | - | the bundle's minified calls keep `fieldName` and `options` as literals next to the component they render | OPEN |
+| E5 | if YC demands a captcha for a plain HTTP client: a real browser (Edge, installed on the Processor's box) driven over its debugging protocol | E1's riskiest assumption - not observed in E1, E2 | - | the captcha is not demanded of a real browser; an e-mailed code would still need a person | OPEN |
 
 Measured alike: no numeric metric; F1-F6 are pass/fail.
 
