@@ -65,6 +65,47 @@ def test_no_embedded_state():
     assert p.embedded_state('<html><script src="/app.js"></script><div id="root"></div></html>') == (None, None)
 
 
+COMPONENT = {'divId': '87cc2352', 'component': 'components/ApplyEdit',
+             'props': {'questionLabels': {'describe': {'q': 'Describe what your company does'}}}}
+
+
+def test_react_components_push_of_a_json_literal():
+    doc = ('<div id="87cc2352"></div><script>window.REACT_COMPONENTS = window.REACT_COMPONENTS || [];\n'
+           'window.REACT_COMPONENTS.push(' + json.dumps(COMPONENT) + ');</script>')
+    assert p.embedded_state(doc) == ('react-components', {'component': 'components/ApplyEdit', 'version': None,
+                                                          'props': COMPONENT['props']})
+
+
+def test_react_components_push_of_json_parse():
+    doc = '<script>window.REACT_COMPONENTS.push(JSON.parse(' + json.dumps(json.dumps(COMPONENT)) + '));</script>'
+    assert p.embedded_state(doc)[1]['props'] == COMPONENT['props']
+
+
+def test_react_components_several_pushes_are_combined():
+    nav = {'divId': 'a', 'component': 'Nav', 'props': {'x': 1}}
+    doc = ('<script>window.REACT_COMPONENTS.push(' + json.dumps(nav) + ')</script>'
+           '<script>window.REACT_COMPONENTS.push(' + json.dumps(COMPONENT) + ')</script>')
+    kind, state = p.embedded_state(doc)
+    assert kind == 'react-components'
+    assert state['component'] == 'Nav, components/ApplyEdit'
+    assert state['props'] == {'components': [{'component': 'Nav', 'props': {'x': 1}},
+                                             {'component': 'components/ApplyEdit', 'props': COMPONENT['props']}]}
+
+
+def test_call_arguments_braces_inside_strings_do_not_count():
+    text = 'X.push({"a": "}{ \\" }", "b": {"c": 1}}); X.push({"d": 2})'
+    assert p.call_arguments(text, 'X.push(') == [{'a': '}{ " }', 'b': {'c': 1}}, {'d': 2}]
+
+
+def test_call_arguments_skips_a_literal_that_is_not_json():
+    assert p.call_arguments('X.push({a: 1}); X.push({"b": 2})', 'X.push(') == [{'b': 2}]
+
+
+def test_sketch_blanks_every_string_literal():
+    assert p.sketch('window.X.push({"name": "Acme Rockets", \'k\': `t`, n: 5})') == \
+        'window.X.push({"~": "~", \'~\': `~`, n: 5})'
+
+
 def test_a_data_page_that_is_not_an_inertia_page_is_not_taken():
     assert p.embedded_state('<div data-page="2"></div>') == (None, None)
 
@@ -80,6 +121,7 @@ def test_page_structure_names_and_counts_only():
     st = p.page_structure(doc)
     assert st['scripts'] == ['static.example/vite/app-1.js']
     assert st['inlineScripts'] == 2
+    assert st['inlineScriptSketches'] == [{'bytes': 7, 'head': 'var x=1'}, {'bytes': 21, 'head': '{"~": "~"}'}]
     assert st['jsonScripts'] == [{'id': 's', 'type': 'application/json', 'attributes': ['data-x'], 'bytes': 21}]
     assert st['dataAttributes'] == ['data-turbo', 'data-x']
     assert st['elementIds'] == ['root', 's']

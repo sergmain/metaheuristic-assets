@@ -163,3 +163,57 @@ def test_parse_answer_refuses_html():
     with pytest.raises(RuntimeError) as e:
         yc.parse_answer('<html>Just a moment</html>', 'sign_in')
     assert 'sign_in' in str(e.value)
+
+
+# --- the fields: questionLabels ------------------------------------------------------------------
+
+EDIT_PROPS = {
+    'app': {'uuid': 'u-1', 'questions': {'describe': 'We build rockets', 'url': 'https://acme.example'}},
+    'questionLabels': {
+        'describe': {'q': 'Describe what your company does in 50 characters or less.'},
+        'url': {'q': 'Company URL, if any', 'placeholder': 'https://'},
+        'demo': {'q': 'If you have a demo, what is the url?', 'subtitle': 'For example, a video of the product.'},
+        'tools': {'subtitle': 'Which AI tools do you use?'},
+        'legacy': 'Old-style label as a plain string',
+    },
+    'activeQuestionGroups': {'Company': {'describe': True, 'url': True}, 'Progress': ['demo']},
+}
+
+
+def test_extract_fields_one_per_question_label_in_server_order():
+    assert [f['key'] for f in yc.extract_fields(EDIT_PROPS)] == ['describe', 'url', 'demo', 'tools', 'legacy']
+
+
+def test_extract_fields_label_help_and_section():
+    fields = {f['key']: f for f in yc.extract_fields(EDIT_PROPS)}
+    assert fields['describe']['label'] == 'Describe what your company does in 50 characters or less.'
+    assert fields['describe']['section'] == 'Company'
+    assert fields['url']['help'] == 'https://'
+    assert fields['demo']['help'] == 'For example, a video of the product.'
+    assert fields['demo']['section'] == 'Progress'
+    assert fields['tools']['label'] == 'Which AI tools do you use?'
+    assert fields['tools']['help'] is None
+    assert fields['legacy']['label'] == 'Old-style label as a plain string'
+    assert fields['legacy']['section'] is None
+
+
+def test_extract_fields_type_required_options_stay_unknown():
+    f = yc.extract_fields(EDIT_PROPS)[0]
+    assert (f['type'], f['required'], f['options'], f['limits']) == (None, None, None, None)
+    assert f['path'] == 'props.questionLabels.describe'
+
+
+def test_extract_fields_never_carries_the_answers():
+    text = json.dumps(yc.extract_fields(EDIT_PROPS))
+    assert 'We build rockets' not in text
+    assert 'acme.example' not in text
+
+
+def test_extract_fields_found_inside_a_pushed_component():
+    combined = {'components': [{'component': 'Nav', 'props': {}}, {'component': 'Edit', 'props': EDIT_PROPS}]}
+    assert len(yc.extract_fields(combined)) == 5
+
+
+def test_extract_fields_without_question_labels_is_empty():
+    assert yc.extract_fields({'app': {'questions': {'describe': 'x'}}}) == []
+    assert yc.extract_fields(None) == []

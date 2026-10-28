@@ -52,7 +52,7 @@ ADAPTERS = {
 ARTIFACTS_DIR = 'artifacts'
 
 # What marks a dict as a field definition, and what of it is read. Keys are matched exactly.
-LABEL_KEYS = ('label', 'question', 'prompt', 'title')
+LABEL_KEYS = ('label', 'question', 'prompt', 'title', 'q')
 IDENT_KEYS = ('name', 'key', 'field', 'attribute', 'slug', 'id')
 TYPE_KEYS = ('type', 'kind', 'input_type', 'inputType', 'field_type', 'fieldType', 'component', 'format')
 REQUIRED_KEYS = ('required', 'is_required', 'isRequired')
@@ -60,7 +60,7 @@ OPTIONAL_KEYS = ('optional', 'is_optional', 'isOptional')
 OPTION_KEYS = ('options', 'choices')
 LIMIT_KEYS = ('max_length', 'maxLength', 'maxlength', 'min_length', 'minLength', 'word_limit', 'wordLimit',
               'max_words', 'maxWords', 'char_limit', 'charLimit', 'limit', 'min', 'max', 'max_files', 'maxFiles')
-HELP_KEYS = ('placeholder', 'hint', 'help', 'help_text', 'helpText', 'description_hint')
+HELP_KEYS = ('placeholder', 'hint', 'help', 'help_text', 'helpText', 'description_hint', 'subtitle')
 
 IDENTIFIER = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.\-\[\]]{0,79}$')
 
@@ -386,8 +386,9 @@ def run(task, credential):
           + ', forms: ' + str(structure['forms']) + ', controls: ' + json.dumps(structure['controls'])
           + ', scripts: ' + str(len(structure['scripts'])) + ', json scripts: ' + str(len(structure['jsonScripts'])))
 
-    extract = getattr(adapter, 'extract_fields', extract_fields)
-    from_props = extract(state.get('props')) if state else []
+    extract = getattr(adapter, 'extract_fields', None)
+    # the adapter's own reading first; the generic one when the adapter has none or finds nothing
+    from_props = ((extract(state.get('props')) if extract else []) or extract_fields(state.get('props'))) if state else []
     from_html = extract_html_fields(page.get('html'))
     chosen, source = choose_fields(from_props, from_html)
     fields = assign_variable_names(fund, chosen)

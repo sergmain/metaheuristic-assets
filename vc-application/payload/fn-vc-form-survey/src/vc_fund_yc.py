@@ -183,6 +183,83 @@ def _path(url):
 
 
 # ---------------------------------------------------------------------------------------------------
+# THE FIELDS
+#
+# What the apply bundle reads (apply-*.js, read 2026-10-27): every question is a field component (InputField,
+# TextareaField, SelectField, Radio, CheckboxField, VideoField, ...) named by a fieldName literal in the bundle, and it
+# takes its label from questionLabels[fieldName] = {q, subtitle, placeholder}. The application form renders with
+# hideQuestionsWithoutLabels: a question with no entry in questionLabels is not shown. So the server's
+# questionLabels - a prop of the page - IS the set of fields this batch's form shows, in the server's order. The
+# answers are app.questions[fieldName] and are never read here. Types, required flags and choices are defined in the
+# bundle's code, not in the props, so they stay unknown (None).
+
+LABEL_MAX = 300
+
+
+def _one_line(text, limit=LABEL_MAX):
+    text = ' '.join(str(text).split())
+    return text if len(text) <= limit else text[:limit] + '...'
+
+
+def find_key(value, name):
+    """The first value under key name anywhere in a JSON tree, depth-first in document order; None when absent."""
+    if isinstance(value, dict):
+        if name in value:
+            return value[name]
+        for v in value.values():
+            found = find_key(v, name)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for v in value:
+            found = find_key(v, name)
+            if found is not None:
+                return found
+    return None
+
+
+def _sections(groups):
+    """fieldName -> question group, from activeQuestionGroups ({group: {fieldName: ...}} or {group: [fieldName]})."""
+    section_of = {}
+    if isinstance(groups, dict):
+        for group, members in groups.items():
+            names = members.keys() if isinstance(members, dict) else members if isinstance(members, list) else []
+            for name in names:
+                if isinstance(name, str):
+                    section_of.setdefault(name, group)
+    return section_of
+
+
+def extract_fields(props):
+    """One field per questionLabels entry, in the server's order; [] when the props carry no questionLabels (the core
+    then falls back to its generic extraction)."""
+    labels = find_key(props, 'questionLabels')
+    if not isinstance(labels, dict) or not labels:
+        return []
+    section_of = _sections(find_key(props, 'activeQuestionGroups'))
+    fields = []
+    for key, entry in labels.items():
+        entry = entry if isinstance(entry, dict) else ({'q': entry} if isinstance(entry, str) else {})
+        q = entry.get('q') if isinstance(entry.get('q'), str) and entry.get('q').strip() else None
+        subtitle = entry.get('subtitle') if isinstance(entry.get('subtitle'), str) and entry.get('subtitle').strip() else None
+        placeholder = entry.get('placeholder') if isinstance(entry.get('placeholder'), str) else None
+        label = q or subtitle or key
+        help_text = subtitle if q and subtitle else placeholder
+        fields.append({
+            'key': key,
+            'label': _one_line(label),
+            'type': None,
+            'required': None,
+            'options': None,
+            'limits': None,
+            'help': _one_line(help_text) if help_text and help_text.strip() else None,
+            'section': section_of.get(key),
+            'path': 'props.questionLabels.' + key,
+        })
+    return fields
+
+
+# ---------------------------------------------------------------------------------------------------
 # THE SURVEY
 #
 # E1 (ExecContext #5156, 2026-10-27): the sign-in above went through over plain HTTP - /start_sign_in and /sign_in

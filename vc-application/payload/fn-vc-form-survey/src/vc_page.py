@@ -17,6 +17,7 @@
 # is left out: it may carry the company's name.
 
 import json
+import re
 from html.parser import HTMLParser
 import urllib.parse
 
@@ -118,6 +119,74 @@ def _json_object(text):
     return value if isinstance(value, dict) else None
 
 
+def _literal_end(text, start):
+    """The index just past the JS object literal opening at text[start] == '{', or None when it never closes.
+    Braces inside string literals do not count."""
+    depth = 0
+    quote = None
+    escaped = False
+    for k in range(start, len(text)):
+        ch = text[k]
+        if quote:
+            if escaped:
+                escaped = False
+            elif ch == '\\':
+                escaped = True
+            elif ch == quote:
+                quote = None
+        elif ch in '"\'`':
+            quote = ch
+        elif ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                return k + 1
+    return None
+
+
+JSON_PARSE_STRING = re.compile(r'\s*JSON\.parse\(\s*("(?:[^"\\]|\\.)*")\s*\)', re.S)
+
+
+def call_arguments(text, marker):
+    """Every object passed to a call that follows marker - e.g. marker 'REACT_COMPONENTS.push(' - as a dict. The
+    argument may be a JSON object literal or JSON.parse("...") of a JSON string; anything else is skipped."""
+    found = []
+    position = 0
+    while True:
+        i = text.find(marker, position)
+        if i < 0:
+            return found
+        after = i + len(marker)
+        parsed = JSON_PARSE_STRING.match(text, after)
+        if parsed:
+            try:
+                obj = _json_object(json.loads(parsed.group(1)))
+            except ValueError:
+                obj = None
+            if obj is not None:
+                found.append(obj)
+            position = parsed.end()
+            continue
+        start = text.find('{', after)
+        end = _literal_end(text, start) if start >= 0 else None
+        if end is None:
+            return found
+        obj = _json_object(text[start:end])
+        if obj is not None:
+            found.append(obj)
+        position = end
+
+
+def sketch(text, limit=160):
+    """The head of a script with the content of every string literal blanked - its shape, never its data."""
+    s = re.sub(r'"(?:[^"\\]|\\.)*"', '"~"', text or '', flags=re.S)
+    s = re.sub(r"'(?:[^'\\]|\\.)*'", "'~'", s, flags=re.S)
+    s = re.sub(r'`(?:[^`\\]|\\.)*`', '`~`', s, flags=re.S)
+    s = ' '.join(s.split())
+    return s if len(s) <= limit else s[:limit] + '...'
+
+
 # ---------------------------------------------------------------------------------------------------
 # THE EMBEDDED STATE
 
@@ -159,6 +228,17 @@ def embedded_state(page_html):
             if data is not None:
                 return 'next', {'component': data.get('page'), 'version': data.get('buildId'),
                                 'props': data.get('props')}
+    # YC's apply site (E2, ExecContext #5286): inline scripts push {divId, component, props} onto
+    # window.REACT_COMPONENTS, and the app bundle mounts each component on its divId
+    pushed = [c for s in parser.scripts if not s['attrs'].get('src')
+              for c in call_arguments(s['text'], 'REACT_COMPONENTS.push(')]
+    if pushed:
+        if len(pushed) == 1:
+            return 'react-components', {'component': pushed[0].get('component'), 'version': None,
+                                        'props': pushed[0].get('props')}
+        return 'react-components', {'component': ', '.join(str(c.get('component')) for c in pushed), 'version': None,
+                                    'props': {'components': [{'component': c.get('component'), 'props': c.get('props')}
+                                                             for c in pushed]}}
     for s in parser.scripts:
         if (s['attrs'].get('type') or '').lower() == 'application/json':
             props = _json_object(s['text'])
@@ -184,6 +264,8 @@ def page_structure(page_html):
         'bytes': len(page_html or ''),
         'scripts': [_path_only(s['attrs']['src']) for s in parser.scripts if s['attrs'].get('src')],
         'inlineScripts': sum(1 for s in parser.scripts if not s['attrs'].get('src')),
+        'inlineScriptSketches': [{'bytes': len(s['text']), 'head': sketch(s['text'])}
+                                 for s in parser.scripts if not s['attrs'].get('src')],
         'jsonScripts': [{'id': s['attrs'].get('id'), 'type': s['attrs'].get('type'),
                          'attributes': sorted(k for k in s['attrs'] if k not in ('id', 'type')),
                          'bytes': len(s['text'])}
