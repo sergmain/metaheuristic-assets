@@ -1,0 +1,4 @@
+# GASV8X6B2_79_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_79_suite.py::test_single_station_update_reaches_only_target
+tests/test_GASV8X6B2_79_suite.py::test_all_stations_update_reaches_every_station_with_latest
+tests/test_GASV8X6B2_79_suite.py::test_updates_have_identifiers_and_no_pricing_team_step_needed

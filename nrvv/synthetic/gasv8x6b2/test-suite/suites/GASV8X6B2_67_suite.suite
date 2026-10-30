@@ -1,0 +1,2 @@
+# GASV8X6B2_67_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_67_suite.py::test_reordered_sends_converge_on_latest_price_and_cost_preserved

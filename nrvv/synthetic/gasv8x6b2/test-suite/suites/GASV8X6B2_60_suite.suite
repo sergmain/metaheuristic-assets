@@ -1,0 +1,4 @@
+# GASV8X6B2_60_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_60_suite.py::test_newer_price_wins_when_older_send_arrives_last
+tests/test_GASV8X6B2_60_suite.py::test_station_settles_on_latest_price_with_random_arrival
+tests/test_GASV8X6B2_60_suite.py::test_last_arrival_at_station_is_latest_price

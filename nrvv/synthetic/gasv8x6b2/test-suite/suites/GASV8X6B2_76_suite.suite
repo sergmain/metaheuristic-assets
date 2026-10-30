@@ -1,0 +1,3 @@
+# GASV8X6B2_76_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_76_suite.py::test_sending_cost_report_counts_sends_and_costs
+tests/test_GASV8X6B2_76_suite.py::test_retry_send_is_counted_once_each

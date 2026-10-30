@@ -1,0 +1,2 @@
+# GASV8X6B2_66_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_66_suite.py::test_mismatched_ack_closes_no_record_and_cost_keeps_accruing
