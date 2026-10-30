@@ -24,8 +24,8 @@ ASKED_MAX_TITLE_CHARS = 80
 # re-check's NrvvConsts.TOP_LEVEL_PER_NEED_MAX
 TOP_LEVEL_PER_NEED_MAX = 3
 TOP_FIELDS = ('key', 'needs', 'readings', 'title', 'statement', 'rationale', 'evidence')
-BOUNDARY_FIELDS = ('key', 'parent', 'assumptions', 'title', 'statement', 'rationale')
-DESIGN_FIELDS = ('key', 'parent', 'title', 'statement', 'rationale')
+BOUNDARY_FIELDS = ('key', 'parent', 'assumptions', 'title', 'statement', 'rationale', 'evidence')
+DESIGN_FIELDS = ('key', 'parent', 'title', 'statement', 'rationale', 'evidence')
 
 V5_RULES = [
     '- One obligation per requirement: one verifiable "The service shall ..." statement.',
@@ -47,6 +47,25 @@ EVIDENCE_RULES = [
     '- A statement holding each, every, all, any, always or never needs a quote holding one of those words.',
     '- A digit in a statement appears in one of its quotes.',
 ]
+
+# plan 053 P6: a derived item - design, Interface, Environment - quotes what it rests on, as a top-level requirement does:
+# its own rationale is the model's account, not evidence of why it wrote it (Chen et al. 2025). The sources are the item's
+# parent top-level requirement and the interpretation items the part is given (the parent itself quotes the NEEDs).
+DERIVED_EVIDENCE_RULES = [
+    '- Quote, under "evidence", the words each item rests on: at least two words copied exactly as its parent top-level',
+    '  requirement (or an interpretation item listed below) states them, without double quotes inside; "source" is that',
+    '  requirement\'s or item\'s reqId.',
+]
+DERIVED_EVIDENCE_SHAPE = '"evidence": [{"source": "<reqId>", "quote": "<words>"}]'
+
+
+def _evidence(e):
+    return [(str(x.get('source') or '').strip(), str(x.get('quote') or '').strip())
+            for x in e.get('evidence') or [] if isinstance(x, dict)]
+
+
+def _evidence_out(evidence):
+    return [{'source': a, 'quote': b} for a, b in evidence]
 
 
 def _load(raw, what):
@@ -240,6 +259,7 @@ def compose_boundary(boundary_input):
         'Rules:',
         '- Language-neutral: name no programming language, module, file, class, framework, library or test tool.',
         '- An OPEN_CHOICE item stays open: no item fixes the dimension it leaves open.',
+    ] + DERIVED_EVIDENCE_RULES + [
         '- A title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters. Keys IF-1, IF-2, ... and EN-1, EN-2, ... in order.',
         '',
         'The top-level requirements:',
@@ -254,9 +274,10 @@ def compose_boundary(boundary_input):
     return '\n'.join(lines + [
         '',
         'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object and nothing else:',
-        '{"interface": [{"key": "IF-1", "parent": "<reqId>", "title": "...", "statement": "...", "rationale": "..."}],'
+        '{"interface": [{"key": "IF-1", "parent": "<reqId>", "title": "...", "statement": "...", "rationale": "...", '
+        + DERIVED_EVIDENCE_SHAPE + '}],'
         ' "environment": [{"key": "EN-1", "parent": "<reqId>", "assumptions": ["<ASSUMPTION reqId>"], "title": "...",'
-        ' "statement": "...", "rationale": "..."}]}',
+        ' "statement": "...", "rationale": "...", ' + DERIVED_EVIDENCE_SHAPE + '}]}',
         cv.ANSWER_TAIL.replace('the findings', 'the items'),
     ])
 
@@ -264,6 +285,9 @@ def compose_boundary(boundary_input):
 def check_boundary(cc_result, boundary_input):
     parents = {str(r.get('reqId')) for r in boundary_input.get('requirements') or []}
     assumptions = [str(i.get('reqId')) for i in boundary_input.get('items') or [] if i.get('kind') == 'ASSUMPTION']
+    # plan 053 P6: what a boundary item may quote - its parent and the items the part is given
+    statements = {str(r.get('reqId')): str(r.get('statement') or '') for r in boundary_input.get('requirements') or []}
+    item_statements = {str(i.get('reqId')): str(i.get('statement') or '') for i in boundary_input.get('items') or []}
 
     def checked():
         data = _answer_object(cc_result)
@@ -289,8 +313,12 @@ def check_boundary(cc_result, boundary_input):
                 refusal = ev.language_refusal(key, e['statement']) or ev.language_refusal(key, e['rationale'])
                 if refusal:
                     raise ValueError(refusal)
+                evidence = _evidence(e)
+                refusal = ev.quote_refusal(key, evidence, dict(item_statements, **{parent: statements[parent]}))
+                if refusal:
+                    raise ValueError(refusal)
                 item = {'key': key, 'parent': parent, 'title': e['title'].strip(), 'statement': e['statement'].strip(),
-                        'rationale': e['rationale'].strip()}
+                        'rationale': e['rationale'].strip(), 'evidence': _evidence_out(evidence)}
                 if name == 'environment':
                     item['assumptions'] = named_here
                 out[name].append(item)
@@ -321,6 +349,7 @@ def compose_design(design_input, branch):
         '- Language-neutral: name no programming language, module, file, class, framework, library or test tool.',
         '- Every design item serves the requirement below; it holds under every interpretation item listed.',
         '- An OPEN_CHOICE item stays open: no design item fixes the dimension it leaves open.',
+    ] + DERIVED_EVIDENCE_RULES + [
         '- A title of at most ' + str(ASKED_MAX_TITLE_CHARS) + ' characters. Keys D-1, D-2, ... in order. At least one item.',
         '',
         'The requirement:',
@@ -337,13 +366,16 @@ def compose_design(design_input, branch):
     return '\n'.join(lines + [
         '',
         'Answer by calling the mh_cc_store_result tool exactly once, with exactly this JSON object and nothing else:',
-        '{"design": [{"key": "D-1", "title": "...", "statement": "...", "rationale": "..."}]}',
+        '{"design": [{"key": "D-1", "title": "...", "statement": "...", "rationale": "...", ' + DERIVED_EVIDENCE_SHAPE + '}]}',
         cv.ANSWER_TAIL.replace('the findings', 'the design'),
     ])
 
 
 def check_design(cc_result, design_input, branch):
     r = requirement_of(design_input, branch)
+    # plan 053 P6: what a design item may quote - its branch's requirement and every interpretation item
+    sources = {str(i.get('reqId')): str(i.get('statement') or '') for i in design_input.get('items') or []}
+    sources[str(r['reqId'])] = str(r.get('statement') or '')
 
     def checked():
         data = _answer_object(cc_result)
@@ -358,8 +390,12 @@ def check_design(cc_result, design_input, branch):
             refusal = ev.language_refusal(key, e['statement']) or ev.language_refusal(key, e['rationale'])
             if refusal:
                 raise ValueError(refusal)
+            evidence = _evidence(e)
+            refusal = ev.quote_refusal(key, evidence, sources)
+            if refusal:
+                raise ValueError(refusal)
             out.append({'key': key, 'parent': r['reqId'], 'title': e['title'].strip(), 'statement': e['statement'].strip(),
-                        'rationale': e['rationale'].strip()})
+                        'rationale': e['rationale'].strip(), 'evidence': _evidence_out(evidence)})
         return {'design': out}
 
     return _refused(checked)

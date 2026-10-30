@@ -149,12 +149,16 @@ def test_a_need_not_met_is_repaired_by_an_addition():
 
 
 def test_a_design_addition_under_the_component_top_level_or_an_earlier_top_level_addition():
-    design = {'kind': 'DESIGN', 'parent': 'GASR-15', 'title': 'Latest', 'statement': 'The service sends only the latest price.'}
+    # plan 053 P6 (b; the rule this test pinned changed): a design addition also quotes its parent - here T1 (GASR-15, by its
+    # live row), then the earlier TOP_LEVEL addition A1
+    design = {'kind': 'DESIGN', 'parent': 'GASR-15', 'title': 'Latest', 'statement': 'The service sends only the latest price.',
+              'evidence': [{'source': 'GASR-10', 'quote': 'every gas price update'}]}
     assert wf.checked(answer([KEEP_D1, {'reqId': 'GASR-10', 'action': 'KEEP'}], [design]), CRITERIA, 'C1\n')['add'][0]['parent'] == 'GASR-15'
     top = {'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 'Settle',
            'statement': 'The service shall make a station settle on the latest price.',
            'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}
-    out = wf.checked(answer([], [top, dict(design, parent='A1')]), NO_STAGE, 'C3\n')
+    out = wf.checked(answer([], [top, dict(design, parent='A1', evidence=[{'source': 'A1', 'quote': 'settle on the latest price'}])]),
+                     NO_STAGE, 'C3\n')
     assert [a['kind'] for a in out['add']] == ['TOP_LEVEL', 'DESIGN'], out
 
 
@@ -411,3 +415,46 @@ def test_run_prompt_and_run_check(tmp_path):
     wf.run_check(task, 'mh.asset.nrvv-repair-check_1.0')
     stored = json.loads((tmp_path / 'r' / 'work' / 'artifacts' / '100').read_text(encoding='utf-8'))
     assert list(stored.keys()) == ['refused'] and 'no decision on' in stored['refused']
+
+
+# ---- plan 053 P6 (b): evidence on a derived item a REPAIR changes or adds ----
+# characterization test: v8's repair check applies only the language rule to a design / Interface / Environment item - a
+# CHANGE or an ADD of one passes with no evidence, its only justification the model's prose
+
+# a design-gate component of one design item whose parent is no item of it: the context names the parent under "parents"
+D_ONLY = {'id': 'C4', 'reasons': [{'id': 31, 'kind': 'REQ_CONTRADICTION', 'subject': 'GASR-11', 'counterpart': 'GASR-41',
+                                   'text': 'resending until acknowledged contradicts one send in flight'}],
+          'items': [D1], 'governing': [X2], 'parents': [T1], 'needs': [], 'history': []}
+CRITERIA_D = dict(CRITERIA, components=[D_ONLY])
+CHANGE_D1 = {'reqId': 'GASR-11', 'action': 'CHANGE', 'statement': 'The service resends the latest price until acknowledged.',
+             'rationale': 'the latest only', 'reason': 'one send in flight'}
+
+
+def test_derived_changes_and_adds_quote_their_parent_or_an_item():
+    # CT Green-1: a CHANGE and an ADD of a derived item pass without evidence
+    # CT Red: each quotes, under evidence, its parent top-level requirement (an item of the component, one under "parents",
+    # or a TOP_LEVEL add before it) or an interpretation item of the component - verbatim, at least two words
+    assert 'GASR-11: rule 1 (quote) - no evidence' in refusal(answer([CHANGE_D1]), 'C4', CRITERIA_D)
+    parent = dict(CHANGE_D1, evidence=[{'source': 'GASR-10', 'quote': 'publish every gas price update'}])
+    out = wf.checked(answer([parent]), CRITERIA_D, 'C4\n')
+    assert out['decisions'][0]['evidence'] == [{'source': 'GASR-10', 'quote': 'publish every gas price update'}], out
+    live = dict(CHANGE_D1, evidence=[{'source': 'GASR-15', 'quote': 'publish every gas price update'}])
+    assert wf.checked(answer([live]), CRITERIA_D, 'C4\n')['decisions'][0]['evidence'][0]['source'] == 'GASR-10', 'by its live row'
+    item = dict(CHANGE_D1, evidence=[{'source': 'GASR-21', 'quote': 'the latest price'}])
+    assert 'refused' not in wf.checked(answer([item]), CRITERIA_D, 'C4\n')
+    assert 'is neither' in refusal(answer([dict(CHANGE_D1, evidence=[{'source': 'GASR-1', 'quote': 'publish gas price updates'}])]),
+                                   'C4', CRITERIA_D), 'a NEED is no source of a derived item'
+    design = {'kind': 'DESIGN', 'parent': 'GASR-15', 'title': 'Latest', 'statement': 'The service sends only the latest price.'}
+    keep = [KEEP_D1, {'reqId': 'GASR-10', 'action': 'KEEP'}]
+    assert 'A1: rule 1 (quote) - no evidence' in refusal(answer(keep, [design]), 'C1', CRITERIA)
+    quoted = dict(design, evidence=[{'source': 'GASR-10', 'quote': 'every gas price update'}])
+    assert wf.checked(answer(keep, [quoted]), CRITERIA, 'C1\n')['add'][0]['evidence'] == [{'source': 'GASR-10',
+                                                                                         'quote': 'every gas price update'}]
+    top = {'kind': 'TOP_LEVEL', 'needs': ['GASR-2'], 'title': 'Settle',
+           'statement': 'The service shall make a station settle\non the latest price.', 'rationale': 'r',
+           'evidence': [{'source': 'GASR-2', 'quote': 'settle on the latest price'}]}
+    under_add = dict(design, parent='A1', evidence=[{'source': 'A1', 'quote': 'settle on the latest price'}])
+    assert [a['kind'] for a in wf.checked(answer([], [top, under_add]), NO_STAGE, 'C3\n')['add']] == ['TOP_LEVEL', 'DESIGN']
+    prompt = wf.compose(CRITERIA_D, D_ONLY)
+    assert 'The top-level requirements they are under (not to be decided):' in prompt and 'GASR-10' in prompt
+    assert 'A design, Interface or Environment item quotes, in evidence,' in prompt

@@ -143,6 +143,9 @@ def compose(context, component):
         '- A top-level requirement or an interpretation item quotes, in evidence, the words of the NEEDs it cites (or of',
         '  the items it reads under) that it rests on, verbatim, at least two words each. A statement holding each, every,',
         '  all, any, always or never needs a quote holding one of them; a number in a statement appears in a quote.',
+        # plan 053 P6 (b): a derived item a repair changes or adds quotes what it rests on, as one the definition wrote does
+        '- A design, Interface or Environment item quotes, in evidence, the words of its top-level requirement (or of an',
+        '  interpretation item above) that it rests on, verbatim, at least two words each.',
         '- A requirement whose cited derivation NEEDs are all COST_OBJECTIVE measures and reports the cost; it bounds',
         '  nothing (no "shall not", "at most", "never", "only", "minimum", no number).',
         '- No statement or rationale names a programming language or a test framework.',
@@ -193,6 +196,14 @@ def compose(context, component):
     if governing:
         lines += ['', 'Items they are read under (not to be decided):']
         for it in governing:
+            lines.append('')
+            _item_lines(lines, it)
+    # plan 053 P6 (b): the parent of every design, Interface and Environment item above that is no item itself - its words
+    # are what such an item quotes
+    parents = component.get('parents') or []
+    if parents:
+        lines += ['', 'The top-level requirements they are under (not to be decided):']
+        for it in parents:
             lines.append('')
             _item_lines(lines, it)
     needs = component.get('needs') or []
@@ -278,7 +289,7 @@ def answer_of(cc_result, context, component):
         raise ValueError('CC answered no {"decisions": [...], "add": [...]} object: ' + na.excerpt(text))
     items = {str(it['reqId']): it for it in component.get('items') or []}
     known = {}
-    for it in (component.get('items') or []) + (component.get('governing') or []):
+    for it in (component.get('items') or []) + (component.get('governing') or []) + (component.get('parents') or []):
         known[str(it['reqId'])] = it
         if it.get('liveReqId'):
             known[str(it['liveReqId'])] = it
@@ -429,6 +440,19 @@ def answer_of(cc_result, context, component):
     def language_refusal(key, statement, prose):
         return ev.language_refusal(key, statement) or ev.language_refusal(key, prose)
 
+    # plan 053 P6 (b): what a derived item may quote - its parent and the component's interpretation items, by lineage root
+    interpretations = {str(it['reqId']): it.get('statement') or '' for it in known.values() if it.get('type') == 'INTERPRETATION'}
+
+    def derived_refusal(key, evidence, parents, added_parent=None):
+        sources = dict(interpretations)
+        for p in parents:
+            it = known.get(p)
+            if it and it.get('type') == 'TOP_LEVEL':
+                sources[str(it['reqId'])] = it.get('statement') or ''
+        if added_parent:
+            sources[added_parent['key']] = one_line(added_parent['statement'])
+        return ev.quote_refusal(key, evidence, sources)
+
     # plan 050 Phase 17 (d), by its characterization test test_rule_a_contradictions_sides_are_changeable_at_a_req_cv_stage:
     # an item a REQ_CONTRADICTION reason of the component names is changeable whatever its layer at a stage whose gate runs
     # RG's REQ_CV - after a NEED delta the re-entered AFTER_INTERPRETATION gate's contradictions named design, Interface and
@@ -457,7 +481,8 @@ def answer_of(cc_result, context, component):
             why = interpretation_refusal(r, it.get('interpretation'), statement, needs_after(r), governs_after(r),
                                          d['evidence'], d['rationale'])
         else:
-            why = language_refusal(r, statement, d['rationale'] or it.get('rationale'))
+            why = (language_refusal(r, statement, d['rationale'] or it.get('rationale'))
+                   or derived_refusal(r, d['evidence'], [root(str(p)) for p in it.get('parents') or []]))
         if why:
             raise ValueError(why)
     top_keys = [a['key'] for a in added if a['kind'] == 'TOP_LEVEL']
@@ -494,6 +519,9 @@ def answer_of(cc_result, context, component):
                 why = reading_refusal(key, a['readings'], ('ASSUMPTION',))
             if not why:
                 why = language_refusal(key, statement, a['rationale'])
+            if not why:
+                why = derived_refusal(key, a['evidence'], [] if parent in top_keys else [root(parent)],
+                                      next((x for x in added[:n] if x['key'] == parent), None))
         if why:
             raise ValueError(why)
     for r in obsoleted:
