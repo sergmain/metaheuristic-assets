@@ -171,6 +171,7 @@ def on_acknowledgement(station_id, request_id, outcome=None):
         return
     rec["state"] = "acknowledged"
     rec["ack_time"] = now
+    rec["latency_cost"] = max(0.0, now - rec["time"]) * _rates()[1]
     if st.outstanding is rec:
         st.outstanding = None
         _close_span(st, now)
@@ -257,15 +258,20 @@ def get_cost_records(station_id=None):
 def get_sending_cost_report(period=None):
     ps, pe = _period(period)
     now = _now()
-    views = [_view(r) for r in _sends
-             if (ps is None or r["time"] >= ps) and (pe is None or r["time"] <= pe)]
+    recs = [r for r in _sends
+            if (ps is None or r["time"] >= ps) and (pe is None or r["time"] <= pe)]
+    views = [_view(r) for r in recs]
     total = 0.0
     per_station = {}
     by_outcome = _split()
     by_station = {}
     by_update = {}
-    for v in views:
+    for v, r in zip(views, recs):
         c = v["cost"]
+        if ps is None and pe is None:
+            # open-ended report prices ack latency as time cost
+            c += r.get("latency_cost", 0.0)
+            v["cost"] = c
         o = _outcome(v)
         total += c
         per_station[v["station_id"]] = per_station.get(v["station_id"], 0.0) + c
