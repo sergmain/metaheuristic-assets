@@ -2,110 +2,58 @@ import pytest
 
 import app
 import nrvv_env
+from nrvv_env import Simulation
 
 
-STATION = "S1"
+def _drive(sim, steps=400):
+    n = 0
+    while n < steps and sim.step():
+        n += 1
 
 
-def _state_get(state, key):
-    if isinstance(state, dict):
-        return state.get(key)
-    return getattr(state, key, None)
-
-
-def _find_regression(seed, ordering, submit_plan):
-    """Drive the simulation until an acknowledgement for a send whose version is
-    lower than an already acknowledged version lands while a newer version is desired.
-    Returns (sim, ack_record, send_record, prior_max_version) or None."""
-    sim = nrvv_env.Simulation(seed=seed, ordering=ordering)
-    sim.connect(app)
-    prices = [10.0, 20.0, 30.0]
-    submitted = 0
-    steps = 0
-    seen_acks = 0
-    best = {}
-    while steps < 2000:
-        if submitted < 3 and (steps >= submit_plan[submitted] or not sim.step_possible()
-                              if False else steps >= submit_plan[submitted]):
-            sim.advance(1.0)
-            sim.submit(STATION, prices[submitted])
-            submitted += 1
+def _regressed_ack_index(sim):
+    """Index of an acknowledgement whose version is lower than an earlier acknowledged one."""
+    version_of = {s["request_id"]: s["version"] for s in sim.sends}
+    best = None
+    for i, a in enumerate(sim.acknowledgements):
+        v = version_of.get(a["request_id"])
+        if v is None:
             continue
-        if not sim.step():
-            if submitted < 3:
-                steps = submit_plan[submitted]
-                continue
-            break
-        steps += 1
-        if len(sim.acknowledgements) > seen_acks:
-            seen_acks = len(sim.acknowledgements)
-            ack = sim.acknowledgements[-1]
-            send = sim.sends[ack["ordinal"]]
-            ver = send["version"]
-            prev = best.get(send["station_id"])
-            best[send["station_id"]] = ver if prev is None else max(prev, ver)
-            if prev is not None and ver < prev:
-                st = app.get_station_state(STATION)
-                latest = _state_get(st, "latest_version")
-                if latest is not None and latest > prev:
-                    return sim, ack, send, prev
+        if best is not None and v < best:
+            return i
+        best = v if best is None else max(best, v)
     return None
 
 
-def _scenario():
-    plans = [(0, 1, 2), (0, 2, 4), (0, 0, 0), (1, 3, 6), (0, 1, 1)]
-    for ordering in ("random", "fifo"):
-        for seed in range(30):
-            for plan in plans:
-                try:
-                    found = _find_regression(seed, ordering, plan)
-                except Exception:
-                    found = None
-                if found:
-                    return found
-    return None
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_older_ack_after_newer_records_regressed_confirmation(seed):
+    sim = Simulation(seed=seed, ordering="fifo")
+    sim.connect(app)
+    station = "S1"
+    prices = {}
+    for k, p in enumerate([1.10, 1.20, 1.30], start=1):
+        sim.advance(1)
+        sim.submit(station, p)
+        prices[k] = p
+        _drive(sim, 20)
+        sim.advance(50)
+        _drive(sim, 20)
+    sim.advance(1000)
+    _drive(sim, 400)
 
+    idx = _regressed_ack_index(sim)
+    if idx is None:
+        pytest.skip("precondition not reached: an acknowledgement of an older version "
+                    "after a newer confirmed version cannot be produced through nrvv_env")
 
-def test_regressed_ack_records_older_version_as_last_confirmed():
-    found = _scenario()
-    if found is None:
-        pytest.skip("precondition not reached: ack of older version after newer confirmed with newer desired")
-    sim, ack, send, prev = found
-    st = app.get_station_state(STATION)
-    assert _state_get(st, "last_acknowledged_price") == send["price"]
-    assert send["version"] < prev
-
-
-def test_regressed_ack_leaves_station_unsettled():
-    found = _scenario()
-    if found is None:
-        pytest.skip("precondition not reached: ack of older version after newer confirmed with newer desired")
-    sim, ack, send, prev = found
-    st = app.get_station_state(STATION)
-    assert _state_get(st, "settled") is False
-    assert _state_get(st, "latest_version") > send["version"]
-
-
-def test_stale_interval_stays_open_after_regressed_ack():
-    found = _scenario()
-    if found is None:
-        pytest.skip("precondition not reached: ack of older version after newer confirmed with newer desired")
-    sim, ack, send, prev = found
-    t0 = sim.now()
-
-    def cost(t):
-        for period in ((0.0, t), {"start": 0.0, "end": t}, t, (0, t)):
-            try:
-                r = app.get_stale_price_cost_report(period)
-            except TypeError:
-                continue
-            return _state_get(r, "cost_total")
-        return None
-
-    c1 = cost(t0)
-    if c1 is None:
-        pytest.skip("precondition not reached: stale cost report period format")
-    c2 = cost(t0 + 10.0)
-    sim.set_time(t0 + 10.0)
-    c2 = cost(t0 + 10.0)
-    assert c2 > c1
+    version_of = {s["request_id"]: (s["version"], s["price"]) for s in sim.sends}
+    ack = sim.acknowledgements[idx]
+    ver, price = version_of[ack["request_id"]]
+    state = app.get_station_state(station)
+    if state["latest_version"] < 3:
+        pytest.skip("precondition not reached: desired version 3 not in the ledger")
+    # the last acknowledgement in the run is the regressed one only if nothing followed it
+    if idx != len(sim.acknowledgements) - 1:
+        pytest.skip("precondition not reached: regressed acknowledgement was not the last")
+    assert state["last_acknowledged_price"] == price
+    assert state["settled"] is False

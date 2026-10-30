@@ -1,2 +1,4 @@
 # GASV8X6B2_68_suite - written by nrvv-test-author
-tests/test_GASV8X6B2_68_suite.py::test_overlapping_out_of_order_sends_have_separate_counted_records
+tests/test_GASV8X6B2_68_suite.py::test_reordered_arrival_separate_records_and_superseded_subtotal
+tests/test_GASV8X6B2_68_suite.py::test_issue_order_arrival_same_attribution
+tests/test_GASV8X6B2_68_suite.py::test_reordered_arrival_other_seed

@@ -1,4 +1,4 @@
 # GASV8X6B2_66_suite - written by nrvv-test-author
-tests/test_GASV8X6B2_66_suite.py::test_mismatched_ack_leaves_station_unsettled
-tests/test_GASV8X6B2_66_suite.py::test_mismatched_ack_cost_keeps_accruing
-tests/test_GASV8X6B2_66_suite.py::test_matched_ack_cost_includes_latency
+tests/test_GASV8X6B2_66_suite.py::test_matched_ack_closes_first_request_only
+tests/test_GASV8X6B2_66_suite.py::test_mismatched_ack_keeps_stale_cost_accruing
+tests/test_GASV8X6B2_66_suite.py::test_ack_latency_is_part_of_matched_record_cost
