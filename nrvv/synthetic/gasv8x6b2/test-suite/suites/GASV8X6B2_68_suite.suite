@@ -1,4 +1,2 @@
 # GASV8X6B2_68_suite - written by nrvv-test-author
-tests/test_GASV8X6B2_68_suite.py::test_separate_record_per_send_counted_once
-tests/test_GASV8X6B2_68_suite.py::test_superseded_send_flagged_and_subtotal
-tests/test_GASV8X6B2_68_suite.py::test_no_send_cost_dropped
+tests/test_GASV8X6B2_68_suite.py::test_overlapping_out_of_order_sends_have_separate_counted_records

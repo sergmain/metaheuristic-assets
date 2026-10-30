@@ -1,2 +1,4 @@
 # GASV8X6B2_58_suite - written by nrvv-test-author
-tests/test_GASV8X6B2_58_suite.py::test_older_send_ack_regresses_confirmed_version
+tests/test_GASV8X6B2_58_suite.py::test_regressed_ack_records_older_version_as_last_confirmed
+tests/test_GASV8X6B2_58_suite.py::test_regressed_ack_leaves_station_unsettled
+tests/test_GASV8X6B2_58_suite.py::test_stale_interval_stays_open_after_regressed_ack
