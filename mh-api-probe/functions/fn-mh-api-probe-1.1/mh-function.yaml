@@ -4,6 +4,7 @@ function:
   type: mh.asset.mh-api-probe
   env: python-3
   sourcing: git
+  cleaningPolicy: ASSETS, FULL_AFTER_ONE_WEEK
   # The same payload as 1.0 (mh-api-probe/payload/fn-mh-api-probe). Only the Vault key differs - see api below.
   git:
     repo: https://github.com/sergmain/metaheuristic-assets.git
