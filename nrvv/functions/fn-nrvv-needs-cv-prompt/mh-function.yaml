@@ -5,6 +5,7 @@ function:
   type: mh.asset.nrvv-needs-cv-prompt
   env: python-3
   sourcing: git
+  cleaningPolicy: ASSETS, FULL_AFTER_ONE_WEEK
   # The payload is NOT packaged into this bundle - it is reached only through this block. HEAD, never a tag:
   # the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task.
   # Every Function of this capability shares the payload directory; each names its own script.

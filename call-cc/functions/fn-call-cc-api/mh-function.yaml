@@ -12,6 +12,7 @@ function:
   type: mh.asset.call-cc
   env: python-3
   sourcing: git
+  cleaningPolicy: ASSETS, FULL_AFTER_ONE_WEEK
   # HEAD, never a tag: the Dispatcher re-resolves the tip at every ExecContext creation and pins the sha into every Task
   # of that run. The whole payload dir is copied into {task.home}/asset, so mh_api_call.py travels with the entry.
   git:

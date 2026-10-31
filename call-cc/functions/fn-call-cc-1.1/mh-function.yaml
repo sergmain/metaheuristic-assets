@@ -8,6 +8,7 @@ function:
   type: mh.asset.call-cc
   env: python-3
   sourcing: git
+  cleaningPolicy: ASSETS, FULL_AFTER_ONE_WEEK
   # The payload is NOT packaged into this bundle - it is reached only through this block, and it
   # lives beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the
   # tip at every ExecContext creation and pins the sha into every Task of that run.
