@@ -109,6 +109,20 @@ the application at 2026-10-27, `yc` + the field name in PascalCase. Required (no
   ...) and what values they accept is in the bundle's code.
 - `production` (nullable) joins these in the apply flow's own `.mhsc`, as in every `.mhsc`.
 
+#### How YC saves an application (read in `apply-*.js`, 2026-10-30, no credential)
+
+- One GraphQL mutation on `apply.ycombinator.com/graphql`: `UPDATE_APP($uuid, $input: UpdateAppInput!, $reloadApp)` ->
+  `updateApp { success persisted errors app {...} }`.
+- **A save is a partial patch.** The page's `Lw(...)` puts into `input.questions` only the questions whose value differs
+  from the loaded baseline (JSON comparison per field) - so one field per save is what the page itself does, and nothing
+  has to be re-posted. Only a submit (`submitOnSave: 1`) sends every question; an autosave carries `autosave: 1` and
+  no `applicantsAttributes`; a regular save carries `applicantsAttributes` (co-founder invites by e-mail).
+- Values: `revenueamount` is sent JSON-stringified; `url` and `productLink` are normalized by the page (`jl(...)`)
+  before sending; every other question as its value.
+- Not through `updateApp`: `videoS3Key` / `demoS3Key` - a multipart upload, `CREATE_APP_VIDEO` -> `SIGN_APP_VIDEO_PART`
+  -> `COMPLETE_APP_VIDEO` (100 MB, `video/*`); `founderBios` - each founder's profile, `UPDATE_BIO` / `SHOW_BIO`.
+- The current answers: query `SHOW_APP($appUuid)` -> `app.questions`, `agentFilledQuestions`.
+
 ### 4. Durable side effects
 
 None in MH: no meta storage, no project; the run leaves its two output Variables. On YC: a signed-in session (YC may
