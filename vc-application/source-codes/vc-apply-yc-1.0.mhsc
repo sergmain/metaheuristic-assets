@@ -1,0 +1,109 @@
+// DSL for .mhsc/.mhscp is described in /mnt/shared/metaheuristic.wiki/p/source-code-dsl.md
+//
+// The YC apply: signs in with the YC account in Vault entry VC_YC_AUTH, reads the application at formUrl, and saves
+// every answer this run brings that differs from what YC holds - the way YC's own page autosaves, never a submit.
+//
+// Its mode is the production input (DAHF §0.15): exactly true -> the differing answers are saved and read back;
+// anything else (launch with JSON null) -> synthetic: everything is read and the patch is computed, nothing is sent.
+//
+// The answers are the global input Variables the YC form survey defined (vc-form-survey-yc-synthetic-1.0, E5,
+// ExecContext #5406): one input per question of the form, yc + the question in PascalCase. Every one is nullable:
+// a null leaves that question as YC holds it. Uploads (ycVideoS3Key, ycDemoS3Key, ycCodingAgentSession), the
+// founders' profiles (ycFounderBios) and ycRevenueamount are declared so the set stays the survey's, and refused
+// when given a value - an apply does not write them.
+//
+// Launch with mh_create_exec_context_with_variables (source-level inputs, 562.120): formUrl, production, and every
+// yc* input - null where the question is to stay as it is. Run it in a company whose Vault - or the management
+// company's, whose keys have priority - holds VC_YC_AUTH. The fund-specific inputs are why this graph is not a
+// shared .mhscp: another fund's apply is its own .mhsc over the same payload (vc-application/DETAILS.md, section B).
+
+source "vc-apply-yc-1.0" {
+
+    variables {
+        <- formUrl
+        <- production?
+        <- ycFounderBios?
+        <- ycMeet?
+        <- ycOthers2?
+        <- ycCofounder?
+        <- ycVideo?
+        <- ycVideoS3Key?
+        <- ycName?
+        <- ycDescribe?
+        <- ycUrl?
+        <- ycDemo?
+        <- ycDemoS3Key?
+        <- ycProductLink?
+        <- ycProductCreds?
+        <- ycMake?
+        <- ycWhere?
+        <- ycWherewhy?
+        <- ycHowfar?
+        <- ycWorked?
+        <- ycTechstack?
+        <- ycCodingAgentSession?
+        <- ycStage?
+        <- ycUsernums?
+        <- ycWhenbeta?
+        <- ycRevenue?
+        <- ycRevenueamount?
+        <- ycRevenuesource?
+        <- ycGrowthrate?
+        <- ycSince?
+        <- ycAcc?
+        <- ycExp?
+        <- ycGet?
+        <- ycMoney?
+        <- ycIdeas?
+        <- ycIncyet?
+        <- ycInctype?
+        <- ycIncpercent?
+        <- ycPercent2?
+        <- ycInvestyet?
+        <- ycIncinvest?
+        <- ycInvestamount?
+        <- ycBank?
+        <- ycBurn?
+        <- ycRunway?
+        <- ycCurrentlyraising?
+        <- ycRaisingdetails?
+        <- ycWhyapply?
+        <- ycHowhear?
+        <- ycReferralCode?
+        <- ycBatchPreference?
+        <- ycFutureBatchName?
+        <- ycFutureBatchWhy?
+        -> currentAnswers
+        -> applyPatch
+        -> applyResult
+    }
+
+    apply := mh.asset.vc-apply-yc_1.0 {
+        name "Fill a VC application from the run's answers"
+        // Every name the Function reads or writes is bound here, never inside it.
+        meta fund = "yc",
+             variable-prefix = "yc",
+             variable-for-form-url = "formUrl",
+             variable-for-production = "production",
+             variable-for-current-answers = "currentAnswers",
+             variable-for-apply-patch = "applyPatch",
+             variable-for-apply-result = "applyResult"
+        <- formUrl, production?,
+           ycFounderBios?, ycMeet?, ycOthers2?, ycCofounder?, ycVideo?, ycVideoS3Key?, ycName?, ycDescribe?, ycUrl?,
+           ycDemo?, ycDemoS3Key?, ycProductLink?, ycProductCreds?, ycMake?, ycWhere?, ycWherewhy?, ycHowfar?,
+           ycWorked?, ycTechstack?, ycCodingAgentSession?, ycStage?, ycUsernums?, ycWhenbeta?, ycRevenue?,
+           ycRevenueamount?, ycRevenuesource?, ycGrowthrate?, ycSince?, ycAcc?, ycExp?, ycGet?, ycMoney?, ycIdeas?,
+           ycIncyet?, ycInctype?, ycIncpercent?, ycPercent2?, ycInvestyet?, ycIncinvest?, ycInvestamount?, ycBank?,
+           ycBurn?, ycRunway?, ycCurrentlyraising?, ycRaisingdetails?, ycWhyapply?, ycHowhear?, ycReferralCode?,
+           ycBatchPreference?, ycFutureBatchName?, ycFutureBatchWhy?
+        -> currentAnswers: ext=".json",
+           applyPatch: ext=".json",
+           applyResult: ext=".json"
+        // The sign-in (up to five requests), the form page, and at most three GraphQL calls of at most 20 s each,
+        // plus the 10 s window of the secret handshake.
+        timeout 240
+        // A sign-in that failed is not repeated (another attempt only moves the site toward a captcha), and a save
+        // whose outcome is unknown is not sent twice.
+        tries 1
+    }
+}

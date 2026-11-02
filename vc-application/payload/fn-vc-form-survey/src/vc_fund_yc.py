@@ -346,3 +346,186 @@ def survey(session, login, password, form_url, log):
         'path': urllib.parse.urlsplit(current.url).path,
         'html': current.text,
     }
+
+
+# ---------------------------------------------------------------------------------------------------
+# THE APPLY (mh.asset.vc-apply-yc, vc_apply.py) - read the application's answers, save the ones that differ
+#
+# How YC's page reads and saves an application (apply-*.js, read 2026-10-30 and 2026-11-02, no credential):
+#   - one Apollo client on POST /graphql of apply.ycombinator.com: the session's cookies, and the header
+#     X-CSRF-Token = the page's <meta name="csrf-token">; on HTTP 422 it retries once with a fresh token
+#   - SHOW_APP($appUuid) -> app { ...AppFragment }: the answers are app.questions (AppQuestions - one field per
+#     question; revenueamount is a list of {val, month})
+#   - UPDATE_APP($uuid, $input: UpdateAppInput!, $reloadApp) -> updateApp { success persisted errors app {...} }. The
+#     page's Lw(...) builds input = {questions: <only the questions whose value changed>, ...}: an autosave adds
+#     autosave: 1 and no applicantsAttributes; a regular save adds applicantsAttributes (co-founder invites); a submit
+#     adds submitOnSave: 1 and sends every question; updateKind is the AppForm's update_kind prop when it has one
+#   - videoS3Key / demoS3Key are multipart uploads (CREATE_APP_VIDEO, SIGN_APP_VIDEO_PART, COMPLETE_APP_VIDEO) and App
+#     fields, not questions; founderBios is each founder's profile (UPDATE_BIO); codingAgentSession is an upload
+#   - choice values (the MC / PC components): stage '1' (not used yet - whenbeta follows) | '2' (used - usernums
+#     follows); revenue, incyet, investyet, currentlyraising 'yes' | 'no'; batchPreference 'current' | 'future'.
+#     Shown only on a path: meet with more than one founder; inctype / incpercent when incyet is 'yes', percent2 when
+#     'no'; incinvest, investamount, bank, burn, runway when investyet is 'yes'; raisingdetails when currentlyraising
+#     is 'yes'; futureBatchName / futureBatchWhy when batchPreference is 'future'
+#
+# An apply saves the way the page's autosave does - the changed questions only, autosave: 1, no applicantsAttributes,
+# never submitOnSave: the application is filled, never submitted. What it may send: what a survey may, plus POST to
+# /graphql on apply.ycombinator.com (may_send_apply); which GraphQL operation is sent is decided per run - SHOW_APP
+# always, UPDATE_APP only in production (graphql_body).
+
+GRAPHQL_PATH = '/graphql'
+APPLY_ORIGIN = 'https://' + APPLY_HOST
+
+READ_OPS = ('SHOW_APP',)
+WRITE_OPS = ('UPDATE_APP',)
+
+# questions of the form that are not AppQuestions fields: uploads held by the App, and the founders' own profiles
+NOT_QUESTIONS = ('videoS3Key', 'demoS3Key', 'founderBios')
+# what an apply never writes: the above, the coding-agent upload, and the one question whose value is not a string
+NOT_WRITABLE = NOT_QUESTIONS + ('codingAgentSession', 'revenueamount')
+
+CHOICES = {
+    'stage': ('1', '2'),
+    'revenue': ('yes', 'no'),
+    'incyet': ('yes', 'no'),
+    'investyet': ('yes', 'no'),
+    'currentlyraising': ('yes', 'no'),
+    'batchPreference': ('current', 'future'),
+}
+# the form's own words: "Describe what your company does in 50 characters or less."
+LIMITS = {'describe': 50}
+
+APP_STATUS_FIELDS = ('uuid', 'submitted', 'submittedAt', 'editable', 'fullEditable', 'status', 'batch', 'currentBatch',
+                     'batchShortName', 'batchLongName', 'videoS3Key', 'demoS3Key', 'agentFilledQuestions')
+
+
+class OperationRefused(RuntimeError):
+    """A GraphQL operation this run may not send - a write outside production, or an operation nobody listed."""
+
+
+def may_send_apply(method, url):
+    """What a survey may send, plus a POST to /graphql on apply.ycombinator.com over https."""
+    if may_send(method, url):
+        return True
+    parts = urllib.parse.urlsplit(url)
+    return (method == 'POST' and parts.scheme == 'https' and parts.hostname == APPLY_HOST
+            and parts.path == GRAPHQL_PATH)
+
+
+def readable_keys(form_keys):
+    """The AppQuestions fields a read selects: the form's questions without the uploads and the profiles."""
+    return [k for k in form_keys if k not in NOT_QUESTIONS]
+
+
+def _selection(keys, indent):
+    pad = ' ' * indent
+    return '\n'.join(pad + k + (' {\n' + pad + '  val\n' + pad + '  month\n' + pad + '}' if k == 'revenueamount' else '')
+                     for k in keys)
+
+
+def show_app_query(keys):
+    """SHOW_APP with this run's selection: the App's status fields and every question in keys."""
+    return ('query SHOW_APP($appUuid: Uuid) {\n  app(uuid: $appUuid) {\n'
+            + '\n'.join('    ' + f for f in APP_STATUS_FIELDS)
+            + '\n    questions {\n' + _selection(keys, 6) + '\n    }\n  }\n}\n')
+
+
+def update_app_mutation(keys):
+    """UPDATE_APP, answering with the App's submitted flag and every question in keys."""
+    return ('mutation UPDATE_APP($uuid: Uuid!, $input: UpdateAppInput!, $reloadApp: Boolean) {\n'
+            '  updateApp(uuid: $uuid, input: $input, reloadApp: $reloadApp) {\n    success\n    persisted\n    errors\n'
+            '    app {\n      uuid\n      submitted\n      questions {\n' + _selection(keys, 8) + '\n      }\n    }\n  }\n}\n')
+
+
+def update_input(patch, update_kind):
+    """The UpdateAppInput of a save as the page's autosave builds it: the changed questions, autosave 1, the form's
+    updateKind when it has one - never applicantsAttributes, never submitOnSave."""
+    if not patch:
+        raise ValueError('an empty patch is never sent')
+    payload = {'questions': dict(patch), 'autosave': 1}
+    if update_kind:
+        payload['updateKind'] = update_kind
+    return payload
+
+
+def graphql_body(op, query, variables, allowed_ops):
+    """The /graphql request body - or a refusal when op is not allowed in this run, or the text is not that op."""
+    if op not in allowed_ops or op not in READ_OPS + WRITE_OPS:
+        raise OperationRefused('GraphQL operation ' + str(op) + ' is not allowed in this run (allowed: '
+                               + ', '.join(allowed_ops) + ')')
+    expected = ('mutation ' if op in WRITE_OPS else 'query ') + op + '('
+    if not query.lstrip().startswith(expected):
+        raise OperationRefused('the text sent as ' + op + ' does not start with "' + expected + '"')
+    return {'operationName': op, 'variables': variables, 'query': query}
+
+
+def form_context(page_html):
+    """What an apply reads from the signed-in form page: the CSRF token, the AppForm's app_uuid, update_kind and its
+    question keys (active_question_groups, in the form's order), and future_batch_names."""
+    from vc_page import embedded_state
+
+    _, state = embedded_state(page_html)
+    props = state.get('props') if state else None
+    app_uuid = find_key(props, 'app_uuid') if props else None
+    groups = find_key(props, 'active_question_groups') if props else None
+    if not isinstance(app_uuid, str) or not app_uuid.strip():
+        raise RuntimeError('the form page carries no AppForm app_uuid - YC changed its page')
+    if not isinstance(groups, dict) or not groups:
+        raise RuntimeError('the form page carries no active_question_groups - YC changed its page')
+    keys = [k for members in groups.values() if isinstance(members, dict) for k in members]
+    update_kind = find_key(props, 'update_kind')
+    return {
+        'csrf': csrf_token(page_html),
+        'appUuid': app_uuid,
+        'updateKind': update_kind if isinstance(update_kind, str) and update_kind.strip() else None,
+        'formKeys': keys,
+        'futureBatchNames': find_key(props, 'future_batch_names'),
+    }
+
+
+def graphql_errors_text(errors):
+    if isinstance(errors, list):
+        return '; '.join(str(e.get('message') if isinstance(e, dict) else e) for e in errors)
+    return str(errors)
+
+
+def graphql(session, ctx, op, query, variables, allowed_ops, form_url, log):
+    """One GraphQL operation as the page's Apollo client sends it; data, or a failure naming the operation."""
+    body = graphql_body(op, query, variables, allowed_ops)
+    headers = {'X-CSRF-Token': ctx['csrf'], 'Origin': APPLY_ORIGIN, 'Referer': check_form_url(form_url)}
+    answer = session.post_json(APPLY_ORIGIN + GRAPHQL_PATH, body, headers)
+    if answer.status == 422:
+        log(op + ': HTTP 422 - the CSRF token was refused; reading a fresh one from the form page')
+        ctx['csrf'] = csrf_token(session.get(form_url).text)
+        headers['X-CSRF-Token'] = ctx['csrf']
+        answer = session.post_json(APPLY_ORIGIN + GRAPHQL_PATH, body, headers)
+    if answer.status != 200:
+        raise RuntimeError(op + ': HTTP ' + str(answer.status))
+    parsed = parse_answer(answer.text, op)
+    if parsed.get('errors'):
+        raise RuntimeError(op + ': GraphQL errors: ' + graphql_errors_text(parsed['errors']))
+    data = parsed.get('data')
+    if not isinstance(data, dict):
+        raise RuntimeError(op + ': the answer carries no data')
+    return data
+
+
+def read_answers(session, ctx, form_url, allowed_ops, log):
+    """The App as SHOW_APP returns it: its status fields and questions."""
+    data = graphql(session, ctx, 'SHOW_APP', show_app_query(readable_keys(ctx['formKeys'])),
+                   {'appUuid': ctx['appUuid']}, allowed_ops, form_url, log)
+    app = data.get('app')
+    if not isinstance(app, dict):
+        raise RuntimeError('SHOW_APP: YC returned no application for the form page\'s app_uuid')
+    return app
+
+
+def write_answers(session, ctx, patch, form_url, allowed_ops, log):
+    """One UPDATE_APP carrying the patch; YC's updateApp answer."""
+    data = graphql(session, ctx, 'UPDATE_APP', update_app_mutation(readable_keys(ctx['formKeys'])),
+                   {'uuid': ctx['appUuid'], 'input': update_input(patch, ctx['updateKind'])},
+                   allowed_ops, form_url, log)
+    result = data.get('updateApp')
+    if not isinstance(result, dict):
+        raise RuntimeError('UPDATE_APP: the answer carries no updateApp')
+    return result

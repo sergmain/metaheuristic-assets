@@ -6,10 +6,11 @@ first fund; every fund-specific part is one adapter, one Function descriptor and
 | DAHF flow | what it is for, in business terms | `.mhsc` | state |
 |---|---|---|---|
 | VC form survey | know every input field of a fund's application form, and the inputs an apply flow for that fund declares | `vc-form-survey-yc-synthetic-1.0` (YC), over `vc-form-survey.mhscp` - section A | `synthetic` experiment |
-| VC apply | fill and save a fund's application from the run's input Variables | none yet - its inputs are defined by the survey (section A, part 3 "The YC apply inputs") | not started |
+| VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production candidate |
 
-Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund) · Function per fund:
-`mh.asset.vc-form-survey-yc_1.0` (`functions/fn-vc-form-survey-yc`, Vault entry `VC_YC_AUTH`).
+Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund and both flows) · Functions per fund:
+`mh.asset.vc-form-survey-yc_1.0` (`functions/fn-vc-form-survey-yc`, `vc_form_survey.py`) and
+`mh.asset.vc-apply-yc_1.0` (`functions/fn-vc-apply-yc`, `vc_apply.py`), both with Vault entry `VC_YC_AUTH`.
 
 **Adding a fund** - nothing in the shared graph or the core changes:
 
@@ -211,3 +212,110 @@ Measured alike: no numeric metric; F1-F6 are pass/fail.
 
 `vc-form-survey-yc-synthetic-1.0` carries `synthetic` in its name: never production ready (§0.21). The survey reads
 only; a production apply flow that wants it as a pre-flight check (has the form changed?) gets its own candidate.
+
+---
+
+## B. VC apply - `vc-apply-yc-1.0`
+
+**Adding a fund's apply** - the generic core (`vc_apply.py`) does not change: the fund's adapter gains `may_send_apply`,
+`form_context(html)`, `read_answers`, `write_answers`, `READ_OPS` / `WRITE_OPS`, `NOT_WRITABLE`, `CHOICES`, `LIMITS`;
+a descriptor `functions/fn-vc-apply-<fund>/mh-function.yaml` (`vc_apply.py`, the fund's Vault entry); and the fund's
+own `vc-apply-<fund>-1.0.mhsc`, declaring the inputs that fund's survey defined. The inputs are fund-specific, which
+is why there is no shared `.mhscp` for the apply.
+
+### 1. Purpose
+
+Fill a fund's application with the founder's answers: sign in with the founder's account, read what the application
+holds, and save every answer the run brings that differs - the way the fund's own page saves, with the previous value
+of every replaced answer kept in the run's output. The application is filled, never submitted: submitting is the
+founder's act on the fund's site.
+
+**Business frame (DAHF §H.5), derived from the request of 2026-11-02 - no question was needed:**
+
+- **Objective:** the founder's YC application (`apply.ycombinator.com/apps/9121f32e-.../edit`) holds the founder's
+  answers for the product NRVV - a continuation of the previous (RG) application - written for an LLM reader:
+  precise, complete, no persuasion technique, nothing the founder did not state or the repositories do not show.
+- **Success:** a production ExecContext of `vc-apply-yc-1.0` saves every answer that differs; YC answers `success`
+  with no errors; the read-back holds every sent value (A3); no question outside the patch changed (A4).
+- **Invariants:** the application is not submitted (A5); the founder's profile (`bio/aebc3402-.../edit`, filled by the
+  founder) is not touched (A6); the credential appears nowhere (A7); an answer whose facts are not known stays as YC
+  holds it - its input is null (A8).
+- **Done:** the ExecContext id, the saved questions read back by value, and the questions left to the founder.
+
+### 2. The graph
+
+One process, `apply` -> `mh.asset.vc-apply-yc_1.0`, `tries 1`, `timeout 240`. The order inside the Function:
+
+1. **The secret handoff first** (the Processor's `accept()` waits 10 seconds).
+2. **The inputs and the three outputs resolved** before the fund's site is called; the answers are the non-null
+   `yc*` inputs.
+3. **Sign-in and the form page** - the survey's own `survey()` of the adapter, under `may_send_apply`.
+4. **The form context** from the page: CSRF token, `app_uuid`, `update_kind`, the question keys.
+5. **Every answer checked against the form before anything is written** - a question the form does not have, an
+   upload or profile, a choice outside its values, `describe` over 50 characters: one refusal ends the run, nothing is
+   written in part.
+6. **SHOW_APP** - the application's status and answers -> `currentAnswers`; the differing answers -> `applyPatch`.
+7. **Production only:** a submitted or not editable application is refused; one `UPDATE_APP` with the patch as an
+   autosave; SHOW_APP again; the sent values and every other question compared -> `applyResult`.
+
+`tries 1`: a save whose outcome is unknown is not sent twice, and a failed sign-in is not repeated.
+
+### 3. The run-data contract
+
+| variable | dir | meaning | permitted values |
+|---|---|---|---|
+| `formUrl` | in | the application's page | an https url on `apply.ycombinator.com`, `.../apps/<id>/edit` |
+| `production` | in, nullable | exactly `true`: save; anything else (JSON `null` at a synthetic launch): read and compute only | `true` or `null` |
+| `yc<Question>` x 51 | in, nullable | the answer the question is to hold; null leaves it as YC holds it; the empty string clears it | text; `ycStage` `1` / `2`; `ycRevenue`, `ycIncyet`, `ycInvestyet`, `ycCurrentlyraising` `yes` / `no`; `ycBatchPreference` `current` / `future`; `ycDescribe` at most 50 characters; `ycVideoS3Key`, `ycDemoS3Key`, `ycCodingAgentSession`, `ycFounderBios`, `ycRevenueamount` always null |
+| `currentAnswers` | out | JSON: `status` (submitted, editable, batch, video key, ...) and `questions`, as read before any write | - |
+| `applyPatch` | out | JSON: `mode`, `answersGiven`, `differing`, `alreadyHeld`, `patch`, `heldBefore` (the value each patched question held) | - |
+| `applyResult` | out | JSON: synthetic `{sent: false, wouldSend}`; production `{sent, savedQuestions, success, persisted, errors, readBackMismatches, othersChanged, submittedAfter, heldAfter}` | - |
+
+- **Credential, company, launch:** as section A part 3 - `VC_YC_AUTH`, a company whose Vault (or the management
+  company's) holds it, `mh_create_exec_context_with_variables` with every input in the map.
+- **What the page shows only on a path** (apply-*.js): `meet` with more than one founder; `inctype` / `incpercent` when
+  `incyet` is `yes`, `percent2` when `no`; `incinvest`, `investamount`, `bank`, `burn`, `runway` when `investyet` is
+  `yes`; `raisingdetails` when `currentlyraising` is `yes`; `usernums` when `stage` is `2`, `whenbeta` when `1`;
+  `revenueamount`, `revenuesource`, `growthrate` when `revenue` is `yes`; `futureBatchName` / `futureBatchWhy` when
+  `batchPreference` is `future`. An answer to a question its path hides is saved but not shown - give none.
+
+### 4. Durable side effects
+
+Synthetic: none in MH but the three output Variables; on YC a signed-in session. Production: the application's saved
+answers change for exactly the questions in `applyPatch.patch`; their previous values are `applyPatch.heldBefore`.
+Nothing is submitted; the founders' profiles and the uploads are not touched.
+
+### 5. Fitness criteria
+
+| # | criterion | hardness | type | how it is observed |
+|---|---|---|---|---|
+| A1 | the sign-in completes without a person and the AppForm's context is read | hard | D | the console line `form: apply.ycombinator.com/apps/.../edit, questions: <n>` |
+| A2 | a synthetic run sends no write | hard | D | `applyResult.sent` false; in code `graphql_body` allows `UPDATE_APP` only in production (`test_graphql_body_allows_the_write_only_when_the_run_allows_it`) |
+| A3 | a production save is confirmed: `success` true, no `errors`, every sent question reads back its sent value | hard | D | `applyResult` read in full |
+| A4 | no question outside the patch changed | hard | D | `applyResult.othersChanged` empty |
+| A5 | the application is not submitted | hard | D | `applyResult.submittedAfter` false; in code `update_input` carries no `submitOnSave` (test) |
+| A6 | the founders' profiles and the uploads are not touched | hard | D | in code: no `UPDATE_BIO` / upload operation is listed in `READ_OPS` / `WRITE_OPS`; `check_answers` refuses those inputs (tests) |
+| A7 | the credential appears in no console line and no Variable | hard | D | as section A F4: the same sign-in code |
+| A8 | every answer states only what the founder stated or the repositories show, precisely, for an LLM reader | hard | P | the founder reads `applyPatch.patch` (and the report of the run) |
+
+### 6. Corrections
+
+None yet.
+
+### 7. Experiments
+
+| id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
+|---|---|---|---|---|---|
+| E1 | read the application over YC's GraphQL the way its page does - POST `/graphql`, the session's cookies, the page's CSRF token - with no answers given: the read and an empty patch | - (section A's E5: the form, and the save path read in `apply-*.js`) | `vc-apply-yc-1.0`, `production` null | `/graphql` answers a plain HTTP client with the signed-in session and the page's token, and SHOW_APP accepts this run's own selection | OPEN |
+| E2 | E1 with the founder's answers: every answer passes the form's checks and the patch is computed against what YC holds | E1 | `vc-apply-yc-1.0`, `production` null | the answers fit the form's values and limits | OPEN |
+| E3 | production: the patch saved as the page's autosave saves it (`autosave: 1`), then read back | E2 | `vc-apply-yc-1.0`, `production` true | an autosave persists the answers into `app.questions` (`persisted` true), as a regular save would | OPEN |
+
+### 8. Production readiness
+
+| condition (§0.21 and the flow's own) | state |
+|---|---|
+| 1. a production mode at all: a production run writes where the business reads | met - read from the graph and `vc_apply.py`: it writes the application named by the input `formUrl`, never a target of its own |
+| 2. the success criteria and invariants hold by observed values in a synthetic run - the CHAMPION | not checked |
+| 3. every part has its production counterpart: the Vault holding `VC_YC_AUTH`; no SourceCode bound | met for the key - section A's runs (#5156 ... #5406) took `VC_YC_AUTH` from the management Vault; re-checked before every launch |
+| 4. no `synthetic` in the name, no `prod` / `dev` / `test` | met - `vc-apply-yc-1.0` |
+| 5. A2, A5, A6, A7 hold in code (unit tests) | met - `tests/test_vc_apply.py`, 117 of 117 |
