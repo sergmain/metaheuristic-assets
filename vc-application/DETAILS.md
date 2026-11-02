@@ -323,6 +323,13 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
   arrived as sent, line breaks included. Nothing sent (A2). The answers left null are the facts the founder has not
   stated (equity breakdown, investment, fundraising, location after YC and why, beta date, cofounder search,
   accelerators, why YC, how he heard of it, urls, referral code) and the uploads.
+- **2026-11-02, E4, ExecContext #7436, both Tasks OK, production (payload `37686c9`, SourceCode in
+  `source-codes-production/` since `fd6b817`).** The same 18 answers, `production` `true`. `applyResult` (#374807) read
+  in full: `sent` true, 16 `savedQuestions` (others2, name, describe, make, where, howfar, worked, techstack, since, exp,
+  get, money, ideas, incyet, inctype, batchPreference), `success` true, `persisted` true, `errors` [],
+  `readBackMismatches` [] (A3), `othersChanged` [] (A4), `submittedAfter` false (A5). Learned: the page's autosave form
+  (`autosave: 1`, the changed questions only) persists into `app.questions`; a second SHOW_APP in the same session
+  returns exactly the sent text, line breaks included.
 
 ### 7. Experiments
 
@@ -331,7 +338,7 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
 | E1 | read the application over YC's GraphQL the way its page does - POST `/graphql`, the session's cookies, the page's CSRF token - with no answers given: the read and an empty patch | - (section A's E5: the form, and the save path read in `apply-*.js`) | `vc-apply-yc-1.0`, `production` null (payload `08f333c`) | `/graphql` answers a plain HTTP client with the signed-in session and the page's token, and SHOW_APP accepts this run's own selection | REJECTED - ExecContext #7433: `/graphql` answered HTTP 200 to the signed-in session, but SHOW_APP refused the selection - `video` and `demo` are no AppQuestions fields |
 | E2 | E1 with the selection limited to the fields AppQuestions declares | E1, ExecContext #7433: `Field 'video' / 'demo' doesn't exist on type 'AppQuestions'` | `vc-apply-yc-1.0`, `production` null (payload `37686c9`) | the 46 remaining fields are all AppQuestions fields, and the session is authorized for the App (GraphQL validates before it authorizes, so E1's 200 does not show it) | BEATEN by E3 - ExecContext #7434: the App read in full (unsubmitted, editable, W27), A1 and A2 held |
 | E3 | E2 with the founder's answers: every answer passes the form's checks and the patch is computed against what YC holds | E2, ExecContext #7434: every question unanswered but the defaults | `vc-apply-yc-1.0`, `production` null (payload `37686c9`) | the answers fit the form's values and limits | CHAMPION - ExecContext #7435: 18 answers, none refused, 16 differing, 2 held; nothing sent |
-| E4 | production: the patch saved as the page's autosave saves it (`autosave: 1`), then read back | E3 | `vc-apply-yc-1.0`, `production` true | an autosave persists the answers into `app.questions` (`persisted` true), as a regular save would | OPEN |
+| E4 | production: the patch saved as the page's autosave saves it (`autosave: 1`), then read back | E3, ExecContext #7435 | `vc-apply-yc-1.0`, `production` true | an autosave persists the answers into `app.questions` (`persisted` true), as a regular save would | CHAMPION - ExecContext #7436: 16 questions saved, `success` and `persisted` true, read back exactly, nothing else changed, not submitted |
 
 ### 8. Production readiness
 
