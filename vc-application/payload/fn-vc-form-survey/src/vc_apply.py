@@ -228,7 +228,10 @@ def run(task, credential):
     print('form: ' + str(page['host']) + str(page['path']) + ', questions: ' + str(len(ctx['formKeys']))
           + ', updateKind: ' + str(ctx['updateKind']))
 
-    problems = check_answers(answers, ctx['formKeys'], adapter.NOT_WRITABLE, adapter.CHOICES, adapter.LIMITS)
+    # a question the adapter cannot read (not a field of the fund's answers) is not written either (E1, #7433)
+    readable = set(adapter.readable_keys(ctx['formKeys']))
+    not_writable = tuple(adapter.NOT_WRITABLE) + tuple(k for k in ctx['formKeys'] if k not in readable)
+    problems = check_answers(answers, ctx['formKeys'], not_writable, adapter.CHOICES, adapter.LIMITS)
     if problems:
         for p in problems:
             print('REFUSED ANSWER: ' + p)

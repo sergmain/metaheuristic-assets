@@ -266,7 +266,7 @@ One process, `apply` -> `mh.asset.vc-apply-yc_1.0`, `tries 1`, `timeout 240`. Th
 |---|---|---|---|
 | `formUrl` | in | the application's page | an https url on `apply.ycombinator.com`, `.../apps/<id>/edit` |
 | `production` | in, nullable | exactly `true`: save; anything else (JSON `null` at a synthetic launch): read and compute only | `true` or `null` |
-| `yc<Question>` x 51 | in, nullable | the answer the question is to hold; null leaves it as YC holds it; the empty string clears it | text; `ycStage` `1` / `2`; `ycRevenue`, `ycIncyet`, `ycInvestyet`, `ycCurrentlyraising` `yes` / `no`; `ycBatchPreference` `current` / `future`; `ycDescribe` at most 50 characters; `ycVideoS3Key`, `ycDemoS3Key`, `ycCodingAgentSession`, `ycFounderBios`, `ycRevenueamount` always null |
+| `yc<Question>` x 51 | in, nullable | the answer the question is to hold; null leaves it as YC holds it; the empty string clears it | text; `ycStage` `1` / `2`; `ycRevenue`, `ycIncyet`, `ycInvestyet`, `ycCurrentlyraising` `yes` / `no`; `ycBatchPreference` `current` / `future`; `ycDescribe` at most 50 characters; `ycVideo`, `ycDemo` (no AppQuestions fields - E1), `ycVideoS3Key`, `ycDemoS3Key`, `ycCodingAgentSession`, `ycFounderBios`, `ycRevenueamount` always null |
 | `currentAnswers` | out | JSON: `status` (submitted, editable, batch, video key, ...) and `questions`, as read before any write | - |
 | `applyPatch` | out | JSON: `mode`, `answersGiven`, `differing`, `alreadyHeld`, `patch`, `heldBefore` (the value each patched question held) | - |
 | `applyResult` | out | JSON: synthetic `{sent: false, wouldSend}`; production `{sent, savedQuestions, success, persisted, errors, readBackMismatches, othersChanged, submittedAfter, heldAfter}` | - |
@@ -300,15 +300,28 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
 
 ### 6. Corrections
 
-None yet.
+- **2026-11-02, the import.** `971.060`: the deployed Dispatcher parses `cleaningPolicy` as one enum value and refused
+  `ASSETS, FULL_AFTER_ONE_WEEK` (MH `HEAD` reads it as a comma-separated String since `4129dfec7`, which the deployed
+  build predates). Both vc-application descriptors carry the line as a comment until the redeploy (`77b8509`, `08f333c`);
+  the import then answered OK and listed SourceCode #257 `vc-apply-yc-1.0` valid.
+- **2026-11-02, E1, ExecContext #7433, Task #487467 (ERROR, exit 1, payload `08f333c`).** Console: the sign-in as in
+  section A (`/start_sign_in` 200, `/sign_in` 200), the form page 200, `form: ... questions: 51, updateKind: None`,
+  `POST apply.ycombinator.com/graphql` HTTP 200 with the page's CSRF token, then `SHOW_APP: GraphQL errors: Field 'video'
+  doesn't exist on type 'AppQuestions'; Field 'demo' doesn't exist on type 'AppQuestions'`. Learned: the form's prompts
+  are not all AppQuestions fields - `video` (the YouTube url) and `demo` (the demo url) are listed by the server but
+  stored nowhere the App exposes, and the edit page renders neither. The read now selects only the fields the page's
+  `AppQuestionsFragment` declares (`vc_fund_yc.APP_QUESTIONS`), and an answer to any other question is refused as not
+  writable - CT `test_the_read_selects_only_fields_app_questions_declares` (Green-1 `video`/`demo` selected, Red,
+  Green-3), tests 118/118.
 
 ### 7. Experiments
 
 | id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
 |---|---|---|---|---|---|
-| E1 | read the application over YC's GraphQL the way its page does - POST `/graphql`, the session's cookies, the page's CSRF token - with no answers given: the read and an empty patch | - (section A's E5: the form, and the save path read in `apply-*.js`) | `vc-apply-yc-1.0`, `production` null | `/graphql` answers a plain HTTP client with the signed-in session and the page's token, and SHOW_APP accepts this run's own selection | OPEN |
-| E2 | E1 with the founder's answers: every answer passes the form's checks and the patch is computed against what YC holds | E1 | `vc-apply-yc-1.0`, `production` null | the answers fit the form's values and limits | OPEN |
-| E3 | production: the patch saved as the page's autosave saves it (`autosave: 1`), then read back | E2 | `vc-apply-yc-1.0`, `production` true | an autosave persists the answers into `app.questions` (`persisted` true), as a regular save would | OPEN |
+| E1 | read the application over YC's GraphQL the way its page does - POST `/graphql`, the session's cookies, the page's CSRF token - with no answers given: the read and an empty patch | - (section A's E5: the form, and the save path read in `apply-*.js`) | `vc-apply-yc-1.0`, `production` null (payload `08f333c`) | `/graphql` answers a plain HTTP client with the signed-in session and the page's token, and SHOW_APP accepts this run's own selection | REJECTED - ExecContext #7433: `/graphql` answered HTTP 200 to the signed-in session, but SHOW_APP refused the selection - `video` and `demo` are no AppQuestions fields |
+| E2 | E1 with the selection limited to the fields AppQuestions declares | E1, ExecContext #7433: `Field 'video' / 'demo' doesn't exist on type 'AppQuestions'` | `vc-apply-yc-1.0`, `production` null (payload after `08f333c`) | the 46 remaining fields are all AppQuestions fields, and the session is authorized for the App (GraphQL validates before it authorizes, so E1's 200 does not show it) | OPEN |
+| E3 | E2 with the founder's answers: every answer passes the form's checks and the patch is computed against what YC holds | E2 | `vc-apply-yc-1.0`, `production` null | the answers fit the form's values and limits | OPEN |
+| E4 | production: the patch saved as the page's autosave saves it (`autosave: 1`), then read back | E3 | `vc-apply-yc-1.0`, `production` true | an autosave persists the answers into `app.questions` (`persisted` true), as a regular save would | OPEN |
 
 ### 8. Production readiness
 
@@ -318,4 +331,4 @@ None yet.
 | 2. the success criteria and invariants hold by observed values in a synthetic run - the CHAMPION | not checked |
 | 3. every part has its production counterpart: the Vault holding `VC_YC_AUTH`; no SourceCode bound | met for the key - section A's runs (#5156 ... #5406) took `VC_YC_AUTH` from the management Vault; re-checked before every launch |
 | 4. no `synthetic` in the name, no `prod` / `dev` / `test` | met - `vc-apply-yc-1.0` |
-| 5. A2, A5, A6, A7 hold in code (unit tests) | met - `tests/test_vc_apply.py`, 117 of 117 |
+| 5. A2, A5, A6, A7 hold in code (unit tests) | met - `tests/test_vc_apply.py`, 118 of 118 |

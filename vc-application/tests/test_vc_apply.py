@@ -141,7 +141,8 @@ def test_update_input_is_an_autosave_of_the_patch_and_never_a_submit():
 def test_the_read_selects_every_question_but_the_uploads_and_profiles():
     keys = yc.readable_keys(YC_KEYS)
     assert 'videoS3Key' not in keys and 'demoS3Key' not in keys and 'founderBios' not in keys
-    assert len(keys) == len(YC_KEYS) - 3
+    # before E1 (#7433): assert len(keys) == len(YC_KEYS) - 3 - 'video' and 'demo' are no AppQuestions fields either
+    assert len(keys) == len(YC_KEYS) - 5
     q = yc.show_app_query(keys)
     assert q.startswith('query SHOW_APP($appUuid: Uuid) {')
     for k in keys:
@@ -150,6 +151,15 @@ def test_the_read_selects_every_question_but_the_uploads_and_profiles():
     for f in ('submitted', 'editable', 'videoS3Key'):
         assert '    ' + f + '\n' in q
     assert q.count('{') == q.count('}')
+
+
+def test_the_read_selects_only_fields_app_questions_declares():
+    # E1, ExecContext #7433: SHOW_APP refused 'video' and 'demo' - prompts of the form that are not AppQuestions
+    # fields (apply-*.js, AppQuestionsFragment, read 2026-11-02)
+    keys = yc.readable_keys(YC_KEYS)
+    # Green-1 (the selection E1 sent): assert 'video' in keys and 'demo' in keys
+    assert 'video' not in keys and 'demo' not in keys
+    assert set(keys) <= set(yc.APP_QUESTIONS)
 
 
 def test_the_mutation_text_is_balanced_and_answers_with_the_questions():

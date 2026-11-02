@@ -384,6 +384,23 @@ NOT_QUESTIONS = ('videoS3Key', 'demoS3Key', 'founderBios')
 # what an apply never writes: the above, the coding-agent upload, and the one question whose value is not a string
 NOT_WRITABLE = NOT_QUESTIONS + ('codingAgentSession', 'revenueamount')
 
+# Every field of YC's AppQuestions type, as the page's AppQuestionsFragment selects it (apply-*.js, read 2026-11-02).
+# E1 of the apply (ExecContext #7433): the form's prompts include 'video' and 'demo', which are NOT AppQuestions fields -
+# SHOW_APP refused them ('Field ... doesn't exist on type AppQuestions'), and the edit page renders neither. So a read
+# selects only the form's questions that are listed here, and a question outside this list is never written.
+APP_QUESTIONS = (
+    'acc', 'name', 'url', 'describe', 'productLink', 'productCreds', 'make', 'where', 'wherewhy', 'howfar', 'worked',
+    'techstack', 'codingAgentSession', 'stage', 'whenbeta', 'usernums', 'revenue', 'revenueamount', 'revenuesource',
+    'growthrate', 'since', 'exp', 'get', 'money', 'category', 'citizenships', 'science', 'nextStages', 'byDd', 'fda',
+    'expData', 'ideas', 'ip2', 'material', 'incyet', 'inctype', 'incpercent', 'percent2', 'investyet', 'incinvest',
+    'investamount', 'burn', 'bank', 'runway', 'currentlyraising', 'raisingdetails', 'whyapply', 'howhear', 'referralCode',
+    'meet', 'cofounder', 'others2', 'useracq', 'market', 'others', 'numFounders', 'resumes', 'edu', 'built', 'hack',
+    'ability', 'distrac', 'commit', 'plans', 'whyno', 'movers', 'offer', 'ip', 'inc', 'percent', 'badness', 'sched',
+    'metrics', 'compet', 'govgrant', 'margins', 'howmuch1', 'howmuch2', 'howmuch3', 'howmuch4', 'howmuch5', 'howmuch6',
+    'new', 'proxy', 'program', 'rfsask', 'rfs', 'rfs2', 'rfs3', 'distro', 'buy', 'academic', 'exfactory', 'offShelf',
+    'pat', 'hard', 'tools', 'wrong', 'extras', 'amuse', 'batchPreference', 'futureBatchName', 'futureBatchWhy',
+)
+
 CHOICES = {
     'stage': ('1', '2'),
     'revenue': ('yes', 'no'),
@@ -413,8 +430,9 @@ def may_send_apply(method, url):
 
 
 def readable_keys(form_keys):
-    """The AppQuestions fields a read selects: the form's questions without the uploads and the profiles."""
-    return [k for k in form_keys if k not in NOT_QUESTIONS]
+    """The AppQuestions fields a read selects: the form's questions that AppQuestions declares, in the form's order
+    (E1, ExecContext #7433: 'video' and 'demo' are prompts of the form but no AppQuestions fields)."""
+    return [k for k in form_keys if k in APP_QUESTIONS and k not in NOT_QUESTIONS]
 
 
 def _selection(keys, indent):
