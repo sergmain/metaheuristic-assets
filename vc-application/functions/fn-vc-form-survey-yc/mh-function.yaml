@@ -7,7 +7,9 @@ function:
   type: mh.asset.vc-form-survey
   env: python-3
   sourcing: git
-  # cleaningPolicy: ASSETS, FULL_AFTER_ONE_WEEK - back once the Dispatcher runs MH 4129dfec7 or later; the deployed\n  # build parses cleaningPolicy as one enum value and refuses the list (971.060, 2026-11-02)\n  # The payload is NOT packaged into this bundle - it is reached only through this block, and it lives
+  # cleaningPolicy: ASSETS, FULL_AFTER_ONE_WEEK - back once the Dispatcher runs MH 4129dfec7 or later; the deployed
+  # build parses cleaningPolicy as one enum value and refuses the list (971.060, 2026-11-02)
+  # The payload is NOT packaged into this bundle - it is reached only through this block, and it lives
   # beside the bundle in the same repo. HEAD, never a tag: the Dispatcher re-resolves the tip at every
   # ExecContext creation and pins the sha into every Task of that run.
   #
