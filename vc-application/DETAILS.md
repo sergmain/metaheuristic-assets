@@ -6,7 +6,7 @@ first fund; every fund-specific part is one adapter, one Function descriptor and
 | DAHF flow | what it is for, in business terms | `.mhsc` | state |
 |---|---|---|---|
 | VC form survey | know every input field of a fund's application form, and the inputs an apply flow for that fund declares | `vc-form-survey-yc-synthetic-1.0` (YC), over `vc-form-survey.mhscp` - section A | `synthetic` experiment |
-| VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production candidate |
+| VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production - in `source-codes-production/` |
 
 Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund and both flows) · Functions per fund:
 `mh.asset.vc-form-survey-yc_1.0` (`functions/fn-vc-form-survey-yc`, `vc_form_survey.py`) and
@@ -313,14 +313,24 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
   `AppQuestionsFragment` declares (`vc_fund_yc.APP_QUESTIONS`), and an answer to any other question is refused as not
   writable - CT `test_the_read_selects_only_fields_app_questions_declares` (Green-1 `video`/`demo` selected, Red,
   Green-3), tests 118/118.
+- **2026-11-02, E2, ExecContext #7434, both Tasks OK (payload `37686c9`).** `currentAnswers` (#374693) and `applyResult`
+  (#374695) read in full: the application `9121f32e-...` is `unsubmitted`, `editable`, batch `w2027` (W27, Winter 2027,
+  `currentBatch` true), no video uploaded, `agentFilledQuestions` empty; every question null but the form's defaults
+  `stage` `1` and `revenue` `no` - YC copied nothing from the previous (RG) application. `applyResult` `{sent: false,
+  wouldSend: []}` (A2). The read of E1's riskiest assumption holds: the signed-in session is authorized for the App.
+- **2026-11-02, E3, ExecContext #7435, both Tasks OK (payload `37686c9`).** 18 answers given, none refused; `applyPatch`
+  (#374750): 16 differing, `stage` and `revenue` already held; `make` read from the middle of the patch - the text
+  arrived as sent, line breaks included. Nothing sent (A2). The answers left null are the facts the founder has not
+  stated (equity breakdown, investment, fundraising, location after YC and why, beta date, cofounder search,
+  accelerators, why YC, how he heard of it, urls, referral code) and the uploads.
 
 ### 7. Experiments
 
 | id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
 |---|---|---|---|---|---|
 | E1 | read the application over YC's GraphQL the way its page does - POST `/graphql`, the session's cookies, the page's CSRF token - with no answers given: the read and an empty patch | - (section A's E5: the form, and the save path read in `apply-*.js`) | `vc-apply-yc-1.0`, `production` null (payload `08f333c`) | `/graphql` answers a plain HTTP client with the signed-in session and the page's token, and SHOW_APP accepts this run's own selection | REJECTED - ExecContext #7433: `/graphql` answered HTTP 200 to the signed-in session, but SHOW_APP refused the selection - `video` and `demo` are no AppQuestions fields |
-| E2 | E1 with the selection limited to the fields AppQuestions declares | E1, ExecContext #7433: `Field 'video' / 'demo' doesn't exist on type 'AppQuestions'` | `vc-apply-yc-1.0`, `production` null (payload after `08f333c`) | the 46 remaining fields are all AppQuestions fields, and the session is authorized for the App (GraphQL validates before it authorizes, so E1's 200 does not show it) | OPEN |
-| E3 | E2 with the founder's answers: every answer passes the form's checks and the patch is computed against what YC holds | E2 | `vc-apply-yc-1.0`, `production` null | the answers fit the form's values and limits | OPEN |
+| E2 | E1 with the selection limited to the fields AppQuestions declares | E1, ExecContext #7433: `Field 'video' / 'demo' doesn't exist on type 'AppQuestions'` | `vc-apply-yc-1.0`, `production` null (payload `37686c9`) | the 46 remaining fields are all AppQuestions fields, and the session is authorized for the App (GraphQL validates before it authorizes, so E1's 200 does not show it) | BEATEN by E3 - ExecContext #7434: the App read in full (unsubmitted, editable, W27), A1 and A2 held |
+| E3 | E2 with the founder's answers: every answer passes the form's checks and the patch is computed against what YC holds | E2, ExecContext #7434: every question unanswered but the defaults | `vc-apply-yc-1.0`, `production` null (payload `37686c9`) | the answers fit the form's values and limits | CHAMPION - ExecContext #7435: 18 answers, none refused, 16 differing, 2 held; nothing sent |
 | E4 | production: the patch saved as the page's autosave saves it (`autosave: 1`), then read back | E3 | `vc-apply-yc-1.0`, `production` true | an autosave persists the answers into `app.questions` (`persisted` true), as a regular save would | OPEN |
 
 ### 8. Production readiness
@@ -328,7 +338,11 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
 | condition (§0.21 and the flow's own) | state |
 |---|---|
 | 1. a production mode at all: a production run writes where the business reads | met - read from the graph and `vc_apply.py`: it writes the application named by the input `formUrl`, never a target of its own |
-| 2. the success criteria and invariants hold by observed values in a synthetic run - the CHAMPION | not checked |
+| 2. the success criteria and invariants hold by observed values in a synthetic run - the CHAMPION | met - E3, ExecContext #7435: A1, A2 held; the patch computed against the application's own answers |
 | 3. every part has its production counterpart: the Vault holding `VC_YC_AUTH`; no SourceCode bound | met for the key - section A's runs (#5156 ... #5406) took `VC_YC_AUTH` from the management Vault; re-checked before every launch |
 | 4. no `synthetic` in the name, no `prod` / `dev` / `test` | met - `vc-apply-yc-1.0` |
 | 5. A2, A5, A6, A7 hold in code (unit tests) | met - `tests/test_vc_apply.py`, 118 of 118 |
+
+**Evaluated production ready on 2026-11-02, every condition met; promoted to `source-codes-production/` on the
+founder's request of the same day ("now i need you to start production applying") - the production decision in as many
+words (§0.21).**
