@@ -6,7 +6,7 @@ first fund; every fund-specific part is one adapter, one Function descriptor and
 | DAHF flow | what it is for, in business terms | `.mhsc` | state |
 |---|---|---|---|
 | VC form survey | know every input field of a fund's application form, and the inputs an apply flow for that fund declares | `vc-form-survey-yc-synthetic-1.0` (YC), over `vc-form-survey.mhscp` - section A | `synthetic` experiment |
-| VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production - in `source-codes-production/` |
+| VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production ready - production when its `production` input is exactly `true` (E4, ExecContext #7436) |
 
 Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund and both flows) · Functions per fund:
 `mh.asset.vc-form-survey-yc_1.0` (`functions/fn-vc-form-survey-yc`, `vc_form_survey.py`) and
@@ -330,6 +330,14 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
   `readBackMismatches` [] (A3), `othersChanged` [] (A4), `submittedAfter` false (A5). Learned: the page's autosave form
   (`autosave: 1`, the changed questions only) persists into `app.questions`; a second SHOW_APP in the same session
   returns exactly the sent text, line breaks included.
+- **2026-11-06, the founder's correction: no `source-codes-production/`.** In DAHF every `.mhsc` declares the optional
+  source-level input `production`, and a run is production exactly when that input is `true`: production is a property
+  of the run, not a place in the bundle. `vc-apply-yc-1.0` already worked that way - `<- production?` in its variables
+  and its process, and `vc_apply.is_production` takes exactly `"true"` - so E3 (#7435) and E4 (#7436) ran the same
+  SourceCode #257 and differed only in that input. The move of 2026-11-02 (`68eb913`; reported then as `fd6b817`, before
+  the branch was rewritten) followed DAHF §0.21, which prescribes the directory and says only a `.mhsc` in it is launched
+  in production mode. The `.mhsc` is back in `source-codes/`, byte for byte (same uid, same registration), and
+  `mh-bundle.yaml` no longer declares the directory.
 
 ### 7. Experiments
 
@@ -350,6 +358,7 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
 | 4. no `synthetic` in the name, no `prod` / `dev` / `test` | met - `vc-apply-yc-1.0` |
 | 5. A2, A5, A6, A7 hold in code (unit tests) | met - `tests/test_vc_apply.py`, 118 of 118 |
 
-**Evaluated production ready on 2026-11-02, every condition met; promoted to `source-codes-production/` on the
-founder's request of the same day ("now i need you to start production applying") - the production decision in as many
-words (§0.21).**
+**Evaluated production ready on 2026-11-02, every condition met.** Production is not a directory: this `.mhsc` stays in
+`source-codes/` and runs in production when its `production` input is exactly `true` - as in E4 (#7436), on the
+founder's request of 2026-11-02 ("now i need you to start production applying"), the production decision in as many
+words.
