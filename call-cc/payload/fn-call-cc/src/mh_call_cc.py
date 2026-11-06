@@ -19,6 +19,12 @@
 # variables freely - project-code-1, project-code-2 - and the Function is unaffected, because it is
 # told which name to look for rather than guessing.
 #
+# The one exception is found by TYPE, not by a meta: an optional output of type mh.metrics receives the execution time
+# and the token counts of the call this Function made (mh_metrics.py) - a JSON list with one entry, type CC or API. A
+# process that declares none gets no file and nothing else changes. The CC session runs with --output-format json for
+# that: its one result line carries the counts, and its "result" - the text --output-format text printed - is printed
+# again as text and is where the MCP_UNAVAILABLE report is looked for.
+#
 # The core below - meta_value / variable_name / find_variable / resolve_env / timeout_sec /
 # mcp_config / cc_command / tail_lines - is pure, and it is what call-cc/tests exercises. main() is
 # the boundary and is not unit-tested, per MH-GIT-DELIVERY-FUNCTION-DESCRIPTION.md 5.5-5.6.
@@ -28,8 +34,10 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 import mh_api_call
+import mh_metrics
 
 # Timeout for the CC process itself, in seconds. Overridable per process with meta 'timeout-sec',
 # because how long an answer takes is a property of the prompt, which this Function does not own.
@@ -322,11 +330,13 @@ def cc_command(claude_code_exec, mcp_config_name, server_name=MCP_SERVER_NAME, m
     ultracode OFF (SETTINGS_FILE), the system prompt carries MCP_UNAVAILABLE_RULE. An effort of 'ultracode' is
     refused, not passed on: --effort ultracode turns ultracode on for the session whatever the settings say.
     """
+    # json, not text: the one result line it prints carries the session's token counts (mh_metrics.cc_result); the
+    # text that text printed is that line's "result"
     command = [
         claude_code_exec,
         '--debug',
         '--print',
-        '--output-format', 'text',
+        '--output-format', 'json',
         '--mcp-config', mcp_config_name,
         '--settings', settings_name,
         '--append-system-prompt-file', system_prompt_name,
@@ -426,6 +436,16 @@ def write_text(path, content):
         f.write(content)
 
 
+def store_metrics(work_dir, metrics_var, calls):
+    """The calls into the output Variable of type mh.metrics - nothing when the process declares none."""
+    if metrics_var is None:
+        return
+    os.makedirs(os.path.join(work_dir, ARTIFACTS_DIR), exist_ok=True)
+    mh_metrics.write_metrics(output_path(work_dir, metrics_var), calls)
+    print('stored the metrics of ' + str(len(calls)) + ' call(s) into output variable "' + str(metrics_var.get('name'))
+          + '": ' + json.dumps(calls))
+
+
 def main(argv):
     # FIRST, before anything is printed: on a Processor stdout and stderr are pipes - see utf8_console
     utf8_console(sys.stdout)
@@ -459,6 +479,9 @@ def main(argv):
     # resolved BEFORE CC is launched. A missing output declaration is a SourceCode defect, and
     # finding it after a paid model call costs the call as well as the run.
     output_var = find_variable(params.get('outputs'), variable_name(metas, 'output'))
+    # the optional output of type mh.metrics, found by its type - None when the process declares none; two are a
+    # SourceCode defect, refused here for the same reason
+    metrics_var = mh_metrics.metrics_output(params.get('outputs'))
 
     # model and effort are OPTIONAL ExecContext-level inputs (see optional_cli_value). The reader returns the
     # text of an input variable by name, or None when it is not bound - so an optional input that was never
@@ -479,7 +502,7 @@ def main(argv):
     provider = llm_provider(metas)
     print('llm_provider: ' + provider)
     if provider == PROVIDER_CLAUDE_API:
-        return run_claude_api(params, metas, work_dir, prompt, output_var, model, effort)
+        return run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, metrics_var=metrics_var)
 
     env_params = yaml.load(read_text(os.path.join(work_dir, ARTIFACTS_DIR, MH_ENV_FILE)),
                            Loader=yaml.FullLoader)
@@ -525,14 +548,18 @@ def main(argv):
     print('command: ' + str(command))
     print('timeout: ' + str(seconds) + 's')
 
+    started = time.monotonic()
     try:
         with open(prompt_file, 'r', encoding='utf-8') as stdin_file:
             completed = subprocess.run(
                 command, cwd=work_dir, stdin=stdin_file,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=seconds)
     except subprocess.TimeoutExpired:
+        store_metrics(work_dir, metrics_var,
+                      [mh_metrics.call(mh_metrics.CALL_CC, mh_metrics.elapsed_ms(started), mh_metrics.no_tokens())])
         print('FAILED: Claude Code did not finish within ' + str(seconds) + 's')
         return 1
+    execution_ms = mh_metrics.elapsed_ms(started)
 
     console = completed.stdout.decode('utf-8', errors='replace') if completed.stdout else ''
     write_text(os.path.join(data_dir, CONSOLE_LOG_FILE), console)
@@ -540,6 +567,15 @@ def main(argv):
     # credential is stated by CC, and this stdout is the only place a rule can read it
     print('--- CC console ---\n' + tail_lines(console))
     print('exit code: ' + str(completed.returncode))
+
+    # --output-format json: the session's one result line - its counts, and its final text, which is what
+    # --output-format text printed. Printed again as text, so an analyzer never depends on how JSON escapes it.
+    cc_result = mh_metrics.cc_result(console)
+    cc_text = mh_metrics.cc_result_text(cc_result)
+    if cc_text is not None:
+        print('--- CC result ---\n' + tail_lines(cc_text))
+    store_metrics(work_dir, metrics_var,
+                  [mh_metrics.call(mh_metrics.CALL_CC, execution_ms, mh_metrics.cc_tokens(cc_result))])
 
     mcp_log = os.path.join(data_dir, MCP_LOG_FILE)
     if os.path.isfile(mcp_log):
@@ -550,7 +586,9 @@ def main(argv):
     # the MCP server was unavailable. The model cannot set CC's exit code, so MCP_UNAVAILABLE_RULE has it emit one
     # line and end its turn, and this is where that line becomes the NEGATIVE exit code. Checked first: a run that
     # reported the server gone produced nothing usable, whatever CC's own exit code was.
-    unavailable = mcp_unavailable_line(console)
+    # The model's line is the session's final text, so under --output-format json it is inside the result line: the
+    # result's text is read first, the raw console after it.
+    unavailable = mcp_unavailable_line(cc_text) or mcp_unavailable_line(console)
     if unavailable is not None:
         print('FAILED: Claude Code reported the MCP server unavailable - ' + unavailable)
         return MCP_UNAVAILABLE_EXIT_CODE
@@ -579,7 +617,8 @@ def main(argv):
     return 0
 
 
-def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, api_url=mh_api_call.API_URL):
+def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, api_url=mh_api_call.API_URL,
+                   metrics_var=None):
     """The claude_api path: one Messages API call; the answer is the `result` of the forced mh_cc_store_result call,
     copied verbatim into the output Variable. Returns the Function's exit code: 0, or 1 with a FAILED line.
     Plan 050 Phase 17: a model refusing the forced tool_choice gets the same request once more with tool_choice auto.
@@ -588,6 +627,7 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
 
     params is the task block of the params file - its secretPort and checkCode locate the Processor's secret channel.
     api_url is a parameter so a test can point the one POST at a local server; main() passes nothing.
+    metrics_var is the output of type mh.metrics, or None: when given, the one request is recorded into it.
     """
     if model is None:
         print("FAILED: no model for llm_provider=" + PROVIDER_CLAUDE_API + " - wire meta 'variable-for-model' to a "
@@ -624,11 +664,14 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
               '(ANTHROPIC_API_KEY) and a Vault must hold that key.')
         return 1
     key = mh_api_call.read_secret(port, check_code)
+    calls = []
     try:
         print('API key received from the Processor (' + str(len(key)) + ' bytes)')
         print('POST ' + api_url + ', model ' + body['model'] + ', max_tokens ' + str(body['max_tokens'])
               + ', timeout ' + str(seconds) + 's')
-        status, text = mh_api_call.post_messages(api_url, key.decode('utf-8'), body, seconds)
+        api_key = key.decode('utf-8')
+        post = mh_metrics.metered(lambda b, s: mh_api_call.post_messages(api_url, api_key, b, s), calls)
+        status, text = post(body, seconds)
         # plan 050 Phase 17: a model refusing the extended-thinking parameter - the same request without it
         # plan 050 Phase 17: a model that refuses a forced tool_choice (400 naming it) - the same request once more with
         # tool_choice auto; the answer is still exactly one store call
@@ -637,6 +680,7 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
     finally:
         mh_api_call.zero(key)
 
+    store_metrics(work_dir, metrics_var, calls)
     write_text(os.path.join(data_dir, API_RESPONSE_FILE), text or '')
     print('API response status: ' + str(status))
     if status < 200 or status >= 300:

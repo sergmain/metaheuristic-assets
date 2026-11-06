@@ -70,6 +70,10 @@ answer instead of an error.
 ⚠️ The process `timeout` must be LARGER than `timeout-sec`. The inner one lets the Function report
 what went wrong; the outer one kills the Task without a word.
 
+**The one output found by TYPE, not by a meta** (since 2026-11-06): an OPTIONAL output Variable of type `mh.metrics`
+(`-> ccMetrics: type=mh.metrics, ext=".json"`) receives the call's execution time and token counts - §9. A process
+that declares none gets no file and nothing else changes; two of them fail the Task before any call.
+
 **Env**, resolved from `artifacts/mh-env.yaml`:
 
 | env code | what for |
@@ -96,6 +100,7 @@ Inside the task dir only. Nothing is written outside it, and nothing survives th
 | `cc-data/mcp-server.log` | the MCP server's own log |
 | `cc-data/api-response.json` | `claude_api` only: the raw API response (never the key - it goes out in a header) |
 | `artifacts/<output id>` | the answer, copied verbatim |
+| `artifacts/<mh.metrics output id>` | only when the process declares that output: the call's metrics (§9) |
 
 ---
 
@@ -125,6 +130,10 @@ end its turn. The prompt Variable is untouched: the rule rides on the system pro
 code of its choosing — so the line is its request. `main()` finds it in CC's console and returns `-1`
 (`MCP_UNAVAILABLE_EXIT_CODE`); every other failure returns `1`. The line is checked before CC's own exit
 code: a run that reported the server gone produced nothing usable, whatever CC exited with.
+
+❗ **Under `--output-format json` (§9) the line is inside the result line**: it is the session's final text, which is
+the `"result"` of CC's one JSON line, and no console line starts with the marker any more. `main()` reads the
+result's text first and the raw console after it.
 
 ⚠️ **The rule's own template line is not a report.** `MCP_UNAVAILABLE: <the error you saw>` is skipped
 by its placeholder, so a console that echoes the system prompt never fails a healthy run. Keep it the
@@ -200,3 +209,37 @@ withhold every CC run. A SourceCode on the API path names the API code AND sets 
   passes a full model id (`claude-haiku-5-5`), and an unknown one comes back as a non-2xx response.
 - ⚠️ **One call, no agent loop.** The model has no tools but the store tool, so a prompt that needs to read files or
   run commands is a CC-path prompt.
+
+---
+
+## 9. The `mh.metrics` output
+
+Since 2026-11-06 (`mh_metrics.py`, beside the entry in the same payload). An OPTIONAL output Variable of type
+`mh.metrics` receives one JSON list - one entry per model call, here always exactly one:
+
+```
+[{"type": "CC", "executionMs": 6810, "inputTokens": 2, "outputTokens": 193,
+  "cacheCreationInputTokens": 18176, "cacheReadInputTokens": 16560}]
+```
+
+| field | what |
+|---|---|
+| `type` | `CC` - the CC CLI session; `API` - the one Messages API request (§8) |
+| `executionMs` | the wall time of the call alone - the CC process, the HTTP request - never the Function's |
+| `inputTokens`, `outputTokens` | as the call reported them |
+| `cacheCreationInputTokens`, `cacheReadInputTokens` | the cached part of the input. With prompt caching `inputTokens` is only the uncached remainder: a CC call measured on 2026-11-06 reported 2 input tokens and 34736 written to or read from the cache |
+| any count | `null` when the call reported none - a non-2xx response, a CC console without a result line |
+
+- ❗ **Found by its type, never by a meta.** The Function looks through the Task's outputs for `type: mh.metrics`;
+  a process opts in with `-> <name>: type=mh.metrics, ext=".json"`. None declared: no file, nothing else changes.
+  Two declared: the Task fails before any call.
+- ❗ **The output is not nullable.** Whenever it is declared and the Function succeeds, the file exists (MH's
+  output contract `01.330.010` checks that).
+- ❗ **The CC session runs with `--output-format json`** to report its counts: CC prints ONE line, `"type": "result"`,
+  with `usage` and, per model, `modelUsage` (measured on CC 2.1.314, 2026-11-06; `--debug` adds nothing to stdout
+  there). The counts are summed over `modelUsage` - every model the session used - else read from `usage`. The
+  line's `"result"` is the text `--output-format text` printed: it is printed again as `--- CC result ---`, so the
+  analyzers still see CC's words as text, and it is where the `MCP_UNAVAILABLE:` report is looked for (§5).
+- ⚠️ The file is written right after the call, before the answer is checked - so a Task that then fails still has
+  it in its task dir, though MH keeps no output of a failed Task.
+- ⚠️ Nothing reads the record: it is MH's Variable, kept as any other output is.
