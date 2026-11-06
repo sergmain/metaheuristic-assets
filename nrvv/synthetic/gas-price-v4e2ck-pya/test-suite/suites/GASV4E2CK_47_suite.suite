@@ -1,0 +1,4 @@
+# GASV4E2CK_47_suite - written by nrvv-test-author
+tests/test_GASV4E2CK_47_suite.py::test_unacknowledged_update_reported_at_30_and_60_seconds
+tests/test_GASV4E2CK_47_suite.py::test_acknowledged_update_is_never_reported
+tests/test_GASV4E2CK_47_suite.py::test_silent_update_reported_every_30_seconds

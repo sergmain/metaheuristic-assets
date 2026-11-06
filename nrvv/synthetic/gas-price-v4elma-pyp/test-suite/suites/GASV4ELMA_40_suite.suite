@@ -1,0 +1,5 @@
+# GASV4ELMA_40_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_40_suite.py::test_new_station_reads_empty_initial_state
+tests/test_GASV4ELMA_40_suite.py::test_second_desired_price_overwrites_first_in_single_slot
+tests/test_GASV4ELMA_40_suite.py::test_station_state_read_changes_nothing
+tests/test_GASV4ELMA_40_suite.py::test_first_dispatch_uses_sequence_one

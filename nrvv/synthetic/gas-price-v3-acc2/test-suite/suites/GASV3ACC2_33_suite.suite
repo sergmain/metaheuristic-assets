@@ -1,0 +1,4 @@
+# GASV3ACC2_33_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_33_suite.py::test_at_most_one_outstanding_per_station_throughout_run
+tests/test_GASV3ACC2_33_suite.py::test_single_station_serializes_and_never_exceeds_one_in_flight
+tests/test_GASV3ACC2_33_suite.py::test_final_value_equals_last_update_sent_regardless_of_delivery_order

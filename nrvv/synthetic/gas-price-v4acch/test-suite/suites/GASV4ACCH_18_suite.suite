@@ -1,0 +1,7 @@
+# GASV4ACCH_18_suite - written by nrvv-test-author
+tests/test_GASV4ACCH_18_suite.py::test_gasv4acch_18_sends_exactly_two_messages
+tests/test_GASV4ACCH_18_suite.py::test_gasv4acch_18_sends_p1_and_p3_not_p2
+tests/test_GASV4ACCH_18_suite.py::test_gasv4acch_18_p3_sent_after_p1_ack
+tests/test_GASV4ACCH_18_suite.py::test_gasv4acch_18_sequential_message_ids
+tests/test_GASV4ACCH_18_suite.py::test_gasv4acch_18_different_seed
+tests/test_GASV4ACCH_18_suite.py::test_gasv4acch_18_all_acks_received

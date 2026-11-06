@@ -1,0 +1,4 @@
+# GASV8X6B2_73_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_73_suite.py::test_send_carries_service_assigned_increasing_version
+tests/test_GASV8X6B2_73_suite.py::test_cost_record_exists_with_fields_and_ack_state
+tests/test_GASV8X6B2_73_suite.py::test_sending_cost_report_counts_each_send

@@ -1,0 +1,6 @@
+# GASV8X6B2_71_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_71_suite.py::test_settled_false_while_send_outstanding_then_true_after_ack
+tests/test_GASV8X6B2_71_suite.py::test_settled_stays_false_when_newer_price_submitted_before_ack
+tests/test_GASV8X6B2_71_suite.py::test_desired_and_confirmed_versions_and_times_exposed
+tests/test_GASV8X6B2_71_suite.py::test_send_attempts_emitted_to_cost_inputs
+tests/test_GASV8X6B2_71_suite.py::test_state_changes_emitted_to_stale_cost_inputs

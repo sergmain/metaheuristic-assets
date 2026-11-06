@@ -1,0 +1,4 @@
+# GASV4E2CM_47_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_47_suite.py::test_last_desired_price_displayed_after_schedule_settles
+tests/test_GASV4E2CM_47_suite.py::test_station_in_outage_at_last_set_still_converges
+tests/test_GASV4E2CM_47_suite.py::test_last_desired_price_displayed_without_faults

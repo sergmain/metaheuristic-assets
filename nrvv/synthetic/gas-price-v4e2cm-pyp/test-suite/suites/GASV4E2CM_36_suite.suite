@@ -1,0 +1,6 @@
+# GASV4E2CM_36_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_36_suite.py::test_price_update_shown_by_unmodified_station
+tests/test_GASV4E2CM_36_suite.py::test_price_update_eventually_delivered_and_shown_under_loss_and_outage
+tests/test_GASV4E2CM_36_suite.py::test_delivery_adds_no_message_beyond_price_updates
+tests/test_GASV4E2CM_36_suite.py::test_station_acknowledges_each_delivery_without_modification
+tests/test_GASV4E2CM_36_suite.py::test_every_station_shows_its_latest_price

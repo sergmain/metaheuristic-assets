@@ -1,0 +1,4 @@
+# GASV4PRDA_44_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_44_suite.py::test_reverted_price_before_ack_sends_nothing_on_matching_ack
+tests/test_GASV4PRDA_44_suite.py::test_changed_price_before_ack_sends_next_sequence_number_on_matching_ack
+tests/test_GASV4PRDA_44_suite.py::test_fresh_update_after_change_stays_outstanding_until_acked

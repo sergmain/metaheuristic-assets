@@ -1,0 +1,7 @@
+# GASV4ACCG_25_suite - written by nrvv-test-author
+tests/test_GASV4ACCG_25_suite.py::test_resend_only_to_non_acking_stations_seed42
+tests/test_GASV4ACCG_25_suite.py::test_resend_only_to_non_acking_stations_seed100
+tests/test_GASV4ACCG_25_suite.py::test_resend_includes_all_non_acking_stations_seed200
+tests/test_GASV4ACCG_25_suite.py::test_resend_nothing_when_all_acked
+tests/test_GASV4ACCG_25_suite.py::test_resend_sends_latest_version_only
+tests/test_GASV4ACCG_25_suite.py::test_resend_does_not_send_to_acked_stations

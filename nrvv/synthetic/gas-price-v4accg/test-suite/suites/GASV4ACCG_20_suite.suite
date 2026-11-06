@@ -1,0 +1,7 @@
+# GASV4ACCG_20_suite - written by nrvv-test-author
+tests/test_GASV4ACCG_20_suite.py::test_stale_ack_triggers_resend_basic
+tests/test_GASV4ACCG_20_suite.py::test_stale_ack_multiple_stations
+tests/test_GASV4ACCG_20_suite.py::test_stale_ack_far_behind
+tests/test_GASV4ACCG_20_suite.py::test_stale_ack_out_of_order
+tests/test_GASV4ACCG_20_suite.py::test_stale_ack_never_sent_station
+tests/test_GASV4ACCG_20_suite.py::test_non_stale_ack_no_new_send

@@ -1,0 +1,6 @@
+# TMPSN3F36BJ_9_suite - written by nrvv-test-author
+tests/test_TMPSN3F36BJ_9_suite.py::test_class_declares_main_member
+tests/test_TMPSN3F36BJ_9_suite.py::test_main_present_via_getattr
+tests/test_TMPSN3F36BJ_9_suite.py::test_main_is_callable
+tests/test_TMPSN3F36BJ_9_suite.py::test_main_is_a_method_like_member
+tests/test_TMPSN3F36BJ_9_suite.py::test_main_in_class_dir

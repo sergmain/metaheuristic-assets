@@ -1,0 +1,5 @@
+# GASV4RDF1_39_suite - written by nrvv-test-author
+tests/test_GASV4RDF1_39_suite.py::test_notice_issued_at_receipt_of_latest_price_ack
+tests/test_GASV4RDF1_39_suite.py::test_notice_names_station_and_confirmed_price
+tests/test_GASV4RDF1_39_suite.py::test_latest_price_notified_when_desired_price_changes_while_updates_outstanding
+tests/test_GASV4RDF1_39_suite.py::test_every_first_confirmation_notified_with_repeated_prices

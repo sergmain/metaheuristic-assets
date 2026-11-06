@@ -1,0 +1,10 @@
+# GASV8X6B2_77_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_77_suite.py::test_sending_cost_matches_sends_and_rate
+tests/test_GASV8X6B2_77_suite.py::test_no_stale_price_cost_in_sending_report
+tests/test_GASV8X6B2_77_suite.py::test_split_parts_sum_to_total
+tests/test_GASV8X6B2_77_suite.py::test_every_split_group_sums_consistently
+tests/test_GASV8X6B2_77_suite.py::test_per_send_record_figures_available
+tests/test_GASV8X6B2_77_suite.py::test_version_identifiers_match_sends_and_stale_report
+tests/test_GASV8X6B2_77_suite.py::test_reports_do_not_change_delivery
+tests/test_GASV8X6B2_77_suite.py::test_reports_do_not_change_station_settling
+tests/test_GASV8X6B2_77_suite.py::test_repeated_on_demand_reports_are_stable

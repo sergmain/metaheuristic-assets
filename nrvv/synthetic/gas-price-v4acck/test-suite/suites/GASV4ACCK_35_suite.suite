@@ -1,0 +1,4 @@
+# GASV4ACCK_35_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_35_suite.py::test_ack_records_sent_price_as_last_acknowledged
+tests/test_GASV4ACCK_35_suite.py::test_acknowledged_price_and_no_outstanding_hold_after_run_to_end
+tests/test_GASV4ACCK_35_suite.py::test_each_station_records_its_own_sent_price

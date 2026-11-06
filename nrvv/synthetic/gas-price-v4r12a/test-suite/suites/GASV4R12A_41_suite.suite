@@ -1,0 +1,5 @@
+# GASV4R12A_41_suite - written by nrvv-test-author
+tests/test_GASV4R12A_41_suite.py::test_station_displays_latest_price_after_it_is_superseded
+tests/test_GASV4R12A_41_suite.py::test_latest_price_converges_for_every_transport_delay
+tests/test_GASV4R12A_41_suite.py::test_latest_price_converges_when_p1_was_already_displayed
+tests/test_GASV4R12A_41_suite.py::test_each_station_converges_to_its_own_latest_price

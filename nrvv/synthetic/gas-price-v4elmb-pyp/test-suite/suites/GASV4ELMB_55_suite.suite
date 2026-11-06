@@ -1,0 +1,3 @@
+# GASV4ELMB_55_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_55_suite.py::test_ack_sends_pending_desired_price_when_it_differs
+tests/test_GASV4ELMB_55_suite.py::test_ack_with_desired_equal_to_shown_sends_nothing_and_goes_idle

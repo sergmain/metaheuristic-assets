@@ -1,0 +1,8 @@
+# GASV9S1_45_suite - written by nrvv-test-author
+tests/test_GASV9S1_45_suite.py::test_ordered_visits_all_acknowledged
+tests/test_GASV9S1_45_suite.py::test_interleaved_visits_all_acknowledged_once
+tests/test_GASV9S1_45_suite.py::test_real_count_rises_by_exactly_n_ordered
+tests/test_GASV9S1_45_suite.py::test_real_count_rises_by_exactly_n_interleaved
+tests/test_GASV9S1_45_suite.py::test_count_independent_of_page_requests
+tests/test_GASV9S1_45_suite.py::test_displayed_number_never_exceeds_real_count
+tests/test_GASV9S1_45_suite.py::test_two_batches_each_add_exactly_n

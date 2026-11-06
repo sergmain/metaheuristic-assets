@@ -1,0 +1,4 @@
+# GASV4E2CL_38_suite - written by nrvv-test-author
+tests/test_GASV4E2CL_38_suite.py::test_round_trip_before_ack_sends_nothing
+tests/test_GASV4E2CL_38_suite.py::test_move_away_while_in_flight_sends_new_price_after_ack
+tests/test_GASV4E2CL_38_suite.py::test_round_trip_then_move_sends_only_the_new_price

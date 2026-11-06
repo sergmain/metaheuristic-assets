@@ -1,0 +1,5 @@
+# GASV4CRT1_39_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_39_suite.py::test_latest_price_displayed_first_then_second_short_delays
+tests/test_GASV4CRT1_39_suite.py::test_latest_price_displayed_first_then_second_long_delays
+tests/test_GASV4CRT1_39_suite.py::test_latest_price_displayed_second_while_first_in_flight_short_delays
+tests/test_GASV4CRT1_39_suite.py::test_latest_price_displayed_second_while_first_in_flight_long_delays

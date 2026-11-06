@@ -1,0 +1,2 @@
+# GASV4ACCK_36_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_36_suite.py::test_each_state_change_dispatches_latest_price_and_blocks_while_outstanding

@@ -1,0 +1,7 @@
+# GASV9S1_44_suite - written by nrvv-test-author
+tests/test_GASV9S1_44_suite.py::test_first_request_shows_at_most_one
+tests/test_GASV9S1_44_suite.py::test_page_requests_only_never_exceed_request_count
+tests/test_GASV9S1_44_suite.py::test_visits_then_page_never_exceeds_real_count
+tests/test_GASV9S1_44_suite.py::test_shuffled_mix_never_exceeds_real_count
+tests/test_GASV9S1_44_suite.py::test_shown_numbers_do_not_go_backwards
+tests/test_GASV9S1_44_suite.py::test_every_page_request_is_answered_with_a_number

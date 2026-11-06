@@ -1,0 +1,9 @@
+# SAMPLEV3DEV3_8_suite - written by nrvv-test-author
+tests/test_SAMPLEV3DEV3_8_suite.py::test_runs_to_completion_without_error
+tests/test_SAMPLEV3DEV3_8_suite.py::test_yields_no_return_value
+tests/test_SAMPLEV3DEV3_8_suite.py::test_produces_console_output
+tests/test_SAMPLEV3DEV3_8_suite.py::test_console_output_is_sole_stream_used
+tests/test_SAMPLEV3DEV3_8_suite.py::test_creates_no_files
+tests/test_SAMPLEV3DEV3_8_suite.py::test_repeated_invocation_has_no_persisted_side_effect
+tests/test_SAMPLEV3DEV3_8_suite.py::test_requires_only_standard_runtime
+tests/test_SAMPLEV3DEV3_8_suite.py::test_entry_point_takes_no_arguments

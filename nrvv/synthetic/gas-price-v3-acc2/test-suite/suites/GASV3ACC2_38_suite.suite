@@ -1,0 +1,5 @@
+# GASV3ACC2_38_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_38_suite.py::test_single_submit_settles_in_one_round
+tests/test_GASV3ACC2_38_suite.py::test_ack_resends_latest_when_diverged_and_idle_when_converged
+tests/test_GASV3ACC2_38_suite.py::test_run_converges_and_settles_on_latest_price
+tests/test_GASV3ACC2_38_suite.py::test_multi_station_runs_settle_on_latest_price

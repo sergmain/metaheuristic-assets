@@ -1,0 +1,6 @@
+# GASV4R12A_46_suite - written by nrvv-test-author
+tests/test_GASV4R12A_46_suite.py::test_server_sends_only_update_messages
+tests/test_GASV4R12A_46_suite.py::test_station_returns_only_acknowledgements_matching_updates
+tests/test_GASV4R12A_46_suite.py::test_no_configuration_or_negotiation_traffic
+tests/test_GASV4R12A_46_suite.py::test_full_cycle_converges_using_only_updates_and_acks
+tests/test_GASV4R12A_46_suite.py::test_lost_updates_are_recovered_by_resending_updates

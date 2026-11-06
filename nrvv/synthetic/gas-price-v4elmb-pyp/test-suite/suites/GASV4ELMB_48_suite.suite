@@ -1,0 +1,4 @@
+# GASV4ELMB_48_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_48_suite.py::test_no_new_update_sent_while_first_update_unacknowledged
+tests/test_GASV4ELMB_48_suite.py::test_next_update_after_ack_carries_desired_price_at_send_time
+tests/test_GASV4ELMB_48_suite.py::test_after_final_ack_no_update_and_shown_price_is_latest_desired

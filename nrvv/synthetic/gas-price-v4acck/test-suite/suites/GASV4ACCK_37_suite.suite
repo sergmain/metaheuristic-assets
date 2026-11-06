@@ -1,0 +1,4 @@
+# GASV4ACCK_37_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_37_suite.py::test_superseded_price_dispatched_once_as_newest
+tests/test_GASV4ACCK_37_suite.py::test_superseded_price_never_sent_or_delivered
+tests/test_GASV4ACCK_37_suite.py::test_supersede_does_not_change_other_station_dispatch

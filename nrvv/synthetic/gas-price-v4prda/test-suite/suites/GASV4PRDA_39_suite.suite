@@ -1,0 +1,4 @@
+# GASV4PRDA_39_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_39_suite.py::test_each_ack_matches_the_update_it_confirms
+tests/test_GASV4PRDA_39_suite.py::test_two_outstanding_updates_are_confirmed_by_their_own_acks_in_either_order
+tests/test_GASV4PRDA_39_suite.py::test_confirmed_updates_are_not_resent_under_loss_and_duplicates

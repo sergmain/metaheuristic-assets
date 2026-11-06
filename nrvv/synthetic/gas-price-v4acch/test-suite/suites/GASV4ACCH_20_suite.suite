@@ -1,0 +1,8 @@
+# GASV4ACCH_20_suite - written by nrvv-test-author
+tests/test_GASV4ACCH_20_suite.py::test_single_station_monotonic_message_ids
+tests/test_GASV4ACCH_20_suite.py::test_station_message_id_pair_uniqueness
+tests/test_GASV4ACCH_20_suite.py::test_no_reuse_of_message_id_pairs
+tests/test_GASV4ACCH_20_suite.py::test_multiple_stations_independent_sequences
+tests/test_GASV4ACCH_20_suite.py::test_monotonic_across_acknowledgments
+tests/test_GASV4ACCH_20_suite.py::test_comprehensive_uniqueness_and_monotonicity
+tests/test_GASV4ACCH_20_suite.py::test_message_id_starts_from_consistent_base

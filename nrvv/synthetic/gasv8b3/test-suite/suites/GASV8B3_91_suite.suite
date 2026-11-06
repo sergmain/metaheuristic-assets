@@ -1,0 +1,5 @@
+# GASV8B3_91_suite - written by nrvv-test-author
+tests/test_GASV8B3_91_suite.py::test_stale_cost_nonzero_when_newer_price_replaces_unsent
+tests/test_GASV8B3_91_suite.py::test_stale_report_names_station_with_unsent_price
+tests/test_GASV8B3_91_suite.py::test_stale_cost_zero_when_every_price_sent
+tests/test_GASV8B3_91_suite.py::test_stale_cost_zero_when_sequential_prices_all_sent

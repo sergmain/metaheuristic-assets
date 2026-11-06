@@ -1,0 +1,3 @@
+# GASV8X6B2_72_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_72_suite.py::test_ack_of_superseded_version_leaves_station_not_settled
+tests/test_GASV8X6B2_72_suite.py::test_only_ack_of_latest_version_settles_station

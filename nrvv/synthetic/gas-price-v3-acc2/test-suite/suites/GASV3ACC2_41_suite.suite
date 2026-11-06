@@ -1,0 +1,6 @@
+# GASV3ACC2_41_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_41_suite.py::test_last_applied_update_carries_latest_desired_price
+tests/test_GASV3ACC2_41_suite.py::test_last_applied_update_is_never_a_superseded_value
+tests/test_GASV3ACC2_41_suite.py::test_superseded_price_arrives_yet_station_settles_on_latest
+tests/test_GASV3ACC2_41_suite.py::test_in_transit_reordering_occurs_but_station_still_settles
+tests/test_GASV3ACC2_41_suite.py::test_settlement_under_seeded_producer_sequences

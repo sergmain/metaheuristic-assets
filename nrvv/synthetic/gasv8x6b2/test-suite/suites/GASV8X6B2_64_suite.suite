@@ -1,0 +1,6 @@
+# GASV8X6B2_64_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_64_suite.py::test_total_cost_is_closed_plus_open_exposure_times_rate
+tests/test_GASV8X6B2_64_suite.py::test_closed_and_open_cost_per_station
+tests/test_GASV8X6B2_64_suite.py::test_open_interval_marked_provisional
+tests/test_GASV8X6B2_64_suite.py::test_undercharge_and_overcharge_reported_separately
+tests/test_GASV8X6B2_64_suite.py::test_rates_recorded_with_report

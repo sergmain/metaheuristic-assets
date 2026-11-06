@@ -1,0 +1,5 @@
+# GASV4ELMA_51_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_51_suite.py::test_older_ack_triggers_resend_of_latest_price_to_that_station
+tests/test_GASV4ELMA_51_suite.py::test_every_unconfirmed_station_is_sent_the_latest_price
+tests/test_GASV4ELMA_51_suite.py::test_station_that_confirmed_latest_price_gets_no_update
+tests/test_GASV4ELMA_51_suite.py::test_no_update_after_latest_set_carries_older_price

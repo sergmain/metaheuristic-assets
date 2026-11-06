@@ -1,0 +1,3 @@
+# GASV4E2CL_39_suite - written by nrvv-test-author
+tests/test_GASV4E2CL_39_suite.py::test_second_price_is_accepted_while_first_update_unacknowledged
+tests/test_GASV4E2CL_39_suite.py::test_second_price_is_recorded_as_station_desired_price

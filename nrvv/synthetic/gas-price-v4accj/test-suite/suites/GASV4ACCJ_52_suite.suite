@@ -1,0 +1,4 @@
+# GASV4ACCJ_52_suite - written by nrvv-test-author
+tests/test_GASV4ACCJ_52_suite.py::test_notice_within_one_minute_of_ack_without_loss
+tests/test_GASV4ACCJ_52_suite.py::test_notice_within_one_minute_of_ack_with_loss_and_unreachable_stations
+tests/test_GASV4ACCJ_52_suite.py::test_notice_within_one_minute_with_more_stations

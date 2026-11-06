@@ -1,0 +1,5 @@
+# GASV4PRDA_34_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_34_suite.py::test_same_price_as_last_sent_is_suppressed
+tests/test_GASV4PRDA_34_suite.py::test_different_price_with_empty_slot_is_sent
+tests/test_GASV4PRDA_34_suite.py::test_alternating_prices_are_suppressed_and_sent
+tests/test_GASV4PRDA_34_suite.py::test_final_display_matches_last_desired_price

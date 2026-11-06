@@ -1,0 +1,5 @@
+# GASV3ACC2_30_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_30_suite.py::test_only_last_price_sent_when_sending_becomes_permissible
+tests/test_GASV3ACC2_30_suite.py::test_intermediate_submits_add_no_sends_while_outstanding
+tests/test_GASV3ACC2_30_suite.py::test_latest_desired_slot_is_overwritten_not_accumulated
+tests/test_GASV3ACC2_30_suite.py::test_coalescing_overwrites_per_station_independently

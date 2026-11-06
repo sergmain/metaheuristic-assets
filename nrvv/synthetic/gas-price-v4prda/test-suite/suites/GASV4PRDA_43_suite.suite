@@ -1,0 +1,4 @@
+# GASV4PRDA_43_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_43_suite.py::test_second_update_leaves_unmodified_station_showing_second_price
+tests/test_GASV4PRDA_43_suite.py::test_updates_issued_together_leave_station_showing_second_price
+tests/test_GASV4PRDA_43_suite.py::test_last_update_wins_when_transport_loses_messages_and_stations_go_offline

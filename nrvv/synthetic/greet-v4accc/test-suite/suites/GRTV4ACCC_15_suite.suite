@@ -1,0 +1,3 @@
+# GRTV4ACCC_15_suite - written by nrvv-test-author
+tests/test_GRTV4ACCC_15_suite.py::test_program_output_is_non_empty
+tests/test_GRTV4ACCC_15_suite.py::test_program_output_ends_with_line_feed

@@ -1,0 +1,4 @@
+# GASV4R12A_44_suite - written by nrvv-test-author
+tests/test_GASV4R12A_44_suite.py::test_three_phase_resend_rule_on_one_station
+tests/test_GASV4R12A_44_suite.py::test_no_resend_while_current_version_in_flight
+tests/test_GASV4R12A_44_suite.py::test_no_resend_when_acked_price_matches_desired

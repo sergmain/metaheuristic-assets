@@ -1,0 +1,8 @@
+# GASV8B3_80_suite - written by nrvv-test-author
+tests/test_GASV8B3_80_suite.py::test_burst_during_in_flight_settles_on_last_price
+tests/test_GASV8B3_80_suite.py::test_scheduled_submissions_with_reordering_settle
+tests/test_GASV8B3_80_suite.py::test_scripted_reverse_delivery_order_settles
+tests/test_GASV8B3_80_suite.py::test_scripted_order_with_late_submissions_settles
+tests/test_GASV8B3_80_suite.py::test_last_submitted_equals_earlier_price_still_settles
+tests/test_GASV8B3_80_suite.py::test_multiple_stations_each_settle_on_own_last_price
+tests/test_GASV8B3_80_suite.py::test_manual_delivery_and_ack_by_send_id_settles

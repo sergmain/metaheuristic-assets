@@ -1,0 +1,6 @@
+# GASV4E2CL_45_suite - written by nrvv-test-author
+tests/test_GASV4E2CL_45_suite.py::test_settled_price_shown_within_bound_after_reconnect
+tests/test_GASV4E2CL_45_suite.py::test_price_changes_land_while_station_unreachable
+tests/test_GASV4E2CL_45_suite.py::test_at_most_one_update_sent_during_outage
+tests/test_GASV4E2CL_45_suite.py::test_every_update_follows_a_price_change_or_ack
+tests/test_GASV4E2CL_45_suite.py::test_no_repeat_price_or_overlapping_update

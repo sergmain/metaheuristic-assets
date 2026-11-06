@@ -1,0 +1,5 @@
+# GASV4R12A_36_suite - written by nrvv-test-author
+tests/test_GASV4R12A_36_suite.py::test_resends_latest_price_to_station_with_stale_acknowledgement
+tests/test_GASV4R12A_36_suite.py::test_resends_latest_price_to_station_never_acknowledged
+tests/test_GASV4R12A_36_suite.py::test_no_update_when_acknowledged_price_equals_latest_desired
+tests/test_GASV4R12A_36_suite.py::test_no_update_while_latest_price_is_unacknowledged_in_flight

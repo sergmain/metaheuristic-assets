@@ -1,0 +1,4 @@
+# GASV4ELMA_34_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_34_suite.py::test_second_desired_price_replaces_first_for_station
+tests/test_GASV4ELMA_34_suite.py::test_replacement_affects_only_its_own_station_across_seeds
+tests/test_GASV4ELMA_34_suite.py::test_each_new_price_replaces_the_previous_one_across_seeds

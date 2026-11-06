@@ -1,0 +1,4 @@
+# GASV4ELMA_48_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_48_suite.py::test_overwrite_while_outstanding_accepts_and_keeps_only_new_price
+tests/test_GASV4ELMA_48_suite.py::test_same_price_while_outstanding_dispatches_nothing
+tests/test_GASV4ELMA_48_suite.py::test_burst_overwrites_are_accepted_and_only_latest_is_sent

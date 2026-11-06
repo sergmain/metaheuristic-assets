@@ -1,0 +1,6 @@
+# GASV8X6B2_75_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_75_suite.py::test_unacknowledged_send_is_provisional_with_as_of
+tests/test_GASV8X6B2_75_suite.py::test_acknowledged_record_is_final
+tests/test_GASV8X6B2_75_suite.py::test_replayed_acknowledgement_does_not_double_count
+tests/test_GASV8X6B2_75_suite.py::test_final_figures_unchanged_by_later_report
+tests/test_GASV8X6B2_75_suite.py::test_final_station_figure_stable_while_other_station_in_flight

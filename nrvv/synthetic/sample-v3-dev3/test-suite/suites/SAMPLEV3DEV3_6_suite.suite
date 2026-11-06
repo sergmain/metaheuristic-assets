@@ -1,0 +1,6 @@
+# SAMPLEV3DEV3_6_suite - written by nrvv-test-author
+tests/test_SAMPLEV3DEV3_6_suite.py::test_stripped_output_is_exact_greeting
+tests/test_SAMPLEV3DEV3_6_suite.py::test_output_is_greeting_optionally_newline_terminated
+tests/test_SAMPLEV3DEV3_6_suite.py::test_output_has_no_extra_content
+tests/test_SAMPLEV3DEV3_6_suite.py::test_output_is_single_line
+tests/test_SAMPLEV3DEV3_6_suite.py::test_greeting_text_present_and_only_once

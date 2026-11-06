@@ -1,0 +1,4 @@
+# GASV3ACC2_36_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_36_suite.py::test_ack_advances_mirror_to_outstanding_value_and_clears_flag
+tests/test_GASV3ACC2_36_suite.py::test_second_ack_without_outstanding_does_not_advance
+tests/test_GASV3ACC2_36_suite.py::test_each_ack_paired_with_its_single_outstanding_update

@@ -1,0 +1,7 @@
+# GASV4ELMA_44_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_44_suite.py::test_last_change_is_dispatched_in_its_own_step
+tests/test_GASV4ELMA_44_suite.py::test_every_dispatch_happens_in_step_of_its_trigger
+tests/test_GASV4ELMA_44_suite.py::test_each_stale_ack_causes_exactly_one_resend
+tests/test_GASV4ELMA_44_suite.py::test_resends_only_follow_stale_acks
+tests/test_GASV4ELMA_44_suite.py::test_latest_price_converges_within_six_minutes
+tests/test_GASV4ELMA_44_suite.py::test_no_stale_acknowledgement_after_six_minutes

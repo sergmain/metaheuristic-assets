@@ -1,0 +1,6 @@
+# GASV3DEV3_22_suite - written by nrvv-test-author
+tests/test_GASV3DEV3_22_suite.py::test_first_submission_sends_when_display_unknown
+tests/test_GASV3DEV3_22_suite.py::test_no_update_when_equal_to_known_display
+tests/test_GASV3DEV3_22_suite.py::test_suppress_exactly_when_equal_toggle
+tests/test_GASV3DEV3_22_suite.py::test_suppression_is_per_station
+tests/test_GASV3DEV3_22_suite.py::test_no_sent_update_ever_equals_known_displayed_random

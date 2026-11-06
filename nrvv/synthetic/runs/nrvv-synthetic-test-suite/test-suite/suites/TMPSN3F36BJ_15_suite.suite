@@ -1,0 +1,5 @@
+# TMPSN3F36BJ_15_suite - written by nrvv-test-author
+tests/test_TMPSN3F36BJ_15_suite.py::test_greeting_returns_exact_string
+tests/test_TMPSN3F36BJ_15_suite.py::test_greeting_returns_str_type
+tests/test_TMPSN3F36BJ_15_suite.py::test_greeting_writes_nothing_to_stdout
+tests/test_TMPSN3F36BJ_15_suite.py::test_greeting_returns_value_and_stdout_empty

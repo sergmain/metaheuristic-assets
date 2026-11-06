@@ -1,0 +1,4 @@
+# GASV4ELMA_35_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_35_suite.py::test_second_desired_price_accepted_while_first_is_unacknowledged
+tests/test_GASV4ELMA_35_suite.py::test_third_desired_price_accepted_while_second_is_unacknowledged
+tests/test_GASV4ELMA_35_suite.py::test_scheduled_price_bursts_are_all_accepted_with_updates_in_flight

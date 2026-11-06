@@ -1,0 +1,7 @@
+# TMPSN3F36BJ_11_suite - written by nrvv-test-author
+tests/test_TMPSN3F36BJ_11_suite.py::test_module_imports_cleanly
+tests/test_TMPSN3F36BJ_11_suite.py::test_class_is_present
+tests/test_TMPSN3F36BJ_11_suite.py::test_instance_constructs_without_arguments
+tests/test_TMPSN3F36BJ_11_suite.py::test_main_entry_point_is_callable
+tests/test_TMPSN3F36BJ_11_suite.py::test_main_runs_to_normal_termination
+tests/test_TMPSN3F36BJ_11_suite.py::test_main_runs_repeatably_without_error

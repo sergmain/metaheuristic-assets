@@ -1,0 +1,2 @@
+# GASV8X6B2_61_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_61_suite.py::test_two_stations_each_get_own_price_through_send_port

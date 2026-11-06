@@ -1,0 +1,7 @@
+# TMPGASDF1_26_suite - written by nrvv-test-author
+tests/test_TMPGASDF1_26_suite.py::test_single_desired_price_becomes_displayed
+tests/test_TMPGASDF1_26_suite.py::test_displayed_price_remains_equal_after_convergence
+tests/test_TMPGASDF1_26_suite.py::test_latest_of_a_burst_is_the_displayed_value
+tests/test_TMPGASDF1_26_suite.py::test_converges_to_final_after_seeded_script
+tests/test_TMPGASDF1_26_suite.py::test_every_station_displays_its_own_latest_desired
+tests/test_TMPGASDF1_26_suite.py::test_service_view_confirms_convergence

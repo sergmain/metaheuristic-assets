@@ -1,0 +1,4 @@
+# GASV4PRDA_38_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_38_suite.py::test_same_price_again_sends_no_update_to_station
+tests/test_GASV4PRDA_38_suite.py::test_same_price_again_after_ack_sends_no_update_to_station
+tests/test_GASV4PRDA_38_suite.py::test_return_to_sent_price_while_update_pending_sends_nothing_more

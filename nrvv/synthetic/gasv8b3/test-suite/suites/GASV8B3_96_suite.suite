@@ -1,0 +1,4 @@
+# GASV8B3_96_suite - written by nrvv-test-author
+tests/test_GASV8B3_96_suite.py::test_unknown_ack_ignored_state_unchanged_and_no_send
+tests/test_GASV8B3_96_suite.py::test_unknown_ack_is_counted_once
+tests/test_GASV8B3_96_suite.py::test_real_ack_matched_by_id_triggers_followup_with_new_send_id

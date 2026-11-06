@@ -1,0 +1,4 @@
+# GASV4E2CM_46_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_46_suite.py::test_set_desired_price_accepted_while_update_in_flight
+tests/test_GASV4E2CM_46_suite.py::test_set_desired_price_accepted_when_no_update_in_flight
+tests/test_GASV4E2CM_46_suite.py::test_set_desired_price_overwrites_without_blocking_over_seeded_schedule

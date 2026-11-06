@@ -1,0 +1,4 @@
+# GASV8B3_84_suite - written by nrvv-test-author
+tests/test_GASV8B3_84_suite.py::test_lagging_station_reports_stale_period_and_cost
+tests/test_GASV8B3_84_suite.py::test_total_reports_stale_period_and_cost
+tests/test_GASV8B3_84_suite.py::test_station_that_never_lagged_reports_zero

@@ -1,0 +1,7 @@
+# GASV8X6B2_70_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_70_suite.py::test_superseded_price_never_resent_after_newer_submitted
+tests/test_GASV8X6B2_70_suite.py::test_each_send_carries_desired_price_at_send_time
+tests/test_GASV8X6B2_70_suite.py::test_no_sends_after_convergence
+tests/test_GASV8X6B2_70_suite.py::test_lost_send_is_retried_with_latest_price
+tests/test_GASV8X6B2_70_suite.py::test_repeated_losses_keep_retrying_until_confirmed
+tests/test_GASV8X6B2_70_suite.py::test_stations_converge_independently_on_latest

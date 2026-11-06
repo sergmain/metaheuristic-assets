@@ -1,0 +1,4 @@
+# GASV4E2CM_45_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_45_suite.py::test_second_update_waits_for_first_acknowledgement
+tests/test_GASV4E2CM_45_suite.py::test_random_bursts_never_leave_two_updates_outstanding
+tests/test_GASV4E2CM_45_suite.py::test_outstanding_update_does_not_block_other_stations

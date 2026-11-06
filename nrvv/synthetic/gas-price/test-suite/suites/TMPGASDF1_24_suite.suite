@@ -1,0 +1,5 @@
+# TMPGASDF1_24_suite - written by nrvv-test-author
+tests/test_TMPGASDF1_24_suite.py::test_equal_update_is_not_sent
+tests/test_TMPGASDF1_24_suite.py::test_differing_update_is_sent
+tests/test_TMPGASDF1_24_suite.py::test_iff_transmission_matches_price_change
+tests/test_TMPGASDF1_24_suite.py::test_other_stations_untouched_by_equal_updates

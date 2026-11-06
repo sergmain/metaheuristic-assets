@@ -1,0 +1,6 @@
+# GASV4CRT1_48_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_48_suite.py::test_second_update_held_while_first_unacknowledged
+tests/test_GASV4CRT1_48_suite.py::test_second_update_sent_only_after_first_is_acknowledged
+tests/test_GASV4CRT1_48_suite.py::test_no_two_updates_unacknowledged_at_same_station
+tests/test_GASV4CRT1_48_suite.py::test_each_send_follows_an_acknowledgement_of_the_previous_one
+tests/test_GASV4CRT1_48_suite.py::test_displayed_price_ends_at_latest_desired_price

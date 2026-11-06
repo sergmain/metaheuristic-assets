@@ -1,0 +1,5 @@
+# GASV8B3_77_suite - written by nrvv-test-author
+tests/test_GASV8B3_77_suite.py::test_no_second_send_while_unacknowledged_and_latest_recorded
+tests/test_GASV8B3_77_suite.py::test_ack_of_superseded_send_triggers_exactly_one_send_of_latest
+tests/test_GASV8B3_77_suite.py::test_settles_on_latest_after_followup_ack_with_no_further_sends
+tests/test_GASV8B3_77_suite.py::test_not_settled_while_first_send_unacknowledged

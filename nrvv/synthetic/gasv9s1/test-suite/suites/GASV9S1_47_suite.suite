@@ -1,0 +1,8 @@
+# GASV9S1_47_suite - written by nrvv-test-author
+tests/test_GASV9S1_47_suite.py::test_new_visits_each_raise_count_by_one
+tests/test_GASV9S1_47_suite.py::test_duplicate_visit_does_not_change_count
+tests/test_GASV9S1_47_suite.py::test_repeated_retries_never_add
+tests/test_GASV9S1_47_suite.py::test_full_scenario_i1_dup_i2_i3
+tests/test_GASV9S1_47_suite.py::test_increments_applied_at_once_while_pages_served
+tests/test_GASV9S1_47_suite.py::test_shuffled_delivery_with_pages_and_duplicates
+tests/test_GASV9S1_47_suite.py::test_page_never_shows_more_than_real_count

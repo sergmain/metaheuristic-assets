@@ -1,0 +1,4 @@
+# GASV4CRT1_45_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_45_suite.py::test_same_price_as_confirmed_sends_nothing
+tests/test_GASV4CRT1_45_suite.py::test_desired_changed_away_and_back_during_flight_sends_nothing
+tests/test_GASV4CRT1_45_suite.py::test_changed_price_sends_exactly_one_update

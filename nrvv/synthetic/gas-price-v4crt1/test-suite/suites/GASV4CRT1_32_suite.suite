@@ -1,0 +1,5 @@
+# GASV4CRT1_32_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_32_suite.py::test_one_publish_captures_exactly_one_update
+tests/test_GASV4CRT1_32_suite.py::test_publish_is_addressed_to_s1_only
+tests/test_GASV4CRT1_32_suite.py::test_publish_carries_desired_price_unchanged
+tests/test_GASV4CRT1_32_suite.py::test_single_update_stays_single_after_delivery

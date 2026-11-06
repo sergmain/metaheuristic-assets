@@ -1,0 +1,5 @@
+# GRTV4ACCC_12_suite - written by nrvv-test-author
+tests/test_GRTV4ACCC_12_suite.py::test_greeting_produces_non_empty_text_output
+tests/test_GRTV4ACCC_12_suite.py::test_greeting_output_ends_with_line_ending
+tests/test_GRTV4ACCC_12_suite.py::test_greeting_output_has_no_trailing_spaces_before_line_ending
+tests/test_GRTV4ACCC_12_suite.py::test_greeting_output_is_plain_single_line_text

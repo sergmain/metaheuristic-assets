@@ -1,0 +1,4 @@
+# GASV4E2CM_33_suite - written by nrvv-test-author
+tests/test_GASV4E2CM_33_suite.py::test_update_stays_in_flight_until_expiry_then_resent
+tests/test_GASV4E2CM_33_suite.py::test_expiry_resends_desired_price_current_at_expiry
+tests/test_GASV4E2CM_33_suite.py::test_unreachable_station_resends_every_period

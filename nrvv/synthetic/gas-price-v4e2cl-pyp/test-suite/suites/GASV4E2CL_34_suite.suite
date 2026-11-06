@@ -1,0 +1,5 @@
+# GASV4E2CL_34_suite - written by nrvv-test-author
+tests/test_GASV4E2CL_34_suite.py::test_last_delivered_price_is_latest_desired_price
+tests/test_GASV4E2CL_34_suite.py::test_last_received_update_is_last_sent_update
+tests/test_GASV4E2CL_34_suite.py::test_every_change_reaches_station_and_is_sent_at_current_price
+tests/test_GASV4E2CL_34_suite.py::test_station_settles_on_latest_price_after_out_of_order_updates

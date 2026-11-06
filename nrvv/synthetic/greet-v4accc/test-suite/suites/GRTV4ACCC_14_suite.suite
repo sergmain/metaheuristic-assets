@@ -1,0 +1,5 @@
+# GRTV4ACCC_14_suite - written by nrvv-test-author
+tests/test_GRTV4ACCC_14_suite.py::test_output_ends_with_line_break
+tests/test_GRTV4ACCC_14_suite.py::test_output_is_exactly_one_line
+tests/test_GRTV4ACCC_14_suite.py::test_no_blank_lines_or_surrounding_text
+tests/test_GRTV4ACCC_14_suite.py::test_no_leading_or_trailing_spaces

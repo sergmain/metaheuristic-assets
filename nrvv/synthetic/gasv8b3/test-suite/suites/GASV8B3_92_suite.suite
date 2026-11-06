@@ -1,0 +1,6 @@
+# GASV8B3_92_suite - written by nrvv-test-author
+tests/test_GASV8B3_92_suite.py::test_no_second_send_after_timeout_without_outcome
+tests/test_GASV8B3_92_suite.py::test_newer_price_during_timeout_makes_no_send_until_outcome
+tests/test_GASV8B3_92_suite.py::test_exactly_one_new_send_with_newer_price_after_outcome
+tests/test_GASV8B3_92_suite.py::test_only_latest_of_several_newer_prices_is_sent
+tests/test_GASV8B3_92_suite.py::test_other_station_unaffected_while_first_in_flight

@@ -1,0 +1,6 @@
+# GASV9S1_48_suite - written by nrvv-test-author
+tests/test_GASV9S1_48_suite.py::test_shown_number_never_exceeds_distinct_visits
+tests/test_GASV9S1_48_suite.py::test_shown_number_is_a_count_the_real_count_held
+tests/test_GASV9S1_48_suite.py::test_duplicate_visit_identifier_does_not_inflate_shown_number
+tests/test_GASV9S1_48_suite.py::test_every_visit_is_acknowledged_including_duplicate
+tests/test_GASV9S1_48_suite.py::test_visit_acknowledgement_precedes_later_page_request_events

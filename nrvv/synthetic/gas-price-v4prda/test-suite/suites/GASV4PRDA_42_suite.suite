@@ -1,0 +1,5 @@
+# GASV4PRDA_42_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_42_suite.py::test_newer_change_while_slot_full_emits_nothing
+tests/test_GASV4PRDA_42_suite.py::test_held_price_sent_once_when_matching_ack_arrives
+tests/test_GASV4PRDA_42_suite.py::test_held_price_equal_to_sent_price_is_not_resent
+tests/test_GASV4PRDA_42_suite.py::test_every_second_change_held_while_slot_full

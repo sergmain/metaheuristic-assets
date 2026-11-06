@@ -1,0 +1,6 @@
+# GASV4CRT1_47_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_47_suite.py::test_no_update_sent_to_station_while_first_update_outstanding
+tests/test_GASV4CRT1_47_suite.py::test_next_update_sent_only_after_in_flight_slot_is_free
+tests/test_GASV4CRT1_47_suite.py::test_no_send_while_station_has_update_in_flight_under_random_changes
+tests/test_GASV4CRT1_47_suite.py::test_in_flight_slot_is_per_station
+tests/test_GASV4CRT1_47_suite.py::test_price_already_in_flight_is_not_resent

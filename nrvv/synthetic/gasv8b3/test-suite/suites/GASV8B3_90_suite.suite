@@ -1,0 +1,5 @@
+# GASV8B3_90_suite - written by nrvv-test-author
+tests/test_GASV8B3_90_suite.py::test_resend_after_lifetime_carries_latest_price_never_old
+tests/test_GASV8B3_90_suite.py::test_resend_backoff_grows_between_further_resends
+tests/test_GASV8B3_90_suite.py::test_all_unsettled_stations_restart_cycle_with_latest_price
+tests/test_GASV8B3_90_suite.py::test_settles_only_on_matching_ack_of_version_two_send

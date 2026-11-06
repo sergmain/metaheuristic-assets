@@ -1,0 +1,8 @@
+# GASV8X6B2_59_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_59_suite.py::test_no_second_send_while_first_unacknowledged
+tests/test_GASV8X6B2_59_suite.py::test_after_ack_exactly_one_new_send_with_newest_price
+tests/test_GASV8X6B2_59_suite.py::test_coalesces_intermediate_prices
+tests/test_GASV8X6B2_59_suite.py::test_rule_holds_again_after_second_send_acknowledged
+tests/test_GASV8X6B2_59_suite.py::test_two_stations_send_independently
+tests/test_GASV8X6B2_59_suite.py::test_ack_of_one_station_does_not_affect_other
+tests/test_GASV8X6B2_59_suite.py::test_at_most_one_unconfirmed_send_per_station_always

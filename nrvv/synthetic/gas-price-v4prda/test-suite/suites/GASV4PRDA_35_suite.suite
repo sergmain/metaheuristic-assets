@@ -1,0 +1,5 @@
+# GASV4PRDA_35_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_35_suite.py::test_slot_accepts_one_update_and_rejects_the_next_until_acknowledged
+tests/test_GASV4PRDA_35_suite.py::test_each_station_sends_next_update_only_after_matching_ack
+tests/test_GASV4PRDA_35_suite.py::test_slot_rule_holds_with_loss_duplicates_and_outages
+tests/test_GASV4PRDA_35_suite.py::test_sequence_numbers_are_counted_per_station

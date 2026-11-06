@@ -1,0 +1,3 @@
+# GASV4PRDA_45_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_45_suite.py::test_resend_keeps_outstanding_price_and_never_sends_older_after_newer
+tests/test_GASV4PRDA_45_suite.py::test_fresh_update_after_ack_carries_newest_price_not_older_one

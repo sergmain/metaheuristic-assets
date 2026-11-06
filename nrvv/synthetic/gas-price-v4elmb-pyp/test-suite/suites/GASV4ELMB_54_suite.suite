@@ -1,0 +1,5 @@
+# GASV4ELMB_54_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_54_suite.py::test_resends_same_seq_and_price_at_every_expiry
+tests/test_GASV4ELMB_54_suite.py::test_gaps_double_from_base_then_stay_at_cap
+tests/test_GASV4ELMB_54_suite.py::test_reported_timeout_equals_next_gap
+tests/test_GASV4ELMB_54_suite.py::test_acknowledgement_resets_timeout_to_base

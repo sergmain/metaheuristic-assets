@@ -1,0 +1,5 @@
+# GASV4CRT1_36_suite - written by nrvv-test-author
+tests/test_GASV4CRT1_36_suite.py::test_price_not_confirmed_before_acknowledgement
+tests/test_GASV4CRT1_36_suite.py::test_price_confirmed_only_when_acknowledgement_delivered
+tests/test_GASV4CRT1_36_suite.py::test_acknowledgements_processed_in_arrival_order
+tests/test_GASV4CRT1_36_suite.py::test_confirmed_price_always_acknowledged_and_settles

@@ -1,0 +1,4 @@
+# GASV4PRDA_52_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_52_suite.py::test_resend_at_30_and_60_seconds_then_silent_after_ack
+tests/test_GASV4PRDA_52_suite.py::test_no_resend_when_acknowledged_before_30_seconds
+tests/test_GASV4PRDA_52_suite.py::test_ack_after_first_resend_stops_further_resends

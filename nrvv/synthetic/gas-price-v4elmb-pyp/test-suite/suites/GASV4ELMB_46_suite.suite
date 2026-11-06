@@ -1,0 +1,4 @@
+# GASV4ELMB_46_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_46_suite.py::test_no_update_sent_when_station_already_shows_desired_price
+tests/test_GASV4ELMB_46_suite.py::test_no_update_sent_when_latest_desired_price_is_the_shown_one
+tests/test_GASV4ELMB_46_suite.py::test_control_price_change_does_produce_update

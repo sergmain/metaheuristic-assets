@@ -1,0 +1,5 @@
+# GASV9S1_41_suite - written by nrvv-test-author
+tests/test_GASV9S1_41_suite.py::test_all_concurrent_visits_acknowledged_with_distinct_ids
+tests/test_GASV9S1_41_suite.py::test_real_count_equals_c_plus_n_after_all_acknowledged
+tests/test_GASV9S1_41_suite.py::test_real_count_grows_by_one_after_each_acknowledgement
+tests/test_GASV9S1_41_suite.py::test_shown_number_never_exceeds_real_count_during_concurrent_visits

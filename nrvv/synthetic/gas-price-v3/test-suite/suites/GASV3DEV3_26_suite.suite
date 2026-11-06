@@ -1,0 +1,8 @@
+# GASV3DEV3_26_suite - written by nrvv-test-author
+tests/test_GASV3DEV3_26_suite.py::test_clear_gate_dispatches_immediately
+tests/test_GASV3DEV3_26_suite.py::test_outstanding_blocks_any_number_of_further_prices
+tests/test_GASV3DEV3_26_suite.py::test_delivery_alone_does_not_dispatch_or_unblock
+tests/test_GASV3DEV3_26_suite.py::test_ack_reenables_next_price_exactly_one_update
+tests/test_GASV3DEV3_26_suite.py::test_full_sequence_at_most_one_flushed_on_ack
+tests/test_GASV3DEV3_26_suite.py::test_gate_is_per_station
+tests/test_GASV3DEV3_26_suite.py::test_single_outstanding_invariant_under_random_schedules

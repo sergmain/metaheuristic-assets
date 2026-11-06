@@ -1,0 +1,5 @@
+# GASV4ELMA_36_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_36_suite.py::test_reconnect_reads_reachable_true_and_dispatches_latest_only_when_changed
+tests/test_GASV4ELMA_36_suite.py::test_unreachable_reads_false_and_no_dispatch_reaches_station
+tests/test_GASV4ELMA_36_suite.py::test_set_while_unreachable_is_retained_and_not_dispatched
+tests/test_GASV4ELMA_36_suite.py::test_oracle_checks_pass_after_reachability_churn

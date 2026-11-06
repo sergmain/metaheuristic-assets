@@ -1,0 +1,5 @@
+# GASV3DEV3_25_suite - written by nrvv-test-author
+tests/test_GASV3DEV3_25_suite.py::test_update_addressed_to_station_carries_that_stations_price
+tests/test_GASV3DEV3_25_suite.py::test_single_price_equals_latest_recorded_for_station
+tests/test_GASV3DEV3_25_suite.py::test_cross_station_updates_do_not_leak
+tests/test_GASV3DEV3_25_suite.py::test_targeted_update_is_unaffected_by_another_station

@@ -1,0 +1,7 @@
+# GASV4ACCG_22_suite - written by nrvv-test-author
+tests/test_GASV4ACCG_22_suite.py::test_single_price_reaches_station
+tests/test_GASV4ACCG_22_suite.py::test_multiple_prices_station_displays_latest
+tests/test_GASV4ACCG_22_suite.py::test_multiple_stations_converge_to_latest_price
+tests/test_GASV4ACCG_22_suite.py::test_resend_mechanism_delivers_latest
+tests/test_GASV4ACCG_22_suite.py::test_version_numbers_monotonically_increase
+tests/test_GASV4ACCG_22_suite.py::test_many_prices_converges_to_highest_version

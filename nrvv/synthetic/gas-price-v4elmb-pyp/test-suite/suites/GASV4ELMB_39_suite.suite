@@ -1,0 +1,4 @@
+# GASV4ELMB_39_suite - written by nrvv-test-author
+tests/test_GASV4ELMB_39_suite.py::test_superseded_unsent_price_is_never_sent
+tests/test_GASV4ELMB_39_suite.py::test_superseded_price_submitted_in_same_tick_is_never_delivered
+tests/test_GASV4ELMB_39_suite.py::test_newer_price_converges_after_superseded_update_dropped

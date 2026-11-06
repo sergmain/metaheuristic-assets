@@ -1,0 +1,4 @@
+# GASV4E2CL_33_suite - written by nrvv-test-author
+tests/test_GASV4E2CL_33_suite.py::test_each_desired_price_change_sends_exactly_one_update_with_new_price
+tests/test_GASV4E2CL_33_suite.py::test_station_displays_each_new_desired_price_after_change
+tests/test_GASV4E2CL_33_suite.py::test_change_during_station_outage_still_sends_one_update

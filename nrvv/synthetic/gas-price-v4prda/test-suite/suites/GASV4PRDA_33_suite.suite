@@ -1,0 +1,4 @@
+# GASV4PRDA_33_suite - written by nrvv-test-author
+tests/test_GASV4PRDA_33_suite.py::test_update_sent_at_send_time_carries_second_value_not_first
+tests/test_GASV4PRDA_33_suite.py::test_third_overwrite_send_reflects_only_most_recent_value
+tests/test_GASV4PRDA_33_suite.py::test_other_station_change_leaves_first_station_update_unchanged

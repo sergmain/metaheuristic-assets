@@ -1,0 +1,4 @@
+# GASV4ACCK_32_suite - written by nrvv-test-author
+tests/test_GASV4ACCK_32_suite.py::test_sends_one_update_carrying_latest_price_when_confirmed_price_is_stale
+tests/test_GASV4ACCK_32_suite.py::test_sends_nothing_when_latest_price_equals_acknowledged_price
+tests/test_GASV4ACCK_32_suite.py::test_no_duplicate_send_while_update_carrying_latest_price_is_in_flight

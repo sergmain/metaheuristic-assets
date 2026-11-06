@@ -1,0 +1,4 @@
+# GASV4R12A_33_suite - written by nrvv-test-author
+tests/test_GASV4R12A_33_suite.py::test_each_station_gets_update_with_its_latest_desired_price
+tests/test_GASV4R12A_33_suite.py::test_each_station_displays_its_own_latest_desired_price
+tests/test_GASV4R12A_33_suite.py::test_latest_price_wins_when_accepted_after_an_earlier_publication

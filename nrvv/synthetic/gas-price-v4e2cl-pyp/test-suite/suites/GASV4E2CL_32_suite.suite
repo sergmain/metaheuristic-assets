@@ -1,0 +1,6 @@
+# GASV4E2CL_32_suite - written by nrvv-test-author
+tests/test_GASV4E2CL_32_suite.py::test_every_station_converges_with_unchanged_stations
+tests/test_GASV4E2CL_32_suite.py::test_convergence_is_tested_under_station_outages
+tests/test_GASV4E2CL_32_suite.py::test_every_price_change_reaches_its_station
+tests/test_GASV4E2CL_32_suite.py::test_only_existing_price_update_and_ack_types_on_station_interface
+tests/test_GASV4E2CL_32_suite.py::test_station_receives_only_sent_price_updates

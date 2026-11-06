@@ -1,0 +1,2 @@
+# GASV4ELMA_41_suite - written by nrvv-test-author
+tests/test_GASV4ELMA_41_suite.py::test_repeated_price_is_not_resent_and_changed_price_is_sent_once

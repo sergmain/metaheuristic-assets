@@ -1,0 +1,4 @@
+# GASV8B3_86_suite - written by nrvv-test-author
+tests/test_GASV8B3_86_suite.py::test_no_further_send_while_first_unacknowledged
+tests/test_GASV8B3_86_suite.py::test_exactly_one_follow_up_send_with_final_price
+tests/test_GASV8B3_86_suite.py::test_state_settled_on_final_price_after_ack

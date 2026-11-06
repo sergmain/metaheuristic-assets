@@ -1,0 +1,4 @@
+# GASV8X6B2_74_suite - written by nrvv-test-author
+tests/test_GASV8X6B2_74_suite.py::test_versions_increase_and_latest_price_supersedes
+tests/test_GASV8X6B2_74_suite.py::test_second_station_unaffected_by_first_station_submissions
+tests/test_GASV8X6B2_74_suite.py::test_interleaved_submissions_each_station_tracks_own_record

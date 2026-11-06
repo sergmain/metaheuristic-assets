@@ -1,0 +1,6 @@
+# TMPVOP59D8L_6_suite - written by nrvv-test-author
+tests/test_TMPVOP59D8L_6_suite.py::test_class_declares_main_method
+tests/test_TMPVOP59D8L_6_suite.py::test_main_accepts_no_parameters
+tests/test_TMPVOP59D8L_6_suite.py::test_main_defined_as_instance_method_with_only_self
+tests/test_TMPVOP59D8L_6_suite.py::test_main_returns_void
+tests/test_TMPVOP59D8L_6_suite.py::test_main_return_annotation_is_void_if_present

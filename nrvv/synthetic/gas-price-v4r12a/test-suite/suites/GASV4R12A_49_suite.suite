@@ -1,0 +1,5 @@
+# GASV4R12A_49_suite - written by nrvv-test-author
+tests/test_GASV4R12A_49_suite.py::test_second_price_overwrites_first_without_waiting
+tests/test_GASV4R12A_49_suite.py::test_station_converges_to_second_price_never_first
+tests/test_GASV4R12A_49_suite.py::test_other_station_price_leaves_station_unchanged
+tests/test_GASV4R12A_49_suite.py::test_desired_version_increases_by_one_per_accepted_price

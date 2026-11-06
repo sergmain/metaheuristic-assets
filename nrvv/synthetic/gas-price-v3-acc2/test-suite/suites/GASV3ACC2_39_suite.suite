@@ -1,0 +1,6 @@
+# GASV3ACC2_39_suite - written by nrvv-test-author
+tests/test_GASV3ACC2_39_suite.py::test_first_submit_sends_immediately_no_delay
+tests/test_GASV3ACC2_39_suite.py::test_ack_sends_immediately_when_still_diverged
+tests/test_GASV3ACC2_39_suite.py::test_converged_station_issues_no_further_send
+tests/test_GASV3ACC2_39_suite.py::test_sends_occur_exactly_at_permissible_moments_random
+tests/test_GASV3ACC2_39_suite.py::test_resubmitting_acknowledged_value_is_suppressed
