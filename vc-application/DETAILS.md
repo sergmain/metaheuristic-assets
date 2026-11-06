@@ -6,7 +6,7 @@ first fund; every fund-specific part is one adapter, one Function descriptor and
 | DAHF flow | what it is for, in business terms | `.mhsc` | state |
 |---|---|---|---|
 | VC form survey | know every input field of a fund's application form, and the inputs an apply flow for that fund declares | `vc-form-survey-yc-synthetic-1.0` (YC), over `vc-form-survey.mhscp` - section A | `synthetic` experiment |
-| VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production ready - production when its `production` input is exactly `true` (E4, ExecContext #7436) |
+| VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production - in `source-codes-production/`; a run is production when its `production` input is exactly `true` (E4, ExecContext #7436) |
 
 Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund and both flows) · Functions per fund:
 `mh.asset.vc-form-survey-yc_1.0` (`functions/fn-vc-form-survey-yc`, `vc_form_survey.py`) and
@@ -338,6 +338,15 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
   the branch was rewritten) followed DAHF §0.21, which prescribes the directory and says only a `.mhsc` in it is launched
   in production mode. The `.mhsc` is back in `source-codes/`, byte for byte (same uid, same registration), and
   `mh-bundle.yaml` no longer declares the directory.
+- **2026-11-06, later the same day: the founder keeps the two directories.** Both rules hold together: every `.mhsc`
+  declares `<- production?` and a run is production exactly when it is `true` (§0.15), AND a released `.mhsc` lives in
+  `source-codes-production/` (§0.21). The founder's reasons: (1) in MH's standard UI the STARTED ExecContexts of a
+  production `.mhsc` are visible by filtering; (2) with git delivery at `HEAD`, a release of a `.mhsc` stays in
+  `source-codes-production/` while its next version is developed in `source-codes/`. `vc-apply-yc-1.0.mhsc` is back in
+  `source-codes-production/`, byte for byte (same uid, SourceCode #257), and `mh-bundle.yaml` declares the directory
+  again. Observed while deciding (MH `SourceCodeImpl`: `id`, `version`, `companyId`, `uid`, `createdOn`, `valid`,
+  `latch`, `scType`, `params` - no path): MH does not know which directory a SourceCode came from, so a production
+  `.mhsc` is told apart in MH by its uid alone - the next version under development needs a uid of its own (§0.19).
 
 ### 7. Experiments
 
@@ -358,7 +367,6 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
 | 4. no `synthetic` in the name, no `prod` / `dev` / `test` | met - `vc-apply-yc-1.0` |
 | 5. A2, A5, A6, A7 hold in code (unit tests) | met - `tests/test_vc_apply.py`, 118 of 118 |
 
-**Evaluated production ready on 2026-11-02, every condition met.** Production is not a directory: this `.mhsc` stays in
-`source-codes/` and runs in production when its `production` input is exactly `true` - as in E4 (#7436), on the
-founder's request of 2026-11-02 ("now i need you to start production applying"), the production decision in as many
-words.
+**Evaluated production ready on 2026-11-02, every condition met; in `source-codes-production/` (§0.21).** A run is
+production when its `production` input is exactly `true` - as in E4 (#7436), on the founder's request of 2026-11-02 ("now i
+need you to start production applying"), the production decision in as many words.
