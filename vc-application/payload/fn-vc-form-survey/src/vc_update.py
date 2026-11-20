@@ -104,6 +104,12 @@ def run(task, credential):
 
     session = open_session(adapter.may_send_apply, print)
     page = adapter.survey(session, login, password, form_url, print)
+    # E1 (ExecContext #11491): a submitted application's /edit is the page that chooses an update kind, not a form
+    kinds = adapter.update_kinds(page['html'])
+    if kinds is not None:
+        raise ValueError('formUrl names the page that chooses an update kind, not an update form - give the kind\'s '
+                         'page, ' + form_url.rstrip('/') + '/<kind>, one of: '
+                         + ', '.join(k + ' (' + str(v) + ')' for k, v in kinds.items()))
     ctx = adapter.form_context(page['html'])
     print('form: ' + str(page['host']) + str(page['path']) + ', questions: ' + str(len(ctx['formKeys']))
           + ', updateKind: ' + str(ctx['updateKind']))

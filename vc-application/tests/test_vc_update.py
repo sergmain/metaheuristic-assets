@@ -1,5 +1,6 @@
 # Unit tests of the update: the core of vc_update.py and the update part of the YC adapter (vc_fund_yc.py).
 # Synthetic: every test builds its own input; nothing reads a fund's site or production data.
+import html
 import json
 
 import pytest
@@ -73,6 +74,32 @@ def test_the_update_write_is_sent_only_when_the_run_allows_it():
         yc.graphql_body('UPDATE_APP', query, variables, yc.READ_OPS)
     body = yc.graphql_body('UPDATE_APP', query, variables, yc.READ_OPS + yc.WRITE_OPS)
     assert body['variables']['input']['submitOnSave'] == 1
+
+
+def _inertia_page(component, props):
+    # the shape of YC's apply pages since November 2026 (survey E2 of the update, ExecContext #11492): Inertia's
+    # data-page attribute
+    page = {'component': component, 'props': props, 'url': '/apps/u/edit', 'version': 'v'}
+    return ('<html><head><meta name="csrf-token" content="tok"></head><body><div id="app" data-page="'
+            + html.escape(json.dumps(page), quote=True) + '"></div></body></html>')
+
+
+def test_update_kinds_reads_the_page_that_chooses_an_update_kind():
+    page = _inertia_page('apply/ChooseUpdateKind', {
+        'visible_update_kinds': {'progress': {'label': 'Progress Update', 'summary': 's'},
+                                 'fundraise': {'label': 'Fundraising Update', 'summary': 's'}},
+        'app_uuid': 'u'})
+    assert yc.update_kinds(page) == {'progress': 'Progress Update', 'fundraise': 'Fundraising Update'}
+
+
+def test_update_kinds_is_none_on_a_kind_form_which_form_context_reads():
+    page = _inertia_page('apply/AppForm', {
+        'app_uuid': 'u-9', 'update_kind': 'progress', 'future_batch_names': [],
+        'active_question_groups': {'Progress': {'howfar': {'prompt': {'q': 'How far along are you?'}},
+                                                'techstack': {'prompt': {'q': 'Tech stack?'}}}}})
+    assert yc.update_kinds(page) is None
+    ctx = yc.form_context(page)
+    assert ctx['updateKind'] == 'progress' and ctx['formKeys'] == ['howfar', 'techstack'] and ctx['appUuid'] == 'u-9'
 
 
 def test_the_wide_read_selects_every_question_and_no_upload():

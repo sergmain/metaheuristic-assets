@@ -565,10 +565,29 @@ def write_answers(session, ctx, patch, form_url, allowed_ops, log):
 #     submitOnSave: 1, updateKind, and applicantsAttributes (the applicants that have an e-mail); revenueamount
 #     JSON-stringified, url / productLink normalized. The page then says "Update submitted"
 #
+#   - OBSERVED (survey E2 of the update, ExecContext #11492, 2026-11-20, YC's bundle apply-ByPkvzu_.js): on a submitted
+#     application /apps/<uuid>/edit is an Inertia page, component apply/ChooseUpdateKind, whose props carry
+#     visible_update_kinds - {kind: {label, summary}}; for this application progress, fundraise, cofounder, video and
+#     demo. Each kind links /apps/<uuid>/edit/<kind>, the AppForm of that kind (update_kind = the kind). The update's
+#     form url is therefore the kind's page; given the choosing page, an update is refused naming the kinds
+#     (update_kinds). The bundle of 2026-11-20 builds the submit exactly as the one of 2026-10-27 did
+#
 # An update sends what that button sends, with two differences, both so that nothing the run does not bring changes:
 # no applicantsAttributes (the applicants are not touched), and every question not patched as YC holds it (not
 # normalized again). An update is never a first submit: an application not submitted yet, or a form page without
 # update_kind, is refused (update_refusal, update_submit_input).
+
+def update_kinds(page_html):
+    """{kind: label} when the page is YC's choice of an update kind (visible_update_kinds), else None."""
+    from vc_page import embedded_state
+
+    _, state = embedded_state(page_html)
+    props = state.get('props') if state else None
+    kinds = find_key(props, 'visible_update_kinds') if props else None
+    if not isinstance(kinds, dict) or not kinds:
+        return None
+    return {k: (v.get('label') if isinstance(v, dict) else None) for k, v in kinds.items()}
+
 
 def update_questions(form_keys, held, patch):
     """The questions a submitted update carries, as the page's "Submit update" builds them: every question of the
