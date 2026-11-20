@@ -7,10 +7,12 @@ first fund; every fund-specific part is one adapter, one Function descriptor and
 |---|---|---|---|
 | VC form survey | know every input field of a fund's application form, and the inputs an apply flow for that fund declares | `vc-form-survey-yc-synthetic-1.0` (YC), over `vc-form-survey.mhscp` - section A | `synthetic` experiment |
 | VC apply | fill and save a fund's application from the run's input Variables - never submit it | `vc-apply-yc-1.0` (YC) - section B | production - in `source-codes-production/`; a run is production when its `production` input is exactly `true` (E4, ExecContext #7436) |
+| VC update | submit an update to a fund's application that is already submitted, from the run's input Variables - never a first submit | `vc-update-yc-1.0` (YC) - section C | production - in `source-codes-production/`; a run is production when its `production` input is exactly `true` (E5, ExecContext #11495) |
 
-Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund and both flows) · Functions per fund:
-`mh.asset.vc-form-survey-yc_1.0` (`functions/fn-vc-form-survey-yc`, `vc_form_survey.py`) and
-`mh.asset.vc-apply-yc_1.0` (`functions/fn-vc-apply-yc`, `vc_apply.py`), both with Vault entry `VC_YC_AUTH`.
+Payload `vc-application/payload/fn-vc-form-survey` (shared by every fund and every flow) · Functions per fund:
+`mh.asset.vc-form-survey-yc_1.0` (`functions/fn-vc-form-survey-yc`, `vc_form_survey.py`),
+`mh.asset.vc-apply-yc_1.0` (`functions/fn-vc-apply-yc`, `vc_apply.py`) and `mh.asset.vc-update-yc_1.0`
+(`functions/fn-vc-update-yc`, `vc_update.py`), each with Vault entry `VC_YC_AUTH`.
 
 **Adding a fund** - nothing in the shared graph or the core changes:
 
@@ -370,3 +372,144 @@ Nothing is submitted; the founders' profiles and the uploads are not touched.
 **Evaluated production ready on 2026-11-02, every condition met; in `source-codes-production/` (§0.21).** A run is
 production when its `production` input is exactly `true` - as in E4 (#7436), on the founder's request of 2026-11-02 ("now i
 need you to start production applying"), the production decision in as many words.
+
+---
+
+## C. VC update - `vc-update-yc-1.0`
+
+**Adding a fund's update** - the core (`vc_update.py`, over `vc_apply.py`'s generic core) does not change: the fund's
+adapter gains `update_kinds(html)`, `read_all_answers`, `update_questions`, `update_submit_input`, `update_refusal` and
+`submit_update`; a descriptor `functions/fn-vc-update-<fund>/mh-function.yaml` (`vc_update.py`, the fund's Vault entry);
+and the fund's own `vc-update-<fund>-1.0.mhsc`, declaring the inputs that fund's survey defined.
+
+### 1. Purpose
+
+Change a fund's application after it was submitted: sign in with the founder's account, open the update form of one
+update kind, read what the application holds, and submit an update with every answer the run brings that differs -
+the way the fund's own page submits one. Why a flow of its own: after a submit YC keeps only some questions editable,
+each behind an update kind, and a change is an update - a distinct act YC records ("Update submitted") - not an
+autosave of a draft. The apply refuses a submitted application; the update refuses one that is not submitted.
+
+**Business frame (DAHF §H.5), derived from the request of 2026-11-20 - no question was needed:**
+
+- **Objective:** the founder's submitted W27 application carries what changed since the submit, in the questions YC
+  still lets change - written for an LLM reader, as the application itself.
+- **Success:** a production ExecContext of `vc-update-yc-1.0` submits one update; YC answers `success` with no errors;
+  the read-back holds every sent value (U3); no question outside the patch changed (U4).
+- **Invariants:** never a first submit (U5); the applicants, the founders' profiles and the uploads are not touched
+  (U6); the credential appears nowhere (U7); an answer whose facts are not known stays as YC holds it - its input is
+  null.
+- **Done:** the ExecContext id, the questions the update changed, read back by value, and what YC does not let change.
+
+### 2. The graph
+
+One process, `update` -> `mh.asset.vc-update-yc_1.0`, `tries 1`, `timeout 240`. The order inside the Function:
+
+1. **The secret handoff first** (the Processor's `accept()` waits 10 seconds).
+2. **The inputs and the three outputs resolved** before the fund's site is called; the answers are the non-null
+   `yc*` inputs.
+3. **Sign-in and the page at `formUrl`** - the survey's own `survey()` of the adapter, under `may_send_apply`. The page
+   that only chooses an update kind refuses the run, naming the kinds (`update_kinds`).
+4. **The form context** of the kind's page: CSRF token, `app_uuid`, `update_kind`, the kind's question keys.
+5. **SHOW_APP over every AppQuestions field** (`read_all_answers`) -> `currentAnswers`, with the form's kind and keys.
+6. **Every answer checked against the kind's form** - a question the form does not offer, an upload or profile, a choice
+   outside its values: refused, after the read and before anything is written -> `updatePatch` (`refused`, `patch`,
+   `heldBefore`, `refusal`, `updateInput` - the exact input a production run sends).
+7. **Production only:** an application not submitted, neither editable nor fully editable, or a form with no
+   `update_kind`, is refused; one `UPDATE_APP` with the update input; SHOW_APP over every field again; the sent values
+   and every other question compared -> `updateResult`.
+
+`tries 1`: an update whose outcome is unknown is not submitted twice, and a failed sign-in is not repeated.
+
+### 3. The run-data contract
+
+| variable | dir | meaning | permitted values |
+|---|---|---|---|
+| `formUrl` | in | the update form of one kind | an https url on `apply.ycombinator.com`, `.../apps/<id>/edit/<kind>` - for this application `progress`, `fundraise`, `cofounder`, `video` or `demo` (E2) |
+| `production` | in, nullable | exactly `true`: submit the update; anything else (JSON `null` at a synthetic launch): read and compute only | `true` or `null` |
+| `yc<Question>` x 51 | in, nullable | as section B part 3; an answer must be a question of the kind's form | as section B part 3 |
+| `currentAnswers` | out | JSON: `form` {`updateKind`, `formKeys`}, `status` and `questions` (every AppQuestions field), as read before any write | - |
+| `updatePatch` | out | JSON: `mode`, `updateKind`, `refused`, `answersGiven`, `differing`, `alreadyHeld`, `patch`, `heldBefore`, `refusal`, `updateInput` | - |
+| `updateResult` | out | JSON: synthetic `{sent: false, wouldSend, refusal}`; production `{sent, updateKind, savedQuestions, success, persisted, errors, readBackMismatches, othersChanged, submittedAfter, statusAfter, heldAfter}` | - |
+
+- **Credential, company, launch:** as section A part 3 - `VC_YC_AUTH`, a company whose Vault (or the management
+  company's) holds it, `mh_create_exec_context_with_variables` with every input in the map. SourceCode #469.
+- **What the update sends** (YC's "Submit update", `l_` in `apply-ByPkvzu_.js`, the same builder as `Lw` of
+  2026-10-27): one `UPDATE_APP` whose input carries every question of the kind's form (minus `videoS3Key` /
+  `demoS3Key`), `submitOnSave: 1` and `updateKind`. Two deliberate differences from the page, so that nothing the run
+  does not bring changes: no `applicantsAttributes` (the page restates the applicants that have an e-mail), and every
+  question not patched sent as YC holds it, not normalized again (the page re-normalizes `url` / `productLink`);
+  `revenueamount` JSON-stringified, as the page does.
+
+### 4. Durable side effects
+
+Synthetic: none in MH but the three output Variables; on YC a signed-in session. Production: one update recorded by YC
+on the application; its saved answers change for exactly the questions in `updatePatch.patch`, whose previous values are
+`updatePatch.heldBefore`. The application stays submitted; the applicants, the founders' profiles and the uploads are not
+touched. An update cannot be withdrawn from here.
+
+### 5. Fitness criteria
+
+| # | criterion | hardness | type | how it is observed |
+|---|---|---|---|---|
+| U1 | the sign-in completes without a person and the kind's form context is read | hard | D | `currentAnswers.form` - `updateKind` and `formKeys` |
+| U2 | a synthetic run sends no write | hard | D | `updateResult.sent` false; in code `graphql_body` allows `UPDATE_APP` only in production (`test_the_update_write_is_sent_only_when_the_run_allows_it`) |
+| U3 | a production update is confirmed: `success` true, no `errors`, every sent question reads back its sent value | hard | D | `updateResult` read in full |
+| U4 | no question outside the patch changed - over every AppQuestions field, not only the kind's | hard | D | `updateResult.othersChanged` empty |
+| U5 | never a first submit: the application was submitted before, and the input carries the form's `updateKind` | hard | D | in code `update_refusal` and `update_submit_input` refuse otherwise (tests) |
+| U6 | the applicants, the founders' profiles and the uploads are not touched | hard | D | in code: no `applicantsAttributes`; uploads and profiles are never in the questions (tests) |
+| U7 | the credential appears in no console line and no Variable | hard | D | as section A F4: the same sign-in code |
+| U8 | every answer states only what the founder stated or the repositories and run records show, precisely, for an LLM reader | hard | P | the founder reads `updatePatch.patch` |
+
+### 6. Corrections
+
+- **2026-11-20, E1, ExecContext #11491, Task #623872 (ERROR, exit 1, payload `1cbe879`), `formUrl` `.../edit`.** The
+  sign-in held as in section A; the page at `/edit` answered HTTP 200, then `the form page carries no
+  active_question_groups`. Learned from the survey (E2): a submitted application's `/edit` is not a form.
+- **2026-11-20, E2, the survey `vc-form-survey-yc-synthetic-1.0` (SourceCode #256), ExecContext #11492, both Tasks OK,
+  `formUrl` `.../edit`.** `formFields` (#515401) read in full: `embedding` `inertia` - YC's apply pages are Inertia now
+  (they were `window.REACT_COMPONENTS` pushes on 2026-10-27) -, component `apply/ChooseUpdateKind`, props
+  `visible_update_kinds` {progress: Progress Update, fundraise: Fundraising Update, cofounder: Team Update, video:
+  Founder Video Update, demo: Demo Video Update} and `app_uuid`; 0 fields; script `apply-ByPkvzu_.js`. That public
+  bundle, read from outside: each kind links `/apps/<uuid>/edit/<kind>`, an AppForm with `update_kind` = the kind; its
+  submit builder `l_` equals `Lw` of 2026-10-27. Learned: the update's `formUrl` is the kind's page; the choosing page
+  now refuses the run naming the kinds (`update_kinds`, tests 133/133, payload `adbb33e`). No kind offers the Idea
+  section (`get`, `ideas`, `exp`, `money`) or the Company section beyond the product links: after a submit those
+  answers stay as submitted.
+- **2026-11-20, E3, ExecContext #11493, both Tasks OK (payload `adbb33e`), `formUrl` `.../edit/progress`, no answers.**
+  `currentAnswers` (#515456) read in full: `updateKind` `progress`; 13 form keys - `demoS3Key`, `productLink`,
+  `productCreds`, `howfar`, `worked`, `techstack`, `stage`, `usernums`, `whenbeta`, `revenue`, `revenueamount`,
+  `revenuesource`, `growthrate`; the application `submitted`, `editable` true, `fullEditable` false, status `submitted`;
+  `refusal` null. The Inertia AppForm is read by `form_context` unchanged (`embedded_state`).
+- **2026-11-20, E4, ExecContext #11494, both Tasks OK, synthetic, answers `howfar` and `techstack`.** `updatePatch`
+  (#515513) read in full: none refused, both differing; `updateInput` - the 12 questions of the form a read selects,
+  `submitOnSave` 1, `updateKind` `progress`; the two answers byte for byte, every other question as held. Nothing sent
+  (U2).
+- **2026-11-20, E5, ExecContext #11495, both Tasks OK, production (SourceCode #469 in `source-codes-production/` since
+  `bc0c196`).** The same answers, `production` `true`. `updateResult` (#515570) read in full: `sent` true,
+  `savedQuestions` howfar, techstack, `success` true, `persisted` true, `errors` [], `readBackMismatches` [] (U3),
+  `othersChanged` [] over every AppQuestions field (U4), `submittedAfter` true, `statusAfter` `submitted`.
+
+### 7. Experiments
+
+| id | hypothesis | answers | SourceCode | riskiest assumption | verdict |
+|---|---|---|---|---|---|
+| E1 | a submitted application's `/edit` is the AppForm with an `update_kind`, its `active_question_groups` the questions YC still lets change; read it and the application, no answers | - (the 2026-10-27 bundle: `update_kind` titles, "Submit an update" linking `/apps/<uuid>/edit`) | `vc-update-yc-1.0`, `production` null (payload `1cbe879`) | the page at `/edit` is a form | REJECTED - ExecContext #11491: no `active_question_groups` on the page |
+| E2 | the survey records what `/edit` of a submitted application is | E1, ExecContext #11491 | `vc-form-survey-yc-synthetic-1.0` | the page is still read by the survey's core | CHAMPION (a read) - ExecContext #11492: Inertia `apply/ChooseUpdateKind` with five kinds, each at `/edit/<kind>` |
+| E3 | the kind's page `/edit/progress` is the AppForm of that kind; read it and the application, no answers | E2, ExecContext #11492, and `apply-ByPkvzu_.js` | `vc-update-yc-1.0`, `production` null (payload `adbb33e`) | `form_context` reads the Inertia AppForm | BEATEN by E4 - ExecContext #11493: `progress`, 13 keys, submitted and editable, no refusal |
+| E4 | E3 with the founder's answers: every answer is a question of the kind's form, and the update input is computed against what YC holds | E3, ExecContext #11493 | `vc-update-yc-1.0`, `production` null | the answers fit the kind's form | CHAMPION - ExecContext #11494: none refused, 2 differing, the input as the page builds it; nothing sent |
+| E5 | production: the update submitted as the page's "Submit update" does, then read back | E4, ExecContext #11494 | `vc-update-yc-1.0`, `production` true | YC accepts the button's input without `applicantsAttributes` and keeps the changed answers in `app.questions` | CHAMPION - ExecContext #11495: `success` and `persisted` true, read back exactly, nothing else changed, still submitted |
+
+### 8. Production readiness
+
+| condition (§0.21 and the flow's own) | state |
+|---|---|
+| 1. a production mode at all: a production run writes where the business reads | met - it updates the application named by the input `formUrl`, never a target of its own |
+| 2. the success criteria and invariants hold by observed values in a synthetic run - the CHAMPION | met - E4, ExecContext #11494: U1, U2 held; the update input computed against the application's own answers |
+| 3. every part has its production counterpart: the Vault holding `VC_YC_AUTH`; no SourceCode bound | met - the management Vault UNLOCKED, re-checked before every launch |
+| 4. no `synthetic` in the name, no `prod` / `dev` / `test` | met - `vc-update-yc-1.0` |
+| 5. U2, U5, U6, U7 hold in code (unit tests) | met - `tests/test_vc_update.py`, the suite 133 of 133 |
+
+**Evaluated production ready on 2026-11-20, every condition met; in `source-codes-production/` (§0.21) since
+`bc0c196`.** A run is production when its `production` input is exactly `true` - as in E5 (#11495), on the founder's
+request of 2026-11-20 ("update form"), the production decision in as many words.
