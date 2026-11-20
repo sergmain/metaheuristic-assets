@@ -547,3 +547,81 @@ def write_answers(session, ctx, patch, form_url, allowed_ops, log):
     if not isinstance(result, dict):
         raise RuntimeError('UPDATE_APP: the answer carries no updateApp')
     return result
+
+
+# ---------------------------------------------------------------------------------------------------
+# THE UPDATE (mh.asset.vc-update-yc, vc_update.py) - submit an update to an application that is already submitted
+#
+# How YC's page updates a submitted application (apply-*.js - the bundle saved on 2026-10-27, read 2026-11-20, no
+# credential):
+#   - after a submit only some sections stay editable; the page's own words: "founder profiles, founder video, demo
+#     video, progress, and fundraising". The dashboard's "Submit an update" links the same /apps/<uuid>/edit, where the
+#     AppForm's update_kind prop is set - video, demo, fundraise, progress, cofounder, invited or full (the page's
+#     titles: Founder Video, Demo Video, Fundraising Update, Progress Update, Team Update, Invited Questions, YC
+#     Application) - and active_question_groups holds the questions that kind may change
+#   - while the founder types, the page autosaves the changed questions with autosave: 1 and updateKind; its only
+#     button, "Submit update" (after a confirm), sends ONE UPDATE_APP whose input the page's Lw(type 'submit') builds:
+#     every question of the form (active_question_groups minus videoS3Key / demoS3Key) with its value,
+#     submitOnSave: 1, updateKind, and applicantsAttributes (the applicants that have an e-mail); revenueamount
+#     JSON-stringified, url / productLink normalized. The page then says "Update submitted"
+#
+# An update sends what that button sends, with two differences, both so that nothing the run does not bring changes:
+# no applicantsAttributes (the applicants are not touched), and every question not patched as YC holds it (not
+# normalized again). An update is never a first submit: an application not submitted yet, or a form page without
+# update_kind, is refused (update_refusal, update_submit_input).
+
+def update_questions(form_keys, held, patch):
+    """The questions a submitted update carries, as the page's "Submit update" builds them: every question of the
+    update form a read selects, the patched ones with the run's answer, the others as YC holds them; revenueamount
+    JSON-stringified, as the page sends it."""
+    questions = {}
+    for key in readable_keys(form_keys):
+        value = patch[key] if key in patch else held.get(key)
+        if key == 'revenueamount':
+            value = json.dumps(value, separators=(',', ':'))
+        questions[key] = value
+    return questions
+
+
+def update_submit_input(questions, update_kind):
+    """The UpdateAppInput of a submitted update: the update form's questions, submitOnSave 1 and the form's
+    updateKind - never applicantsAttributes, never autosave. Without an update kind, submitOnSave would be a first
+    submit, which is the founder's act - refused."""
+    if not isinstance(update_kind, str) or not update_kind.strip():
+        raise OperationRefused('an update needs the form\'s update_kind - without it submitOnSave is a first submit')
+    if not questions:
+        raise ValueError('an update that carries no question is never sent')
+    return {'questions': dict(questions), 'submitOnSave': 1, 'updateKind': update_kind}
+
+
+def update_refusal(app, update_kind):
+    """Why an update must not be submitted to this application, or None."""
+    if not app.get('submitted'):
+        return 'the application is not submitted yet - submitting it is the founder\'s act, not an update'
+    if not app.get('editable') and not app.get('fullEditable'):
+        return 'YC marks the application as neither editable nor fully editable - no update is offered'
+    if not isinstance(update_kind, str) or not update_kind.strip():
+        return 'the form page carries no update_kind - YC offers no update on this page'
+    return None
+
+
+def read_all_answers(session, ctx, form_url, allowed_ops, log):
+    """The App as SHOW_APP returns it with every question AppQuestions declares - what an update compares before and
+    after, so that a change outside the update form's questions is seen too."""
+    data = graphql(session, ctx, 'SHOW_APP', show_app_query(readable_keys(APP_QUESTIONS)),
+                   {'appUuid': ctx['appUuid']}, allowed_ops, form_url, log)
+    app = data.get('app')
+    if not isinstance(app, dict):
+        raise RuntimeError('SHOW_APP: YC returned no application for the form page\'s app_uuid')
+    return app
+
+
+def submit_update(session, ctx, questions, form_url, allowed_ops, log):
+    """One UPDATE_APP carrying a submitted update; YC's updateApp answer."""
+    data = graphql(session, ctx, 'UPDATE_APP', update_app_mutation(readable_keys(ctx['formKeys'])),
+                   {'uuid': ctx['appUuid'], 'input': update_submit_input(questions, ctx['updateKind'])},
+                   allowed_ops, form_url, log)
+    result = data.get('updateApp')
+    if not isinstance(result, dict):
+        raise RuntimeError('UPDATE_APP: the answer carries no updateApp')
+    return result
