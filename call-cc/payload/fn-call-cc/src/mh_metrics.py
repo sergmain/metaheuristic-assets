@@ -128,9 +128,50 @@ def response_usage(status, text):
     return envelope.get('usage') if isinstance(envelope, dict) else None
 
 
-def metered(post, calls, now=time.monotonic):
+def gemini_tokens(usage_metadata):
+    """The four counts of a Gemini `usageMetadata`, counted as the Anthropic API counts them - inputTokens the prompt's
+    uncached part (promptTokenCount less cachedContentTokenCount), outputTokens the answer with its thinking
+    (candidatesTokenCount + thoughtsTokenCount), cacheReadInputTokens cachedContentTokenCount; cacheCreationInputTokens
+    None, the API reports no cache write. None for a count the metadata does not carry."""
+    usage = usage_metadata if isinstance(usage_metadata, dict) else {}
+    prompt = _count(usage.get('promptTokenCount'))
+    cached = _count(usage.get('cachedContentTokenCount'))
+    candidates = _count(usage.get('candidatesTokenCount'))
+    thoughts = _count(usage.get('thoughtsTokenCount'))
+    return {
+        'inputTokens': None if prompt is None else prompt - (cached or 0),
+        'outputTokens': None if candidates is None and thoughts is None else (candidates or 0) + (thoughts or 0),
+        'cacheCreationInputTokens': None,
+        'cacheReadInputTokens': cached,
+    }
+
+
+def response_usage_metadata(status, text):
+    """The `usageMetadata` of a 2xx Gemini response text, or None (another status, no text, not JSON)."""
+    if status is None or status < 200 or status >= 300 or not text:
+        return None
+    try:
+        envelope = json.loads(text)
+    except ValueError:
+        return None
+    return envelope.get('usageMetadata') if isinstance(envelope, dict) else None
+
+
+def anthropic_counts(status, text):
+    """The four counts of an Anthropic Messages API response - metered's default."""
+    return api_tokens(response_usage(status, text))
+
+
+def gemini_counts(status, text):
+    """The four counts of a Gemini generateContent response."""
+    return gemini_tokens(response_usage_metadata(status, text))
+
+
+def metered(post, calls, now=time.monotonic, counts=anthropic_counts):
     """post(body, seconds) -> (status, text), unchanged, recording one API entry into `calls` per request: its time,
-    and the counts of a 2xx response. A request that raises is recorded too, with no counts."""
+    and the counts of a 2xx response. A request that raises is recorded too, with no counts.
+    `counts(status, text)` reads the counts of the provider's response - the Anthropic API's by default, gemini_counts
+    for the Gemini API."""
     def metered_post(body, seconds):
         started = now()
         status, text = None, None
@@ -138,7 +179,7 @@ def metered(post, calls, now=time.monotonic):
             status, text = post(body, seconds)
             return status, text
         finally:
-            calls.append(call(CALL_API, elapsed_ms(started, now), api_tokens(response_usage(status, text))))
+            calls.append(call(CALL_API, elapsed_ms(started, now), counts(status, text)))
     return metered_post
 
 

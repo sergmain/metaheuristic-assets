@@ -37,6 +37,7 @@ import sys
 import time
 
 import mh_api_call
+import mh_gemini_call
 import mh_metrics
 
 # Timeout for the CC process itself, in seconds. Overridable per process with meta 'timeout-sec',
@@ -114,9 +115,12 @@ MCP_UNAVAILABLE_EXIT_CODE = -1
 #   'cc'          the Claude Code CLI with this Function's MCP server (the default - absent or blank means this)
 #   'claude_api'  one Anthropic Messages API call (mh_api_call): the same mh_cc_store_result contract, offered as a
 #                 forced tool, and the key handed over by the Processor from the Vault (mh-function.yaml api.keyCode)
+#   'gemini_api'  one Google Gemini API call (mh_gemini_call): the same mh_cc_store_result contract, offered as a
+#                 function declaration, and the key (GEMINI_API_KEY) handed over the same way
 LLM_PROVIDER_META = 'llm_provider'
 PROVIDER_CC = 'cc'
 PROVIDER_CLAUDE_API = 'claude_api'
+PROVIDER_GEMINI_API = 'gemini_api'
 
 # The raw API response, kept in the task dir for diagnosis. It never holds the key: the key goes out in a header.
 API_RESPONSE_FILE = 'api-response.json'
@@ -192,9 +196,10 @@ def llm_provider(metas):
     if value is None or not value.strip():
         return PROVIDER_CC
     value = value.strip()
-    if value not in (PROVIDER_CC, PROVIDER_CLAUDE_API):
-        raise ValueError("meta '" + LLM_PROVIDER_META + "' must be '" + PROVIDER_CC + "' or '" + PROVIDER_CLAUDE_API
-                         + "', got '" + value + "'")
+    # (one of the THREE known values since the gemini_api path)
+    if value not in (PROVIDER_CC, PROVIDER_CLAUDE_API, PROVIDER_GEMINI_API):
+        raise ValueError("meta '" + LLM_PROVIDER_META + "' must be '" + PROVIDER_CC + "', '" + PROVIDER_CLAUDE_API
+                         + "' or '" + PROVIDER_GEMINI_API + "', got '" + value + "'")
     return value
 
 
@@ -503,6 +508,8 @@ def main(argv):
     print('llm_provider: ' + provider)
     if provider == PROVIDER_CLAUDE_API:
         return run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, metrics_var=metrics_var)
+    if provider == PROVIDER_GEMINI_API:
+        return run_gemini_api(params, metas, work_dir, prompt, output_var, model, effort, metrics_var=metrics_var)
 
     env_params = yaml.load(read_text(os.path.join(work_dir, ARTIFACTS_DIR, MH_ENV_FILE)),
                            Loader=yaml.FullLoader)
@@ -695,6 +702,81 @@ def run_claude_api(params, metas, work_dir, prompt, output_var, model, effort, a
     print('usage: ' + json.dumps(envelope.get('usage')) + ', stop_reason: ' + str(envelope.get('stop_reason')))
     try:
         answer = mh_api_call.answer_from_response(envelope)
+    except ValueError as e:
+        print('FAILED: ' + str(e))
+        return 1
+
+    os.makedirs(os.path.join(work_dir, ARTIFACTS_DIR), exist_ok=True)
+    target = output_path(work_dir, output_var)
+    # newline='' - verbatim: text mode would turn every \n of the answer into \r\n on a Windows Processor
+    with open(target, 'w', encoding='utf-8', newline='') as f:
+        f.write(answer)
+    print('stored ' + str(os.path.getsize(target)) + ' bytes into output variable "'
+          + str(output_var.get('name')) + '" at ' + target)
+    return 0
+
+
+def run_gemini_api(params, metas, work_dir, prompt, output_var, model, effort, api_base_url=mh_gemini_call.API_BASE_URL,
+                   metrics_var=None):
+    """The gemini_api path: one generateContent call; the answer is the `result` of the one mh_cc_store_result call,
+    copied verbatim into the output Variable. Returns the Function's exit code: 0, or 1 with a FAILED line - the
+    claude_api path's contract (run_claude_api), for Google's API (mh_gemini_call).
+
+    params is the task block of the params file - its secretPort and checkCode locate the Processor's secret channel.
+    api_base_url is a parameter so a test can point the one POST at a local server; main() passes nothing.
+    metrics_var is the output of type mh.metrics, or None: when given, the one request is recorded into it.
+    """
+    if model is None:
+        print("FAILED: no model for llm_provider=" + PROVIDER_GEMINI_API + " - wire meta 'variable-for-model' to a "
+              'Variable carrying a model id. The API has no default model.')
+        return 1
+    try:
+        level = mh_gemini_call.thinking_level(effort)
+    except ValueError as e:
+        print('FAILED: ' + str(e))
+        return 1
+    answer_budget = mh_api_call.max_tokens(meta_value(metas, 'max-tokens'))
+    body = mh_gemini_call.request_body(prompt, answer_budget, level)
+    print(('effort ' + effort.strip() + ' -> thinkingLevel ' + level if level is not None
+           else "no effort - the API's default thinkingLevel") + ', maxOutputTokens '
+          + str(body['generationConfig']['maxOutputTokens']))
+    seconds = timeout_sec(metas)
+    url = mh_gemini_call.api_url(model, api_base_url)
+
+    data_dir = os.path.join(work_dir, CC_DATA_DIR)
+    os.makedirs(data_dir, exist_ok=True)
+    write_text(os.path.join(work_dir, PROMPT_FILE), prompt)
+
+    port, check_code = params.get('secretPort'), params.get('checkCode')
+    if port is None or check_code is None or not str(check_code).strip():
+        print('FAILED: no API key was handed over by the Processor. mh-function.yaml must declare api.keyCode '
+              '(GEMINI_API_KEY) and a Vault must hold that key.')
+        return 1
+    key = mh_api_call.read_secret(port, check_code)
+    calls = []
+    try:
+        print('API key received from the Processor (' + str(len(key)) + ' bytes)')
+        print('POST ' + url + ', timeout ' + str(seconds) + 's')
+        api_key = key.decode('utf-8')
+        post = mh_metrics.metered(lambda b, s: mh_gemini_call.post_generate_content(url, api_key, b, s), calls,
+                                  counts=mh_metrics.gemini_counts)
+        status, text = post(body, seconds)
+    finally:
+        mh_api_call.zero(key)
+
+    store_metrics(work_dir, metrics_var, calls)
+    write_text(os.path.join(data_dir, API_RESPONSE_FILE), text or '')
+    print('API response status: ' + str(status))
+    if status < 200 or status >= 300:
+        print('the API: ' + mh_gemini_call.api_error_message(text))
+        print('FAILED: ' + mh_gemini_call.api_failure_line(status, text))
+        return 1
+    envelope = json.loads(text)
+    candidates = envelope.get('candidates') or [{}]
+    print('usageMetadata: ' + json.dumps(envelope.get('usageMetadata')) + ', finishReason: '
+          + str(candidates[0].get('finishReason') if isinstance(candidates[0], dict) else None))
+    try:
+        answer = mh_gemini_call.answer_from_response(envelope)
     except ValueError as e:
         print('FAILED: ' + str(e))
         return 1
